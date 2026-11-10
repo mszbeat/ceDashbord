@@ -1,0 +1,23 @@
+{
+  "name": "ce-scripts",
+  "version": "1.0.1",
+  "description": "مجموعه ابزارهای دریافت، پردازش و تحلیل گزارش‌های ارزیابی اعتبار و تولید داشبورد تعاملی CE Dashboard",
+  "main": "index.js",
+  "scripts": {
+    "generate": "node report && node ce-dashboard",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://gitlab.partcorp.ir/credit-scoring/infrastructure/ce-scripts.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "moment-jalaali": "^0.10.5",
+    "p-limit": "^3.1.0",
+    "partRequest": "^2.0.1"
+  }
+}

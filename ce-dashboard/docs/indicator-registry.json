@@ -1,0 +1,3339 @@
+{
+  "version": "2.18.0",
+  "rankingNullThreshold": 3,
+  "configurableViaCli": false,
+  "rotbeKeys": [
+    "personRoles",
+    "personInformation",
+    "reportUniqueId",
+    "summaryInformationRelatedToContractsSum",
+    "summaryInformationRelatedToContractsSumWithRoleType",
+    "summaryInformationRelatedToContracts",
+    "summaryInformationRelatedToContractsWithRoleType",
+    "inquiryStats",
+    "directContracts",
+    "personNegativeStatus"
+  ],
+  "banks": [
+    {
+      "id": "tavan_mellat",
+      "label": "ملت",
+      "schema": {
+        "root": "input.data",
+        "rotbe": "input.data.rotbebandiStandard.data",
+        "facilities": "input.data.samatFacilities.TashilatItem",
+        "facilityEnvelope": "input.data.samatFacilities",
+        "cheques": "input.data.samatCheque.chequeList",
+        "loans": "input.data.historicalLoans",
+        "deposit": "input.data.depositAverage",
+        "currency": "ArzCD",
+        "bankCode": "BnkCD",
+        "requestNumber": "RequestNO"
+      },
+      "sections": [
+        {
+          "id": "overview",
+          "icon": "◈",
+          "label": "نمای کلی",
+          "desc": "حجم داده، نرخ موفقیت و توزیع شاخص‌های اصلی مدل"
+        },
+        {
+          "id": "rotbe",
+          "label": "رتبه‌بندی",
+          "desc": "ارزیابی کامل بودن رتبه‌بندی و ارتباط آن با تسهیلات و سوابق وام",
+          "details": "اگر دادهٔ رتبه‌بندی null باشد یا دست‌کم <b>3</b> کلید از 10 کلید اصلی آن null باشند، «رتبه‌بندی فاقد داده» در نظر گرفته می‌شود. تاریخ استعلام و کلیدهای فرعی در این محاسبه لحاظ نمی‌شوند."
+        },
+        {
+          "id": "loans",
+          "label": "سوابق وام",
+          "desc": "وجود سابقه، تعداد وام‌ها و میانگین اقساط قراردادی",
+          "details": "وجود سابقه از آرایهٔ input.data.historicalLoans خوانده می‌شود: آرایهٔ غیرخالی دارای سابقه و آرایهٔ صریحاً خالی بدون سابقه است. کلید غایب یا نامعتبر در هیچ‌کدام شمرده نمی‌شود. تعداد وام‌های ثبت‌شده برابر طول آرایهٔ سالم است؛ آرایهٔ خالی صفر و آرایهٔ غایب یا دارای ردیف نامعتبر از آمار عددی خارج است. میانگین اقساط قراردادی هر گزارش فقط از installmentCount صحیح و نامنفی وام‌های همان گزارش به دست می‌آید؛ طول installments یا approvedDuration جایگزین نیست. مقدار صفرِ ثبت‌شده معتبر است، ولی null صفر فرض نمی‌شود. گزارش بدون تعداد اقساط معتبر از میانگین حذف می‌شود. آمار جدول روی مقدار هر گزارش است، نه تک‌تک وام‌ها. این شاخص‌ها به معنای تعداد وام فعال یا اقساط باقی‌مانده نیستند. به علت نبود روز تأخیر معتبر، آمار تأخیر ملت همچنان نمایش داده نمی‌شود و کد status تفسیر نمی‌شود."
+        },
+        {
+          "id": "deposit",
+          "label": "سپرده‌ها",
+          "desc": "پوشش ماهانه، کیفیت تاریخ‌ها و میانگین سپردهٔ ۳۶ ماهه",
+          "details": "کلید قطعی <code>yeaR_MONTH</code> تاریخ شمسی هشت‌رقمی مانند <code>14030930</code> را نگه می‌دارد و مبلغ فقط از <code>avR_AMOUNT</code> خوانده می‌شود؛ برای آمار ماهانه فقط سال و ماه آن به کار می‌رود. میانگین 36 ماهه از ماه‌های یکتا (با حفظ نخستین تکرار)، به ترتیب جدید به قدیم، محاسبه می‌شود. کمبود تعداد ماه‌های موجود تا 36 با صفر تکمیل می‌شود؛ این متد پنجرهٔ تقویمی پیوسته نمی‌سازد. تاریخ یا مبلغ نامعتبر، منفی یا نامعلوم در هر ردیف باعث کنارگذاشتن گزارش از میانگین می‌شود، نه تبدیل مبلغ به صفر. منبع قطعی آرایهٔ <code>input.data.depositAverage</code> است؛ نبود پیام سرویس، میانگین را صفر نمی‌کند."
+        },
+        {
+          "id": "facilities",
+          "label": "تسهیلات سمات",
+          "desc": "تعداد تسهیلات، اجزای بدهی، پوشش مبلغ و کیفیت دادهٔ سمات",
+          "details": "منبع قطعی: <code>input.data.samatFacilities.TashilatItem</code>. در هر سه بانک، null صریح یا [] در همین کلید یعنی بدون تسهیلات؛ یک شیء غیرخالی یک تسهیلات و آرایهٔ اشیا چند تسهیلات است. کلید غایب، آبجکت خالی و ساختار نامعتبر بدون تسهیلات فرض نمی‌شوند. تبدیل شکل داده فقط در محاسبه است و JSON خام تغییر نمی‌کند. هر گزارش یک‌بار در هر شاخص شمرده می‌شود؛ وجود مبلغ مثبت در دست‌کم یک تسهیلات کافی است. این بخش فقط دادهٔ سمات را توصیف می‌کند و برخلاف هشدار تأییدشدهٔ بدهی، نیازمند پیام خروجی نیست. جمع‌ها به‌ازای هر گزارش و فقط برای آیتم منفرد یا آرایهٔ سالم، مبالغ کامل و نامنفی و واحد IRR در تمام ردیف‌ها محاسبه می‌شوند. null، دادهٔ پوشانده‌شده و واحد نامعلوم صفر یا ریال فرض نمی‌شوند. جمع اجزای بدهی به‌عنوان بدهی کل استفاده نمی‌شود؛ AmBedehiKol مستقیماً خوانده می‌شود. «تعداد بانک‌های شناسایی‌شده» یعنی تعداد بانک‌های متفاوت بر اساس کد بانک در تسهیلات این گزارش؛ کد تکراری یک‌بار شمرده می‌شود و کد نامعلوم کنار می‌رود. در ملت، نبود شناسه، شعبه، Status یا سایر داده‌های پوشانده‌شده به‌تنهایی نقص مالی یا وضعیت نامطلوب نیست؛ صفر بودن دیرکرد هم از null نتیجه نمی‌شود."
+        },
+        {
+          "id": "risk",
+          "icon": "⚠",
+          "label": "بدهی معوق و چک برگشتی",
+          "desc": "موارد تأییدشده در گزارش‌های موفق با تطبیق پیام خروجی و دادهٔ سمات"
+        },
+        {
+          "id": "status",
+          "icon": "☷",
+          "label": "وضعیت و پیام‌ها",
+          "desc": "کدها، پیام‌های خروجی و کامل بودن وضعیت سرویس‌های ورودی"
+        },
+        {
+          "id": "model",
+          "icon": "◇",
+          "label": "مدل‌های اجراشده",
+          "desc": "تعداد درخواست‌های موفق برای هر نام مدل"
+        },
+        {
+          "id": "empty",
+          "icon": "◫",
+          "label": "کیفیت کلیدها",
+          "desc": "درصد مقدارهای خالی، کلیدهای غایب و نوع نقص داده"
+        },
+        {
+          "id": "lists",
+          "icon": "⚑",
+          "label": "گزارش‌های قابل بررسی",
+          "desc": "فهرست گزارش‌های نیازمند بررسی با امکان جست‌وجو و مشاهدهٔ جزئیات"
+        },
+        {
+          "id": "daily",
+          "icon": "▦",
+          "label": "روند روزانه",
+          "desc": "تعداد و نسبت شاخص‌های منتخب در هر روز"
+        }
+      ],
+      "paths": [
+        {
+          "key": "tashilat",
+          "label": "آیتم یا آرایهٔ تسهیلات سمات",
+          "path": "input.data.samatFacilities.TashilatItem"
+        },
+        {
+          "key": "samatChequeList",
+          "label": "آرایهٔ چک‌های برگشتی",
+          "path": "input.data.samatCheque.chequeList"
+        },
+        {
+          "key": "historicalLoans",
+          "label": "آرایهٔ سابقهٔ وام",
+          "path": "input.data.historicalLoans"
+        },
+        {
+          "key": "depositRecords",
+          "label": "آرایهٔ سپرده",
+          "path": "input.data.depositAverage"
+        }
+      ],
+      "definitions": {
+        "flags": [
+          {
+            "id": "rotbeNull",
+            "label": "رتبه‌بندی فاقد داده است",
+            "topic": "rotbe",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "input.data.rotbebandiStandard.data ; input.data.samatFacilities.TashilatItem ; input.data.historicalLoans",
+            "formula": "دادهٔ رتبه‌بندی غایب/null/غیرشیء، یا تعداد کلیدهای اصلی null/غایب >= ۳ (آستانهٔ ثابت داخلی).",
+            "code": "(c) => isRotbeNullData(get(c, 'rotbebandiStandard.data'), minNull)",
+            "onlyStatus": "ALL",
+            "inspect": true,
+            "daily": true
+          },
+          {
+            "id": "tashilatFull",
+            "label": "اطلاعات تسهیلات (TashilatItem) موجود است",
+            "topic": "rotbe",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "input.data.rotbebandiStandard.data ; input.data.samatFacilities.TashilatItem ; input.data.historicalLoans",
+            "formula": "حداقل یک آیتم شیء غیرخالی در مسیر قطعی TashilatItem؛ آبجکت منفرد یک آیتم و آرایه فهرست آیتم‌هاست. null یا [] بدون تسهیلات؛ غیاب/ساختار نامعتبر وجود تسهیلات را اثبات نمی‌کند. فهرست عادی حذف مانده است.",
+            "code": "(c) => hasFacilities(get(c, 'samatFacilities.TashilatItem'))",
+            "onlyStatus": "ALL",
+            "inspect": false,
+            "daily": false
+          },
+          {
+            "id": "loansFull",
+            "label": "سوابق وام (historicalLoans) موجود است",
+            "topic": "rotbe",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "input.data.rotbebandiStandard.data ; input.data.samatFacilities.TashilatItem ; input.data.historicalLoans",
+            "formula": "آرایهٔ قطعی سابقهٔ وام غیرخالی است؛ شمارش حفظ و فهرست عادی حذف شده است.",
+            "code": "(c) => isFullArray(get(c, 'historicalLoans'))",
+            "onlyStatus": "ALL",
+            "inspect": false,
+            "daily": false
+          },
+          {
+            "id": "rotbeNullTashilat",
+            "label": "رتبه‌بندی فاقد داده، اما اطلاعات تسهیلات موجود است",
+            "topic": "rotbe",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "input.data.rotbebandiStandard.data ; input.data.samatFacilities.TashilatItem ; input.data.historicalLoans",
+            "formula": "rotbeNull AND tashilatFull",
+            "code": "(_c, _s, f) => f.rotbeNull && f.tashilatFull",
+            "onlyStatus": "ALL",
+            "inspect": true,
+            "daily": true
+          },
+          {
+            "id": "rotbeNullLoans",
+            "label": "رتبه‌بندی فاقد داده، اما سوابق وام موجود است",
+            "topic": "rotbe",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "input.data.rotbebandiStandard.data ; input.data.samatFacilities.TashilatItem ; input.data.historicalLoans",
+            "formula": "rotbeNull AND loansFull",
+            "code": "(_c, _s, f) => f.rotbeNull && f.loansFull",
+            "onlyStatus": "ALL",
+            "inspect": true,
+            "daily": true
+          },
+          {
+            "id": "rotbeNullBoth",
+            "label": "رتبه‌بندی فاقد داده، اما تسهیلات و سوابق وام موجودند",
+            "topic": "rotbe",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "input.data.rotbebandiStandard.data ; input.data.samatFacilities.TashilatItem ; input.data.historicalLoans",
+            "formula": "rotbeNull AND tashilatFull AND loansFull",
+            "code": "(_c, _s, f) => f.rotbeNull && f.tashilatFull && f.loansFull",
+            "onlyStatus": "ALL",
+            "inspect": true,
+            "daily": true
+          },
+          {
+            "id": "hasLoan",
+            "label": "دارای سابقه وام",
+            "topic": "loans",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "input.data.historicalLoans",
+            "formula": "(c) => isFullArray(get(c, 'historicalLoans'))",
+            "code": "(c) => isFullArray(get(c, 'historicalLoans'))",
+            "onlyStatus": "ALL",
+            "inspect": false,
+            "daily": false
+          },
+          {
+            "id": "noLoan",
+            "label": "بدون سابقه وام",
+            "topic": "loans",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "input.data.historicalLoans",
+            "formula": "(c) => Array.isArray(get(c, 'historicalLoans')) && get(c, 'historicalLoans').length === 0",
+            "code": "(c) => Array.isArray(get(c, 'historicalLoans')) && get(c, 'historicalLoans').length === 0",
+            "onlyStatus": "ALL",
+            "inspect": true,
+            "daily": false
+          },
+          {
+            "id": "depositPresent",
+            "label": "دست‌کم یک ماه سپرده ثبت شده است",
+            "topic": "deposit",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "input.data.depositAverage",
+            "formula": "(c, s) => depositInfo(c, s).present",
+            "code": "(c, s) => depositInfo(c, s).present",
+            "onlyStatus": "ALL",
+            "inspect": false,
+            "daily": false
+          },
+          {
+            "id": "depositEmpty",
+            "label": "بدون سپرده",
+            "topic": "deposit",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "input.data.depositAverage",
+            "formula": "(c, s) => !depositInfo(c, s).present",
+            "code": "(c, s) => !depositInfo(c, s).present",
+            "onlyStatus": "ALL",
+            "inspect": true,
+            "daily": true
+          },
+          {
+            "id": "deposit36",
+            "label": "دقیقاً ۳۶ ردیف ماهانهٔ سپرده وجود دارد",
+            "topic": "deposit",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "input.data.depositAverage",
+            "formula": "(c, s) => depositInfo(c, s).rawCount === N_MONTH",
+            "code": "(c, s) => depositInfo(c, s).rawCount === N_MONTH",
+            "onlyStatus": "ALL",
+            "inspect": false,
+            "daily": true
+          },
+          {
+            "id": "facilityEmpty",
+            "label": "بدون تسهیلات",
+            "topic": "facilities",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "input.data.samatFacilities.TashilatItem",
+            "formula": "در هر سه بانک، null صریح یا [] در مسیر قطعی TashilatItem یعنی بدون تسهیلات؛ کلید غایب، آبجکت خالی یا نوع نامعتبر مشمول نیست.",
+            "code": "(c, s) => ['emptyArray','null'].includes(info(c, s).kind)",
+            "onlyStatus": "ALL",
+            "inspect": false,
+            "daily": false
+          },
+          {
+            "id": "facilityPresent",
+            "label": "دارای تسهیلات",
+            "topic": "facilities",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "input.data.samatFacilities.TashilatItem",
+            "formula": "حداقل یک شیء غیرخالی تسهیلات وجود دارد.",
+            "code": "(c, s) => info(c, s).items.length > 0",
+            "onlyStatus": "ALL",
+            "inspect": false,
+            "daily": false
+          },
+          {
+            "id": "facilityOverdue",
+            "label": "بدهی معوق مثبت در تسهیلات",
+            "topic": "facilities",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "input.data.samatFacilities.TashilatItem",
+            "formula": "حداقل یک ردیف شیء با AmMoavagh معتبر >۰؛ مستقل از پیام و وضعیت success/fail.",
+            "code": "(c, s) => info(c, s).positive[field] > 0",
+            "onlyStatus": "ALL",
+            "inspect": true,
+            "daily": true
+          },
+          {
+            "id": "facilityPastDue",
+            "label": "بدهی سررسیدگذشتهٔ مثبت در تسهیلات",
+            "topic": "facilities",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "input.data.samatFacilities.TashilatItem",
+            "formula": "حداقل یک ردیف شیء با AmSarResid معتبر >۰.",
+            "code": "(c, s) => info(c, s).positive[field] > 0",
+            "onlyStatus": "ALL",
+            "inspect": true,
+            "daily": true
+          },
+          {
+            "id": "facilityDoubtful",
+            "label": "مطالبات مشکوک‌الوصول مثبت در تسهیلات",
+            "topic": "facilities",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "input.data.samatFacilities.TashilatItem",
+            "formula": "حداقل یک ردیف شیء با AmMashkuk معتبر >۰.",
+            "code": "(c, s) => info(c, s).positive[field] > 0",
+            "onlyStatus": "ALL",
+            "inspect": true,
+            "daily": true
+          },
+          {
+            "id": "deliveryDateAllNull",
+            "label": "وام با تمام تاریخ‌های deliveryDate برابر null",
+            "topic": "loans",
+            "derived": false,
+            "preserveFraction": false,
+            "note": "هشدار پوشش داده؛ لزوماً خطا یا بدحسابی نیست.",
+            "source": "input.data.historicalLoans[*].installments[*].deliveryDate",
+            "formula": "حداقل یک وام دارای اقساط سالم و غیرخالی که تمام کلیدهای deliveryDate اقساطش صریحاً null باشند. غیاب/خالی/نامعتبر پذیرفته نیست. هر گزارش یک بار.",
+            "code": "(c,s)=>loans(c,s).paths[p.id][key]>0",
+            "onlyStatus": "ALL",
+            "inspect": true,
+            "daily": false
+          },
+          {
+            "id": "deliveryDateHasValue",
+            "label": "وجود مقدار غیرتهی در deliveryDate",
+            "topic": "loans",
+            "derived": false,
+            "preserveFraction": false,
+            "note": "برای رصد شروع یا تغییر داده‌دهی؛ اعتبار تاریخ تأیید نمی‌شود.",
+            "source": "input.data.historicalLoans[*].installments[*].deliveryDate",
+            "formula": "حداقل یک مقدار رشته‌ای غیرخالی یا عدد متناهی در input.data.historicalLoans[*].installments[*].deliveryDate؛ این پایشِ وجود داده است نه صحت تاریخ. هر گزارش یک بار.",
+            "code": "(c,s)=>loans(c,s).paths[p.id][key]>0",
+            "onlyStatus": "ALL",
+            "inspect": true,
+            "daily": false
+          },
+          {
+            "id": "paymentEntriesDateAllNull",
+            "label": "وام با تمام تاریخ‌های installmentPayments.date برابر null",
+            "topic": "loans",
+            "derived": false,
+            "preserveFraction": false,
+            "note": "هشدار پوشش داده؛ لزوماً خطا یا بدحسابی نیست.",
+            "source": "input.data.historicalLoans[*].installments[*].installmentPayments[*].date",
+            "formula": "حداقل یک وام دارای اقساط سالم و غیرخالی که تمام اقساطش آرایهٔ installmentPayments سالم و غیرخالی دارند و همهٔ dateها صریحاً null باشند. غیاب/خالی/نامعتبر پذیرفته نیست. هر گزارش یک بار.",
+            "code": "(c,s)=>loans(c,s).paths[p.id][key]>0",
+            "onlyStatus": "ALL",
+            "inspect": true,
+            "daily": false
+          },
+          {
+            "id": "paymentEntriesDateHasValue",
+            "label": "وجود مقدار غیرتهی در installmentPayments.date",
+            "topic": "loans",
+            "derived": false,
+            "preserveFraction": false,
+            "note": "برای رصد شروع یا تغییر داده‌دهی؛ اعتبار تاریخ تأیید نمی‌شود.",
+            "source": "input.data.historicalLoans[*].installments[*].installmentPayments[*].date",
+            "formula": "حداقل یک مقدار رشته‌ای غیرخالی یا عدد متناهی در input.data.historicalLoans[*].installments[*].installmentPayments[*].date؛ این پایشِ وجود داده است نه صحت تاریخ. هر گزارش یک بار.",
+            "code": "(c,s)=>loans(c,s).paths[p.id][key]>0",
+            "onlyStatus": "ALL",
+            "inspect": true,
+            "daily": false
+          }
+        ],
+        "metrics": [
+          {
+            "id": "lnCount",
+            "label": "تعداد وام‌های ثبت‌شده در هر گزارش",
+            "topic": "loans",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "input.data.historicalLoans",
+            "formula": "طول آرایهٔ سالم سابقهٔ وام؛ خالی=۰؛ غایب/نامعتبر یا دارای ردیف غیرشیء/خالی حذف می‌شود. همهٔ وضعیت‌ها، نه فقط وام فعال.",
+            "code": "(c) => validLoans(c)?.length ?? null",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "lnAvgInstallments",
+            "label": "میانگین تعداد اقساط قراردادی هر گزارش",
+            "topic": "loans",
+            "derived": true,
+            "preserveFraction": false,
+            "source": "input.data.historicalLoans[*].installmentCount",
+            "formula": "mean(installmentCount) در آرایهٔ سالم روی وام‌های دارای عدد صحیح نامنفی؛ صفر معتبر، null حذف؛ بدون عدد معتبر=null؛ طول installments و approvedDuration جایگزین نیستند. آمار بین گزارش‌ها با وزن یکسان است.",
+            "code": "(c) => { const loans = validLoans(c); return loans === null ? null : meanInstallments(loans, (loan) => num(loan.installmentCount)); }",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "creditBasket",
+            "label": "توان بازپرداخت",
+            "topic": "overview",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "output.Credit_Basket",
+            "formula": "خواندن مستقیم مقدار عددی از مسیر؛ سپس count/min/Q1/median/mean/Q3/max بین گزارش‌های دارای مقدار معتبر.",
+            "code": "(_c, s) => num(get(s, 'output.Credit_Basket'))",
+            "onlyStatus": "ALL",
+            "histogram": {
+              "edges": [
+                0,
+                10000000,
+                20000000,
+                30000000,
+                50000000,
+                75000000,
+                100000000,
+                150000000,
+                200000000,
+                300000000,
+                500000000,
+                "Infinity"
+              ]
+            }
+          },
+          {
+            "id": "tbp_Excellent",
+            "label": "ردهٔ «عالی» (Excellent)",
+            "topic": "overview",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "output.Tavan_Baz_Pardakht.Excellent.max",
+            "formula": "مقدار عددی max همان رده، سپس آمار بین گزارش‌ها؛ min در این شاخص وارد نمی‌شود.",
+            "code": "(_c, s) => num(get(s, `output.Tavan_Baz_Pardakht.${key}.max`))",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "tbp_Very_Good",
+            "label": "ردهٔ «خیلی خوب» (Very_Good)",
+            "topic": "overview",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "output.Tavan_Baz_Pardakht.Very_Good.max",
+            "formula": "مقدار عددی max همان رده، سپس آمار بین گزارش‌ها؛ min در این شاخص وارد نمی‌شود.",
+            "code": "(_c, s) => num(get(s, `output.Tavan_Baz_Pardakht.${key}.max`))",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "tbp_Good",
+            "label": "ردهٔ «خوب» (Good)",
+            "topic": "overview",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "output.Tavan_Baz_Pardakht.Good.max",
+            "formula": "مقدار عددی max همان رده، سپس آمار بین گزارش‌ها؛ min در این شاخص وارد نمی‌شود.",
+            "code": "(_c, s) => num(get(s, `output.Tavan_Baz_Pardakht.${key}.max`))",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "tbp_Medium_Good",
+            "label": "ردهٔ «متوسط رو به خوب» (Medium_Good)",
+            "topic": "overview",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "output.Tavan_Baz_Pardakht.Medium_Good.max",
+            "formula": "مقدار عددی max همان رده، سپس آمار بین گزارش‌ها؛ min در این شاخص وارد نمی‌شود.",
+            "code": "(_c, s) => num(get(s, `output.Tavan_Baz_Pardakht.${key}.max`))",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "tbp_Medium",
+            "label": "ردهٔ «متوسط» (Medium)",
+            "topic": "overview",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "output.Tavan_Baz_Pardakht.Medium.max",
+            "formula": "مقدار عددی max همان رده، سپس آمار بین گزارش‌ها؛ min در این شاخص وارد نمی‌شود.",
+            "code": "(_c, s) => num(get(s, `output.Tavan_Baz_Pardakht.${key}.max`))",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "tbp_Medium_Bad",
+            "label": "ردهٔ «متوسط رو به بد» (Medium_Bad)",
+            "topic": "overview",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "output.Tavan_Baz_Pardakht.Medium_Bad.max",
+            "formula": "مقدار عددی max همان رده، سپس آمار بین گزارش‌ها؛ min در این شاخص وارد نمی‌شود.",
+            "code": "(_c, s) => num(get(s, `output.Tavan_Baz_Pardakht.${key}.max`))",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "tbp_Bad",
+            "label": "ردهٔ «بد» (Bad)",
+            "topic": "overview",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "output.Tavan_Baz_Pardakht.Bad.max",
+            "formula": "مقدار عددی max همان رده، سپس آمار بین گزارش‌ها؛ min در این شاخص وارد نمی‌شود.",
+            "code": "(_c, s) => num(get(s, `output.Tavan_Baz_Pardakht.${key}.max`))",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "tbp_Very_Bad",
+            "label": "ردهٔ «خیلی بد» (Very_Bad)",
+            "topic": "overview",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "output.Tavan_Baz_Pardakht.Very_Bad.max",
+            "formula": "مقدار عددی max همان رده، سپس آمار بین گزارش‌ها؛ min در این شاخص وارد نمی‌شود.",
+            "code": "(_c, s) => num(get(s, `output.Tavan_Baz_Pardakht.${key}.max`))",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "depositCount",
+            "label": "تعداد ردیف‌های ماهانه (فقط گزارش‌های دارای سپرده)",
+            "topic": "deposit",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "input.data.depositAverage",
+            "formula": "تعداد ردیف‌های شیء در آرایهٔ ماهانه؛ فقط گزارش‌های دارای ردیف وارد می‌شوند؛ نه تعداد حساب یا ماه یکتا.",
+            "code": "(c, s) => { const i = depositInfo(c, s); return i.present ? i.rawCount : null; }",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "depositMin",
+            "label": "قدیمی‌ترین ماه سپرده",
+            "topic": "deposit",
+            "derived": false,
+            "preserveFraction": false,
+            "display": "monthRange",
+            "source": "input.data.depositAverage",
+            "formula": "min(year×۱۲+month−۱) بین تاریخ‌های معتبر هر گزارش؛ فقط count/min/max بین گزارش‌ها.",
+            "code": "(c, s) => depositInfo(c, s).minIdx",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "depositMax",
+            "label": "جدیدترین ماه سپرده",
+            "topic": "deposit",
+            "derived": false,
+            "preserveFraction": false,
+            "display": "monthRange",
+            "source": "input.data.depositAverage",
+            "formula": "max(year×۱۲+month−۱) بین تاریخ‌های معتبر هر گزارش؛ فقط count/min/max بین گزارش‌ها.",
+            "code": "(c, s) => depositInfo(c, s).maxIdx",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "avg36",
+            "label": "میانگین ۳۶ ماههٔ سپردهٔ موجود",
+            "topic": "deposit",
+            "derived": true,
+            "preserveFraction": false,
+            "source": "input.data.depositAverage",
+            "formula": "sum(مبلغ حداکثر ۳۶ ماه یکتای جدیدتر)/۳۶؛ گردکردن فقط در نمایش؛ اولین تکرار ماه حفظ می‌شود؛ گزارش دارای هر تاریخ/مبلغ نامعتبر حذف می‌شود.",
+            "code": "(c, s) => { const i = depositInfo(c, s); return i.present && i.messageOk ? i.avg36 : null; }",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "pd",
+            "label": "احتمال نکول (PD)",
+            "topic": "overview",
+            "derived": false,
+            "preserveFraction": true,
+            "note": "مقدار دقیق ۰٫۵ در ردیف مستقل «دقیقاً ۰٫۵۰» شمرده می‌شود و در بازه‌های مجاور قرار نمی‌گیرد. مقایسه بر مقدار خام، پیش از گردکردن نمایش است؛ این مقدار از آمار عددی حذف نمی‌شود.",
+            "source": "output.PD",
+            "formula": "خواندن مستقیم مقدار عددی از مسیر؛ سپس count/min/Q1/median/mean/Q3/max بین گزارش‌های دارای مقدار معتبر.",
+            "code": "(_c, s) => num(get(s, 'output.PD'))",
+            "onlyStatus": "ALL",
+            "histogram": {
+              "bins": [
+                {
+                  "min": 0,
+                  "max": 0.1,
+                  "label": "۰٫۰۰ تا کمتر از ۰٫۱۰"
+                },
+                {
+                  "min": 0.1,
+                  "max": 0.2,
+                  "label": "0.10 تا کمتر از 0.20"
+                },
+                {
+                  "min": 0.2,
+                  "max": 0.3,
+                  "label": "0.20 تا کمتر از 0.30"
+                },
+                {
+                  "min": 0.3,
+                  "max": 0.4,
+                  "label": "0.30 تا کمتر از 0.40"
+                },
+                {
+                  "min": 0.4,
+                  "max": 0.5,
+                  "label": "0.40 تا کمتر از 0.50"
+                },
+                {
+                  "value": 0.5,
+                  "label": "دقیقاً ۰٫۵۰"
+                },
+                {
+                  "min": 0.5,
+                  "max": 0.6,
+                  "excludeMin": true,
+                  "label": "بیشتر از ۰٫۵۰ تا کمتر از ۰٫۶۰"
+                },
+                {
+                  "min": 0.6,
+                  "max": 0.8,
+                  "label": "۰٫۶۰ تا کمتر از ۰٫۸۰"
+                },
+                {
+                  "min": 0.8,
+                  "max": 1,
+                  "includeMax": true,
+                  "label": "۰٫۸۰ تا ۱٫۰۰"
+                }
+              ]
+            }
+          },
+          {
+            "id": "scoreReq",
+            "label": "امتیاز وام درخواستی",
+            "topic": "overview",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "output.score_for_requested_loan",
+            "formula": "خواندن مستقیم مقدار عددی از مسیر؛ سپس count/min/Q1/median/mean/Q3/max بین گزارش‌های دارای مقدار معتبر.",
+            "code": "(_c, s) => num(get(s, 'output.score_for_requested_loan'))",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "totalTime",
+            "label": "زمان اجرای مدل (ثانیه)",
+            "topic": "overview",
+            "derived": false,
+            "preserveFraction": false,
+            "summaryDecimals": 2,
+            "source": "output.total_time",
+            "formula": "خواندن مستقیم مقدار عددی از مسیر؛ سپس count/min/Q1/median/mean/Q3/max بین گزارش‌های دارای مقدار معتبر.",
+            "code": "(_c, s) => num(get(s, 'output.total_time'))",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "facilityCount",
+            "label": "تعداد تسهیلات هر گزارش",
+            "topic": "facilities",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "input.data.samatFacilities.TashilatItem",
+            "formula": "در هر سه بانک: null یا [] مقدار صفر؛ آبجکت آیتم غیرخالی مقدار یک؛ آرایهٔ سالم طول آرایه. کلید غایب، آبجکت خالی، نوع نامعتبر یا آرایهٔ دارای عضو نامعتبر از آمار شمار کل حذف می‌شود. تغییر شکل فقط محاسباتی و بدون تغییر JSON خام است.",
+            "code": "(c, s) => [null, 'emptyArray', 'null'].includes(info(c, s).kind) ? info(c, s).items.length : null",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "facilityBankCount",
+            "label": "تعداد بانک‌های شناسایی‌شده",
+            "topic": "facilities",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "input.data.samatFacilities.TashilatItem[*].BnkCD",
+            "formula": "count(distinct BnkCD) فقط کدهای رقمی خوانا با نرمال‌سازی صفر ابتدایی؛ بدون کد معتبر حذف می‌شود.",
+            "code": "(c, s) => info(c, s).banks || null",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "facilitySumAmOriginal",
+            "label": "جمع اصل تسهیلات، بدون سود در هر گزارش (ریال)",
+            "topic": "facilities",
+            "derived": true,
+            "preserveFraction": false,
+            "source": "input.data.samatFacilities.TashilatItem[*].AmOriginal",
+            "formula": "sum(AmOriginal) در ردیف‌های همان گزارش؛ فقط آیتم منفرد یا آرایهٔ سالم پس از یکسان‌سازی شکل داده، همهٔ مبالغ معتبر و نامنفی و همهٔ واحدها IRR.",
+            "code": "(c, s) => info(c, s).sums[field]",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "facilitySumAmBenefit",
+            "label": "جمع سود تسهیلات در هر گزارش (ریال)",
+            "topic": "facilities",
+            "derived": true,
+            "preserveFraction": false,
+            "source": "input.data.samatFacilities.TashilatItem[*].AmBenefit",
+            "formula": "sum(AmBenefit) در ردیف‌های همان گزارش؛ فقط آیتم منفرد یا آرایهٔ سالم پس از یکسان‌سازی شکل داده، همهٔ مبالغ معتبر و نامنفی و همهٔ واحدها IRR.",
+            "code": "(c, s) => info(c, s).sums[field]",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "facilityPrincipalAndBenefit",
+            "label": "جمع اصل و سود تسهیلات در هر گزارش (ریال)",
+            "topic": "facilities",
+            "derived": true,
+            "preserveFraction": false,
+            "source": "input.data.samatFacilities.TashilatItem[*]: AmOriginal + AmBenefit",
+            "formula": "sum(AmOriginal + AmBenefit) در تسهیلات همان گزارش؛ تنها وقتی هر دو فیلد در تمام ردیف‌ها معتبر و نامنفی، آیتم منفرد یا آرایه سالم و واحد همه IRR باشد. سود صفر معتبر و null نامعلوم است. بدون کسر پرداخت؛ نه مانده بدهی. AmBedehiKol تغییر نمی‌کند.",
+            "code": "(c,s)=>info(c,s).sums.principalAndBenefit",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "facilitySumAmBedehiKol",
+            "label": "جمع بدهی کل در هر گزارش (ریال)",
+            "topic": "facilities",
+            "derived": true,
+            "preserveFraction": false,
+            "source": "input.data.samatFacilities.TashilatItem[*].AmBedehiKol",
+            "formula": "sum(AmBedehiKol) در ردیف‌های همان گزارش؛ فقط آیتم منفرد یا آرایهٔ سالم پس از یکسان‌سازی شکل داده، همهٔ مبالغ معتبر و نامنفی و همهٔ واحدها IRR.",
+            "code": "(c, s) => info(c, s).sums[field]",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "facilitySumAmMoavagh",
+            "label": "جمع بدهی معوق در هر گزارش (ریال)",
+            "topic": "facilities",
+            "derived": true,
+            "preserveFraction": false,
+            "source": "input.data.samatFacilities.TashilatItem[*].AmMoavagh",
+            "formula": "sum(AmMoavagh) در ردیف‌های همان گزارش؛ فقط آیتم منفرد یا آرایهٔ سالم پس از یکسان‌سازی شکل داده، همهٔ مبالغ معتبر و نامنفی و همهٔ واحدها IRR.",
+            "code": "(c, s) => info(c, s).sums[field]",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "facilitySumAmSarResid",
+            "label": "جمع بدهی سررسیدگذشته در هر گزارش (ریال)",
+            "topic": "facilities",
+            "derived": true,
+            "preserveFraction": false,
+            "source": "input.data.samatFacilities.TashilatItem[*].AmSarResid",
+            "formula": "sum(AmSarResid) در ردیف‌های همان گزارش؛ فقط آیتم منفرد یا آرایهٔ سالم پس از یکسان‌سازی شکل داده، همهٔ مبالغ معتبر و نامنفی و همهٔ واحدها IRR.",
+            "code": "(c, s) => info(c, s).sums[field]",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "facilitySumAmMashkuk",
+            "label": "جمع مطالبات مشکوک‌الوصول در هر گزارش (ریال)",
+            "topic": "facilities",
+            "derived": true,
+            "preserveFraction": false,
+            "source": "input.data.samatFacilities.TashilatItem[*].AmMashkuk",
+            "formula": "sum(AmMashkuk) در ردیف‌های همان گزارش؛ فقط آیتم منفرد یا آرایهٔ سالم پس از یکسان‌سازی شکل داده، همهٔ مبالغ معتبر و نامنفی و همهٔ واحدها IRR.",
+            "code": "(c, s) => info(c, s).sums[field]",
+            "onlyStatus": "ALL"
+          }
+        ],
+        "categories": [
+          {
+            "id": "depositLength",
+            "label": "تعداد ماه‌های سپرده",
+            "topic": "deposit",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "input.data.depositAverage",
+            "formula": "تعداد ردیف ماهانه: صفر، <۳۶، =۳۶، >۳۶؛ این دسته بر اساس ردیف است، نه ماه یکتا.",
+            "code": "(c, s) => lengthClass(depositInfo(c, s))",
+            "onlyStatus": "ALL",
+            "categories": {
+              "empty": "سپرده ثبت نشده",
+              "lt36": "کمتر از ۳۶ ماه",
+              "eq36": "دقیقاً ۳۶ ماه",
+              "gt36": "بیش از ۳۶ ماه"
+            }
+          },
+          {
+            "id": "depositWindow",
+            "label": "قدیمی‌ترین ماه نسبت به زمان اعتبارسنجی",
+            "topic": "deposit",
+            "derived": false,
+            "preserveFraction": false,
+            "note": "برای هر گزارش، قدیمی‌ترین سال/ماه معتبر از ردیف‌های سپرده با سال/ماه تاریخ اعتبارسنجی مقایسه می‌شود؛ فاصلهٔ دقیقاً ۳۶ ماه، کمتر از ۳۶ یا بیشتر از ۳۶ ماه جداست. تاریخ اعتبارسنجی از ai_input.current_loan.date_granted، سپس output.date_granted و سپس زمان ثبت گزارش خوانده می‌شود. گزارش بدون سپرده جداست؛ «قالب تاریخ ماه‌ها نامعتبر» فقط وقتی است که ردیف سپرده وجود دارد ولی هیچ تاریخ ماه معتبری خوانده نمی‌شود. درصدها از تمام گزارش‌های محدوده هستند. ستون تعداد ماه‌های تاریخچه در فهرست زیر، تعداد سال/ماه‌های معتبر و یکتای موجود است؛ تکرار یک ماه یک‌بار شمرده و تاریخ نامعتبر حذف می‌شود. این تعداد با فاصلهٔ تقویمی تا اعتبارسنجی متفاوت است و به معنی پیوسته بودن ماه‌ها نیست.",
+            "source": "input.data.depositAverage",
+            "formula": "بدون ردیف ⇒ noDeposit؛ بدون هیچ تاریخ ماه معتبر ⇒ badDates؛ تاریخ اعتبارسنجی نامعلوم ⇒ noValDate؛ وگرنه gap=ماه اعتبارسنجی−قدیمی‌ترین ماه: =۳۶ / <۳۶ / >۳۶.",
+            "code": "(c, s) => windowClass(depositInfo(c, s))",
+            "onlyStatus": "ALL",
+            "categories": {
+              "noDeposit": "سپرده ثبت نشده",
+              "minIs36": "دقیقاً ۳۶ ماه قبل (مطابق انتظار)",
+              "minNewer": "تاریخچه کوتاه‌تر از ۳۶ ماه",
+              "minOlder": "قدیمی‌تر از ۳۶ ماه",
+              "noValDate": "تاریخ اعتبارسنجی نامشخص",
+              "badDates": "قالب تاریخ ماه‌ها نامعتبر"
+            }
+          },
+          {
+            "id": "statusCode",
+            "label": "کد وضعیت خروجی (output.statusCode)",
+            "topic": "status",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "output.statusCode",
+            "formula": "(_c, report, folderStatus) => {\n      const value = get(report, 'output.statusCode');\n      if (value === null || value === undefined || value === '') return folderStatus === 'success' ? '200' : 'ثبت نشده';\n      return String(value) === '200' ? '200' : String(value);\n    }",
+            "code": "(_c, report, folderStatus) => {\n      const value = get(report, 'output.statusCode');\n      if (value === null || value === undefined || value === '') return folderStatus === 'success' ? '200' : 'ثبت نشده';\n      return String(value) === '200' ? '200' : String(value);\n    }",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "errorCode",
+            "label": "کد خطای سرویس در گزارش‌های ناموفق (output.meta.code)",
+            "topic": "status",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "output.meta.code",
+            "formula": "(_c, s) => String(get(s, 'output.meta.code') ?? 'کد خطا ثبت نشده است')",
+            "code": "(_c, s) => String(get(s, 'output.meta.code') ?? 'کد خطا ثبت نشده است')",
+            "onlyStatus": "fail"
+          },
+          {
+            "id": "messageSuccess",
+            "label": "پیام‌های گزارش‌های موفق",
+            "topic": "status",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "output.message.fa/en ; output.data.message.fa/en ; output.message ; output.data.message",
+            "formula": "(_c, s) => messageOf(s)",
+            "code": "(_c, s) => messageOf(s)",
+            "onlyStatus": "success"
+          },
+          {
+            "id": "messageFail",
+            "label": "پیام‌های گزارش‌های ناموفق",
+            "topic": "status",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "output.message.fa/en ; output.data.message.fa/en ; output.message ; output.data.message",
+            "formula": "(_c, s) => messageOf(s)",
+            "code": "(_c, s) => messageOf(s)",
+            "onlyStatus": "fail"
+          },
+          {
+            "id": "modelName",
+            "label": "تعداد درخواست‌های موفق به تفکیک مدل",
+            "topic": "model",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "output.model_name",
+            "formula": "(_c, s) => { const output = get(s, 'output'), name = get(s, 'output.model_name');\n      return output && typeof output === 'object' && !Array.isArray(output) && typeof name === 'string' && name.trim() ? name.trim() : 'نام مدل ثبت نشده است'; }",
+            "code": "(_c, s) => { const output = get(s, 'output'), name = get(s, 'output.model_name');\n      return output && typeof output === 'object' && !Array.isArray(output) && typeof name === 'string' && name.trim() ? name.trim() : 'نام مدل ثبت نشده است'; }",
+            "onlyStatus": "success"
+          }
+        ],
+        "counters": [
+          {
+            "id": "monitorLoanTotal",
+            "label": "کل وام‌های قابل خواندن",
+            "topic": "loans",
+            "derived": false,
+            "preserveFraction": false,
+            "display": "paymentCoverage",
+            "source": "input.data.historicalLoans",
+            "formula": "تعداد اشیای غیرخالی وام در مسیر قطعی؛ بدون حذف وام کرونا یا مبلغ صفر/null؛ بدون یکتاسازی بین گزارش‌ها.",
+            "code": "(_c,s)=>loans(_c,s).total",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "monitorLoanEligible",
+            "label": "وام‌های دارای اقساط غیرخالی و سالم",
+            "topic": "loans",
+            "derived": false,
+            "preserveFraction": false,
+            "display": "paymentCoverage",
+            "source": "input.data.historicalLoans[*].installments",
+            "formula": "تعداد وام‌هایی که installments آرایهٔ غیرخالی و تمام اعضای آن شیء غیرخالی است؛ مخرج درصد تمام تاریخ‌ها null.",
+            "code": "(_c,s)=>loans(_c,s).eligible",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "deliveryDateAllNullLoans",
+            "label": "وام با تمام تاریخ‌های deliveryDate برابر null — تعداد وام",
+            "topic": "loans",
+            "derived": false,
+            "preserveFraction": false,
+            "display": "paymentCoverage",
+            "source": "input.data.historicalLoans[*].installments[*].deliveryDate",
+            "formula": "تعداد وام‌های دارای تمام تاریخ‌های صریحاً null؛ درصد در نمایش = مجموع این شمارنده / مجموع monitorLoanEligible × ۱۰۰.",
+            "code": "(c,s)=>loans(c,s).paths[p.id][key]",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "deliveryDateHasValueLoans",
+            "label": "وجود مقدار غیرتهی در deliveryDate — تعداد وام",
+            "topic": "loans",
+            "derived": false,
+            "preserveFraction": false,
+            "display": "paymentCoverage",
+            "source": "input.data.historicalLoans[*].installments[*].deliveryDate",
+            "formula": "تعداد وام‌های دارای حداقل یک مقدار غیرتهی در این مسیر؛ هر وام در یک گزارش یک بار.",
+            "code": "(c,s)=>loans(c,s).paths[p.id][key]",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "paymentEntriesDateAllNullLoans",
+            "label": "وام با تمام تاریخ‌های installmentPayments.date برابر null — تعداد وام",
+            "topic": "loans",
+            "derived": false,
+            "preserveFraction": false,
+            "display": "paymentCoverage",
+            "source": "input.data.historicalLoans[*].installments[*].installmentPayments[*].date",
+            "formula": "تعداد وام‌های دارای تمام تاریخ‌های صریحاً null؛ درصد در نمایش = مجموع این شمارنده / مجموع monitorLoanEligible × ۱۰۰.",
+            "code": "(c,s)=>loans(c,s).paths[p.id][key]",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "paymentEntriesDateHasValueLoans",
+            "label": "وجود مقدار غیرتهی در installmentPayments.date — تعداد وام",
+            "topic": "loans",
+            "derived": false,
+            "preserveFraction": false,
+            "display": "paymentCoverage",
+            "source": "input.data.historicalLoans[*].installments[*].installmentPayments[*].date",
+            "formula": "تعداد وام‌های دارای حداقل یک مقدار غیرتهی در این مسیر؛ هر وام در یک گزارش یک بار.",
+            "code": "(c,s)=>loans(c,s).paths[p.id][key]",
+            "onlyStatus": "ALL"
+          }
+        ]
+      },
+      "cross": [
+        {
+          "id": "rotbe",
+          "topic": "rotbe",
+          "title": "ارتباط رتبه‌بندی با تسهیلات و سوابق وام",
+          "row": "rotbeNull",
+          "rowHeader": "وضعیت رتبه‌بندی",
+          "rowYes": "رتبه‌بندی فاقد داده",
+          "rowNo": "رتبه‌بندی دارای داده",
+          "cols": [
+            {
+              "flag": "tashilatFull",
+              "name": "تسهیلات"
+            },
+            {
+              "flag": "loansFull",
+              "name": "سوابق وام"
+            }
+          ]
+        }
+      ],
+      "lists": [
+        {
+          "title": "رتبه‌بندی فاقد داده با وجود اطلاعات تسهیلات",
+          "filter": "(f) => f.rotbeNullTashilat",
+          "row": "(c) => ({ 'تعداد تسهیلات': normalizeFacilities(get(c, 'samatFacilities.TashilatItem')).items.length,\n        'تعداد سوابق وام': (get(c, 'historicalLoans') || []).length })"
+        }
+      ]
+    },
+    {
+      "id": "tavan_postbank",
+      "label": "پست‌بانک",
+      "schema": {
+        "root": "collectedData",
+        "rotbe": "collectedData.rotbebandiStandardResult.data",
+        "facilities": "collectedData.samatFacilitiesResult.data.ReturnValue.TashilatItem",
+        "facilityEnvelope": "collectedData.samatFacilitiesResult.data.ReturnValue",
+        "cheques": "collectedData.samatChequeResult.data.chequeList",
+        "loans": "collectedData.postBankLoansDataResult.data.resultData",
+        "deposit": "collectedData.postBankDepositAverageResult.data.averageList",
+        "currency": "ArzCD",
+        "bankCode": "BnkCD",
+        "requestNumber": "RequestNO"
+      },
+      "sections": [
+        {
+          "id": "overview",
+          "icon": "◈",
+          "label": "نمای کلی",
+          "desc": "حجم داده، نرخ موفقیت و توزیع شاخص‌های اصلی مدل"
+        },
+        {
+          "id": "rotbe",
+          "label": "رتبه‌بندی",
+          "desc": "کامل بودن رتبه‌بندی در کنار اطلاعات تسهیلات و وام‌ها",
+          "details": "دادهٔ رتبه‌بندی زمانی فاقد داده محسوب می‌شود که null باشد یا دست‌کم <b>3</b> کلید از 10 کلید اصلی آن null باشند. منبع تسهیلات فقط کلید TashilatItem در data.ReturnValue است: null یا [] بدون تسهیلات، شیء غیرخالی یک آیتم و آرایهٔ اشیا چند آیتم. پوشش meta جزو ردیف‌ها نیست."
+        },
+        {
+          "id": "loans",
+          "label": "وام‌ها و اقساط",
+          "desc": "وجود سابقهٔ وام، وضعیت اقساط و میانگین تعداد اقساط وام‌های قبلی",
+          "details": "فهرست وام‌ها از <code>postBankLoansDataResult.data.resultData</code> خوانده می‌شود. آرایهٔ خالی به معنی «بدون سابقه وام» و فهرست غایب/نامعتبر با توضیح «خطا در دریافت داده از بانک» نمایش دارد؛ این دو یکسان شمرده نمی‌شوند. «سالم» یعنی تمام وام‌های فهرست، آرایهٔ اقساط غیرخالی داشته باشند. میانگین تعداد اقساط برای هر گزارش، میانگین طول آرایه‌های <code>installments</code> وام‌های همان گزارش است؛ آرایهٔ خالی مقدار صفر دارد و کلید غایب وارد میانگین نمی‌شود."
+        },
+        {
+          "id": "deposit",
+          "label": "سپرده‌ها",
+          "desc": "تعداد حساب‌ها در همهٔ گزارش‌ها، پوشش زمانی و میانگین مجموع سپرده‌ها",
+          "details": "تعداد حساب‌ها از averageList و تعداد ماه‌های تاریخچه از سال/ماه‌های معتبر یکتای کل حساب‌ها خوانده می‌شود. برای هرکدام تعداد گزارش معتبر، کمینه، چارک اول، میانه، میانگین، چارک سوم و بیشینه جداگانه نمایش دارد؛ آرایهٔ حساب خالی صفر است و آرایهٔ غایب یا نامعتبر از آمار حذف می‌شود. برای شمار ماه، وجود ساختار average در همهٔ حساب‌ها لازم است؛ مبلغ نامعتبر، تاریخ معتبر را از شمار ماه حذف نمی‌کند. حسابِ بدون ماه ثبت‌شده همچنان شمرده می‌شود؛ «بدون حساب» با «بدون ماه سپرده» متفاوت است. مبلغ هر ماه برابر مجموع حساب‌ها در همان ماه است. میانگین 36 ماهه از جدیدترین ماه‌ها محاسبه می‌شود و در صورت کمبود ماه، با صفر تکمیل می‌گردد؛ این متد به معنی ساخت پنجرهٔ تقویمی پیوسته نیست. تاریخ یا مبلغ نامعتبر در هر حساب باعث حذف آن گزارش از میانگین می‌شود، نه تبدیل مبلغ نامعتبر به صفر. ردیف‌های meta در تعداد حساب‌ها یا ماه‌ها شمرده نمی‌شوند."
+        },
+        {
+          "id": "facilities",
+          "label": "تسهیلات سمات",
+          "desc": "تعداد تسهیلات، اجزای بدهی، پوشش مبلغ و کیفیت دادهٔ سمات",
+          "details": "منبع قطعی: <code>collectedData.samatFacilitiesResult.data.ReturnValue.TashilatItem</code>. در هر سه بانک، null صریح یا [] در همین کلید یعنی بدون تسهیلات؛ یک شیء غیرخالی یک تسهیلات و آرایهٔ اشیا چند تسهیلات است. کلید غایب، آبجکت خالی و ساختار نامعتبر بدون تسهیلات فرض نمی‌شوند. تبدیل شکل داده فقط در محاسبه است و JSON خام تغییر نمی‌کند. هر گزارش یک‌بار در هر شاخص شمرده می‌شود؛ وجود مبلغ مثبت در دست‌کم یک تسهیلات کافی است. این بخش فقط دادهٔ سمات را توصیف می‌کند و برخلاف هشدار تأییدشدهٔ بدهی، نیازمند پیام خروجی نیست. جمع‌ها به‌ازای هر گزارش و فقط برای آیتم منفرد یا آرایهٔ سالم، مبالغ کامل و نامنفی و واحد IRR در تمام ردیف‌ها محاسبه می‌شوند. null، دادهٔ پوشانده‌شده و واحد نامعلوم صفر یا ریال فرض نمی‌شوند. جمع اجزای بدهی به‌عنوان بدهی کل استفاده نمی‌شود؛ AmBedehiKol مستقیماً خوانده می‌شود. «تعداد بانک‌های شناسایی‌شده» یعنی تعداد بانک‌های متفاوت بر اساس کد بانک در تسهیلات این گزارش؛ کد تکراری یک‌بار شمرده می‌شود و کد نامعلوم کنار می‌رود. نام و شناسهٔ اشخاص، قرارداد، درخواست، بانک و شعبه در جدول عمومی ردیف‌ها منتشر نمی‌شوند."
+        },
+        {
+          "id": "risk",
+          "icon": "⚠",
+          "label": "بدهی معوق و چک برگشتی",
+          "desc": "موارد تأییدشده در گزارش‌های موفق با تطبیق پیام خروجی و دادهٔ سمات"
+        },
+        {
+          "id": "status",
+          "icon": "☷",
+          "label": "وضعیت و پیام‌ها",
+          "desc": "کدها، پیام‌های خروجی و کامل بودن وضعیت سرویس‌های ورودی"
+        },
+        {
+          "id": "model",
+          "icon": "◇",
+          "label": "مدل‌های اجراشده",
+          "desc": "تعداد درخواست‌های موفق برای هر نام مدل"
+        },
+        {
+          "id": "empty",
+          "icon": "◫",
+          "label": "کیفیت کلیدها",
+          "desc": "درصد مقدارهای خالی، کلیدهای غایب و نوع نقص داده"
+        },
+        {
+          "id": "lists",
+          "icon": "⚑",
+          "label": "گزارش‌های قابل بررسی",
+          "desc": "فهرست گزارش‌های نیازمند بررسی با امکان جست‌وجو و مشاهدهٔ جزئیات"
+        },
+        {
+          "id": "daily",
+          "icon": "▦",
+          "label": "روند روزانه",
+          "desc": "تعداد و نسبت شاخص‌های منتخب در هر روز"
+        }
+      ],
+      "paths": [
+        {
+          "key": "tashilat",
+          "label": "آیتم یا آرایهٔ تسهیلات سمات",
+          "path": "collectedData.samatFacilitiesResult.data.ReturnValue.TashilatItem"
+        },
+        {
+          "key": "samatChequeList",
+          "label": "آرایهٔ چک‌های برگشتی",
+          "path": "collectedData.samatChequeResult.data.chequeList"
+        },
+        {
+          "key": "historicalLoans",
+          "label": "آرایهٔ سابقهٔ وام",
+          "path": "collectedData.postBankLoansDataResult.data.resultData"
+        },
+        {
+          "key": "depositRecords",
+          "label": "آرایهٔ سپرده",
+          "path": "collectedData.postBankDepositAverageResult.data.averageList"
+        }
+      ],
+      "definitions": {
+        "flags": [
+          {
+            "id": "rotbeNull",
+            "label": "رتبه‌بندی فاقد داده است",
+            "topic": "rotbe",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "collectedData.rotbebandiStandardResult.data ; collectedData.samatFacilitiesResult.data.ReturnValue.TashilatItem ; collectedData.postBankLoansDataResult.data.resultData",
+            "formula": "دادهٔ رتبه‌بندی غایب/null/غیرشیء، یا تعداد کلیدهای اصلی null/غایب >= ۳ (آستانهٔ ثابت داخلی).",
+            "code": "(c) => isRotbeNullData(rotbce-dashboardta(c), minNull)",
+            "onlyStatus": "ALL",
+            "inspect": true,
+            "daily": true
+          },
+          {
+            "id": "tashilatFull",
+            "label": "اطلاعات تسهیلات (TashilatItem) موجود است",
+            "topic": "rotbe",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "collectedData.rotbebandiStandardResult.data ; collectedData.samatFacilitiesResult.data.ReturnValue.TashilatItem ; collectedData.postBankLoansDataResult.data.resultData",
+            "formula": "حداقل یک آیتم شیء غیرخالی در مسیر قطعی TashilatItem؛ آبجکت منفرد یک آیتم و آرایه فهرست آیتم‌هاست. null یا [] بدون تسهیلات؛ غیاب/ساختار نامعتبر وجود تسهیلات را اثبات نمی‌کند. فهرست عادی حذف مانده است.",
+            "code": "(c) => hasFacilities(tashilat(c))",
+            "onlyStatus": "ALL",
+            "inspect": false,
+            "daily": false
+          },
+          {
+            "id": "loansFull",
+            "label": "فهرست وام‌ها (resultData) موجود است",
+            "topic": "rotbe",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "collectedData.rotbebandiStandardResult.data ; collectedData.samatFacilitiesResult.data.ReturnValue.TashilatItem ; collectedData.postBankLoansDataResult.data.resultData",
+            "formula": "آرایهٔ قطعی سابقهٔ وام غیرخالی است؛ شمارش حفظ و فهرست عادی حذف شده است.",
+            "code": "(c) => loanStats(c).kind === 'loans'",
+            "onlyStatus": "ALL",
+            "inspect": false,
+            "daily": false
+          },
+          {
+            "id": "rotbeNullTashilat",
+            "label": "رتبه‌بندی فاقد داده، اما تسهیلات موجود است",
+            "topic": "rotbe",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "collectedData.rotbebandiStandardResult.data ; collectedData.samatFacilitiesResult.data.ReturnValue.TashilatItem ; collectedData.postBankLoansDataResult.data.resultData",
+            "formula": "rotbeNull AND tashilatFull",
+            "code": "(_c, _s, f) => f.rotbeNull && f.tashilatFull",
+            "onlyStatus": "ALL",
+            "inspect": true,
+            "daily": true
+          },
+          {
+            "id": "rotbeNullLoans",
+            "label": "رتبه‌بندی فاقد داده، اما وام موجود است",
+            "topic": "rotbe",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "collectedData.rotbebandiStandardResult.data ; collectedData.samatFacilitiesResult.data.ReturnValue.TashilatItem ; collectedData.postBankLoansDataResult.data.resultData",
+            "formula": "rotbeNull AND loansFull",
+            "code": "(_c, _s, f) => f.rotbeNull && f.loansFull",
+            "onlyStatus": "ALL",
+            "inspect": true,
+            "daily": true
+          },
+          {
+            "id": "rotbeNullBoth",
+            "label": "رتبه‌بندی فاقد داده، اما تسهیلات و وام موجودند",
+            "topic": "rotbe",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "collectedData.rotbebandiStandardResult.data ; collectedData.samatFacilitiesResult.data.ReturnValue.TashilatItem ; collectedData.postBankLoansDataResult.data.resultData",
+            "formula": "rotbeNull AND tashilatFull AND loansFull",
+            "code": "(_c, _s, f) => f.rotbeNull && f.tashilatFull && f.loansFull",
+            "onlyStatus": "ALL",
+            "inspect": true,
+            "daily": true
+          },
+          {
+            "id": "hasLoan",
+            "label": "دارای سابقه وام",
+            "topic": "loans",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "collectedData.postBankLoansDataResult.data.resultData",
+            "formula": "(c) => loanStats(c).kind === 'loans'",
+            "code": "(c) => loanStats(c).kind === 'loans'",
+            "onlyStatus": "ALL",
+            "inspect": false,
+            "daily": false
+          },
+          {
+            "id": "noLoan",
+            "label": "بدون سابقه وام",
+            "topic": "loans",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "collectedData.postBankLoansDataResult.data.resultData",
+            "formula": "(c) => loanStats(c).kind === 'rdEmpty'",
+            "code": "(c) => loanStats(c).kind === 'rdEmpty'",
+            "onlyStatus": "ALL",
+            "inspect": false,
+            "daily": false
+          },
+          {
+            "id": "unknownLoanHistory",
+            "label": "فهرست سابقهٔ وام نامشخص است",
+            "topic": "loans",
+            "derived": false,
+            "preserveFraction": false,
+            "note": "خطا در دریافت داده از بانک",
+            "source": "collectedData.postBankLoansDataResult.data.resultData",
+            "formula": "(c) => loanStats(c).kind === 'rdMissing'",
+            "code": "(c) => loanStats(c).kind === 'rdMissing'",
+            "onlyStatus": "ALL",
+            "inspect": true,
+            "daily": false
+          },
+          {
+            "id": "installmentsOk",
+            "label": "اقساط تمام وام‌ها غیرخالی است",
+            "topic": "loans",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "collectedData.postBankLoansDataResult.data.resultData",
+            "formula": "(c) => installmentsStatus(c) === 'ok'",
+            "code": "(c) => installmentsStatus(c) === 'ok'",
+            "onlyStatus": "ALL",
+            "inspect": false,
+            "daily": true
+          },
+          {
+            "id": "installmentsBad",
+            "label": "اقساط دست‌کم یک وام ناقص است",
+            "topic": "loans",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "collectedData.postBankLoansDataResult.data.resultData",
+            "formula": "(_c, _s, f) => !f.installmentsOk && !f.noLoan",
+            "code": "(_c, _s, f) => !f.installmentsOk && !f.noLoan",
+            "onlyStatus": "ALL",
+            "inspect": true,
+            "daily": true
+          },
+          {
+            "id": "depositPresent",
+            "label": "دست‌کم یک ماه سپرده ثبت شده است",
+            "topic": "deposit",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "collectedData.postBankDepositAverageResult.data.averageList",
+            "formula": "(c, s) => depositInfo(c, s).present",
+            "code": "(c, s) => depositInfo(c, s).present",
+            "onlyStatus": "ALL",
+            "inspect": false,
+            "daily": false
+          },
+          {
+            "id": "noAccounts",
+            "label": "گزارش‌های بدون حساب",
+            "topic": "deposit",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "collectedData.postBankDepositAverageResult.data.averageList",
+            "formula": "(c, s) => depositInfo(c, s).accountsKnown && depositInfo(c, s).accounts === 0",
+            "code": "(c, s) => depositInfo(c, s).accountsKnown && depositInfo(c, s).accounts === 0",
+            "onlyStatus": "ALL",
+            "inspect": true,
+            "daily": false
+          },
+          {
+            "id": "depositMulti",
+            "label": "بیش از یک حساب سپرده وجود دارد",
+            "topic": "deposit",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "collectedData.postBankDepositAverageResult.data.averageList",
+            "formula": "(c, s) => depositInfo(c, s).accounts > 1",
+            "code": "(c, s) => depositInfo(c, s).accounts > 1",
+            "onlyStatus": "ALL",
+            "inspect": false,
+            "daily": false
+          },
+          {
+            "id": "facilityEmpty",
+            "label": "بدون تسهیلات",
+            "topic": "facilities",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "collectedData.samatFacilitiesResult.data.ReturnValue.TashilatItem",
+            "formula": "در هر سه بانک، null صریح یا [] در مسیر قطعی TashilatItem یعنی بدون تسهیلات؛ کلید غایب، آبجکت خالی یا نوع نامعتبر مشمول نیست.",
+            "code": "(c, s) => ['emptyArray','null'].includes(info(c, s).kind)",
+            "onlyStatus": "ALL",
+            "inspect": false,
+            "daily": false
+          },
+          {
+            "id": "facilityPresent",
+            "label": "دارای تسهیلات",
+            "topic": "facilities",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "collectedData.samatFacilitiesResult.data.ReturnValue.TashilatItem",
+            "formula": "حداقل یک شیء غیرخالی تسهیلات وجود دارد.",
+            "code": "(c, s) => info(c, s).items.length > 0",
+            "onlyStatus": "ALL",
+            "inspect": false,
+            "daily": false
+          },
+          {
+            "id": "facilityOverdue",
+            "label": "بدهی معوق مثبت در تسهیلات",
+            "topic": "facilities",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "collectedData.samatFacilitiesResult.data.ReturnValue.TashilatItem",
+            "formula": "حداقل یک ردیف شیء با AmMoavagh معتبر >۰؛ مستقل از پیام و وضعیت success/fail.",
+            "code": "(c, s) => info(c, s).positive[field] > 0",
+            "onlyStatus": "ALL",
+            "inspect": true,
+            "daily": true
+          },
+          {
+            "id": "facilityPastDue",
+            "label": "بدهی سررسیدگذشتهٔ مثبت در تسهیلات",
+            "topic": "facilities",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "collectedData.samatFacilitiesResult.data.ReturnValue.TashilatItem",
+            "formula": "حداقل یک ردیف شیء با AmSarResid معتبر >۰.",
+            "code": "(c, s) => info(c, s).positive[field] > 0",
+            "onlyStatus": "ALL",
+            "inspect": true,
+            "daily": true
+          },
+          {
+            "id": "facilityDoubtful",
+            "label": "مطالبات مشکوک‌الوصول مثبت در تسهیلات",
+            "topic": "facilities",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "collectedData.samatFacilitiesResult.data.ReturnValue.TashilatItem",
+            "formula": "حداقل یک ردیف شیء با AmMashkuk معتبر >۰.",
+            "code": "(c, s) => info(c, s).positive[field] > 0",
+            "onlyStatus": "ALL",
+            "inspect": true,
+            "daily": true
+          },
+          {
+            "id": "delay30",
+            "label": "تأخیر از ۳۰ تا کمتر از ۶۰ روز",
+            "topic": "loans",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "collectedData.postBankLoansDataResult.data.resultData[*].installments[*].numberOfDaysOfDelay",
+            "formula": "۳۰ <= D < ۶۰؛ D بیشترین تأخیر گزارش است. فهرست نزولی قبل از سقف انتخاب می‌شود.",
+            "code": "(c, s) => stats(c, s).max !== null && matches(stats(c, s).max)",
+            "onlyStatus": "ALL",
+            "inspect": true,
+            "daily": false
+          },
+          {
+            "id": "delay60",
+            "label": "تأخیر از ۶۰ تا ۹۰ روز",
+            "topic": "loans",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "collectedData.postBankLoansDataResult.data.resultData[*].installments[*].numberOfDaysOfDelay",
+            "formula": "۶۰ <= D <= ۹۰؛ D بیشترین تأخیر گزارش است. فهرست نزولی قبل از سقف انتخاب می‌شود.",
+            "code": "(c, s) => stats(c, s).max !== null && matches(stats(c, s).max)",
+            "onlyStatus": "ALL",
+            "inspect": true,
+            "daily": false
+          },
+          {
+            "id": "delay90",
+            "label": "تأخیر بیشتر از ۹۰ روز",
+            "topic": "loans",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "collectedData.postBankLoansDataResult.data.resultData[*].installments[*].numberOfDaysOfDelay",
+            "formula": "D > ۹۰؛ D بیشترین تأخیر گزارش است. فهرست نزولی قبل از سقف انتخاب می‌شود.",
+            "code": "(c, s) => stats(c, s).max !== null && matches(stats(c, s).max)",
+            "onlyStatus": "ALL",
+            "inspect": true,
+            "daily": false
+          },
+          {
+            "id": "paymentDateAllNull",
+            "label": "وام با تمام تاریخ‌های تاریخ پرداخت قسط برابر null",
+            "topic": "loans",
+            "derived": false,
+            "preserveFraction": false,
+            "note": "هشدار پوشش داده؛ لزوماً خطا یا بدحسابی نیست.",
+            "source": "collectedData.postBankLoansDataResult.data.resultData[*].installments[*].installmentPaymentDate",
+            "formula": "حداقل یک وام دارای اقساط سالم و غیرخالی که تمام کلیدهای installmentPaymentDate اقساطش صریحاً null باشند. غیاب/خالی/نامعتبر پذیرفته نیست. هر گزارش یک بار.",
+            "code": "(c,s)=>loans(c,s).paths[p.id][key]>0",
+            "onlyStatus": "ALL",
+            "inspect": true,
+            "daily": false
+          },
+          {
+            "id": "paymentDateHasValue",
+            "label": "وجود مقدار غیرتهی در تاریخ پرداخت قسط",
+            "topic": "loans",
+            "derived": false,
+            "preserveFraction": false,
+            "note": "برای رصد شروع یا تغییر داده‌دهی؛ اعتبار تاریخ تأیید نمی‌شود.",
+            "source": "collectedData.postBankLoansDataResult.data.resultData[*].installments[*].installmentPaymentDate",
+            "formula": "حداقل یک مقدار رشته‌ای غیرخالی یا عدد متناهی در collectedData.postBankLoansDataResult.data.resultData[*].installments[*].installmentPaymentDate؛ این پایشِ وجود داده است نه صحت تاریخ. هر گزارش یک بار.",
+            "code": "(c,s)=>loans(c,s).paths[p.id][key]>0",
+            "onlyStatus": "ALL",
+            "inspect": true,
+            "daily": false
+          },
+          {
+            "id": "coronaLoan",
+            "label": "دارای وام کرونا — کد ۲۲۱",
+            "topic": "loans",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "collectedData.postBankLoansDataResult.data.resultData[*].loanTypeCode",
+            "formula": "حداقل یک وام با loanTypeCode عددی یا رشتهٔ عددی برابر ۲۲۱؛ تعریف عملیاتی اعلام‌شدهٔ کاربر، بدون استنباط از مبلغ/تاریخ/نام وام و بدون حذف وام از آمار.",
+            "code": "(c,s)=>loans(c,s)[key]>0",
+            "onlyStatus": "ALL",
+            "inspect": true,
+            "daily": false
+          },
+          {
+            "id": "loanApprovedZero",
+            "label": "دارای وام با مبلغ مصوب صفر",
+            "topic": "loans",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "collectedData.postBankLoansDataResult.data.resultData[*].approvce-dashboardmount",
+            "formula": "حداقل یک وام با approvce-dashboardmount عددی صفر یا رشتهٔ عددی صفر؛ null، کلید غایب، خالی، boolean و غیرعددی مشمول نیستند؛ مستقل از کد وام.",
+            "code": "(c,s)=>loans(c,s)[key]>0",
+            "onlyStatus": "ALL",
+            "inspect": true,
+            "daily": false
+          },
+          {
+            "id": "loanApprovedNull",
+            "label": "دارای وام با مبلغ مصوب null",
+            "topic": "loans",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "collectedData.postBankLoansDataResult.data.resultData[*].approvce-dashboardmount",
+            "formula": "حداقل یک وام با کلید موجود approvce-dashboardmount و مقدار دقیقاً null؛ غایب یا رشتهٔ null مشمول نیست؛ مستقل از کد وام.",
+            "code": "(c,s)=>loans(c,s)[key]>0",
+            "onlyStatus": "ALL",
+            "inspect": true,
+            "daily": false
+          },
+          {
+            "id": "depositStale",
+            "label": "دارای حساب با تاریخچهٔ سپردهٔ قدیمی",
+            "topic": "deposit",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "collectedData.postBankDepositAverageResult.data.averageList[*].average ; insertDate_full",
+            "formula": "برای هر حساب: gap=ماه insertDate_full − max(ماه‌های معتبر کلیدهای average). اگر حداقل یک gap>۱ باشد، گزارش یک بار شمرده می‌شود. حساب بدون تاریخ معتبر یا درخواست بدون تاریخ قابل مقایسه، قدیمی فرض نمی‌شود؛ ماه‌های آینده نیز مشمول نیستند. مستقل از مبلغ و طول تاریخچه.",
+            "code": "(c,s)=>deposits(c,s).stale>0",
+            "onlyStatus": "ALL",
+            "inspect": true,
+            "daily": false
+          },
+          {
+            "id": "depositUndefinedBalance",
+            "label": "حساب با ماندهٔ ثبت‌نشده — undefined:null",
+            "topic": "deposit",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "collectedData.postBankDepositAverageResult.data.averageList[*].average",
+            "formula": "حداقل یک حساب که average شیء با دقیقاً یک کلید خودی undefined و مقدار صریح null باشد. وجود depositNumber شرط تشخیص ساختار نیست. average خالی، null، رشتهٔ null یا دارای کلید اضافه مشمول نیست. هیچ صفرسازی یا تغییر میانگین انجام نمی‌شود.",
+            "code": "(c,s)=>deposits(c,s).placeholder>0",
+            "onlyStatus": "ALL",
+            "inspect": true,
+            "daily": false
+          },
+          {
+            "id": "depositRecencyUnknown",
+            "label": "تازگی دادهٔ سپرده قابل تشخیص نیست",
+            "topic": "deposit",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "collectedData.postBankDepositAverageResult.data.averageList[*].average ; insertDate_full",
+            "formula": "آرایهٔ حساب غایب/نامعتبر یا دارای عضو غیرشیء؛ یا حداقل یک حساب بدون ماه معتبر یا بدون ماه درخواست معتبر. [] بدون حساب است و مشمول این شاخص نیست. می‌تواند همراه شاخص قدیمی در یک گزارش چندحسابی رخ دهد.",
+            "code": "(c,s)=>{const i=deposits(c,s);return i.invalidArray||i.unknown>0;}",
+            "onlyStatus": "ALL",
+            "inspect": true,
+            "daily": false
+          }
+        ],
+        "metrics": [
+          {
+            "id": "postPd",
+            "label": "احتمال نکول (pd_default)",
+            "topic": "overview",
+            "derived": false,
+            "preserveFraction": true,
+            "note": "در مدل no_strategy مقدار ۰٫۵ پیش‌فرض است و لزوماً برآورد ریسک مدل نیست. ردیف دقیقاً ۰٫۵۰ تمام گزارش‌های دارای این مقدار را می‌شمارد؛ از مقدار ۰٫۵ به‌تنهایی نام مدل استنباط نمی‌شود. این مقدار در آمار عددی احتمال نکول باقی می‌ماند.",
+            "source": "output.pd_default",
+            "formula": "خواندن مستقیم مقدار عددی از مسیر؛ سپس count/min/Q1/median/mean/Q3/max بین گزارش‌های دارای مقدار معتبر.",
+            "code": "(_c, s) => num(get(s, 'output.pd_default'))",
+            "onlyStatus": "ALL",
+            "histogram": {
+              "bins": [
+                {
+                  "min": 0,
+                  "max": 0.1,
+                  "label": "۰٫۰۰ تا کمتر از ۰٫۱۰"
+                },
+                {
+                  "min": 0.1,
+                  "max": 0.2,
+                  "label": "0.10 تا کمتر از 0.20"
+                },
+                {
+                  "min": 0.2,
+                  "max": 0.3,
+                  "label": "0.20 تا کمتر از 0.30"
+                },
+                {
+                  "min": 0.3,
+                  "max": 0.4,
+                  "label": "0.30 تا کمتر از 0.40"
+                },
+                {
+                  "min": 0.4,
+                  "max": 0.5,
+                  "label": "0.40 تا کمتر از 0.50"
+                },
+                {
+                  "value": 0.5,
+                  "label": "دقیقاً ۰٫۵۰"
+                },
+                {
+                  "min": 0.5,
+                  "max": 0.6,
+                  "excludeMin": true,
+                  "label": "بیشتر از ۰٫۵۰ تا کمتر از ۰٫۶۰"
+                },
+                {
+                  "min": 0.6,
+                  "max": 0.8,
+                  "label": "۰٫۶۰ تا کمتر از ۰٫۸۰"
+                },
+                {
+                  "min": 0.8,
+                  "max": 1,
+                  "includeMax": true,
+                  "label": "۰٫۸۰ تا ۱٫۰۰"
+                }
+              ]
+            }
+          },
+          {
+            "id": "postTavan",
+            "label": "مبلغ وام پیشنهادی (ریال)",
+            "topic": "overview",
+            "derived": false,
+            "preserveFraction": false,
+            "note": "واحد بازه‌ها میلیون ریال است: ۱۲۰ میلیون ریال = ۱۲ میلیون تومان و ۳٬۰۰۰ میلیون ریال = ۳۰۰ میلیون تومان. دو سر بازه مستقل‌اند؛ مقادیر خام تبدیل یا محدود نمی‌شوند.",
+            "source": "output.suggested_tavan_bazpardakht",
+            "formula": "خواندن مستقیم مقدار عددی از مسیر؛ سپس count/min/Q1/median/mean/Q3/max بین گزارش‌های دارای مقدار معتبر.",
+            "code": "(_c, s) => num(get(s, 'output.suggested_tavan_bazpardakht'))",
+            "onlyStatus": "ALL",
+            "histogram": {
+              "outsideNote": true,
+              "bins": [
+                {
+                  "value": 120000000,
+                  "label": "دقیقاً ۱۲۰ میلیون ریال"
+                },
+                {
+                  "min": 120000000,
+                  "max": 300000000,
+                  "excludeMin": true,
+                  "label": "بیشتر از ۱۲۰ تا کمتر از ۳۰۰ میلیون ریال"
+                },
+                {
+                  "min": 300000000,
+                  "max": 500000000,
+                  "label": "300 تا کمتر از 500 میلیون ریال"
+                },
+                {
+                  "min": 500000000,
+                  "max": 750000000,
+                  "label": "500 تا کمتر از 750 میلیون ریال"
+                },
+                {
+                  "min": 750000000,
+                  "max": 1000000000,
+                  "label": "750 تا کمتر از 1,000 میلیون ریال"
+                },
+                {
+                  "min": 1000000000,
+                  "max": 1500000000,
+                  "label": "1,000 تا کمتر از 1,500 میلیون ریال"
+                },
+                {
+                  "min": 1500000000,
+                  "max": 2000000000,
+                  "label": "1,500 تا کمتر از 2,000 میلیون ریال"
+                },
+                {
+                  "min": 2000000000,
+                  "max": 2500000000,
+                  "label": "2,000 تا کمتر از 2,500 میلیون ریال"
+                },
+                {
+                  "min": 2500000000,
+                  "max": 3000000000,
+                  "label": "2,500 تا کمتر از 3,000 میلیون ریال"
+                },
+                {
+                  "value": 3000000000,
+                  "label": "دقیقاً ۳٬۰۰۰ میلیون ریال"
+                }
+              ]
+            }
+          },
+          {
+            "id": "lnAvgInstallments",
+            "label": "میانگین تعداد اقساط وام‌های قبلی",
+            "topic": "loans",
+            "derived": true,
+            "preserveFraction": false,
+            "source": "collectedData.postBankLoansDataResult.data.resultData[*].installments",
+            "formula": "mean(length(installments)) روی وام‌های دارای آرایهٔ اقساط؛ خالی=۰ و کلید غایب حذف می‌شود.",
+            "code": "(c) => meanInstallments(get(c, 'postBankLoansDataResult.data.resultData'),\n          (loan) => Array.isArray(loan.installments) ? loan.installments.length : null)",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "depAccounts",
+            "label": "تعداد حساب‌های سپرده در هر گزارش",
+            "topic": "deposit",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "collectedData.postBankDepositAverageResult.data.averageList",
+            "formula": "تعداد حساب در averageList معتبر؛ [] صفر، غایب/نامعتبر حذف؛ count/min/p25/median/mean/p75/max بین گزارش‌های دارای دادهٔ معتبر.",
+            "code": "(c, s) => { const i=depositInfo(c,s); return i.accountsKnown ? i.accounts : null; }",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "depMonths",
+            "label": "تعداد ماه‌های معتبر و یکتای تاریخچه",
+            "topic": "deposit",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "collectedData.postBankDepositAverageResult.data.averageList",
+            "formula": "تعداد تاریخ‌های ماه معتبر یکتا در اجتماع average حساب‌ها، مستقل از مبلغ؛ [] صفر، حساب/average نامعلوم حذف؛ count/min/p25/median/mean/p75/max بین گزارش‌های دارای دادهٔ معتبر.",
+            "code": "(c,s) => { const i=depositInfo(c,s); return i.monthsKnown ? i.months : null; }",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "depMin",
+            "label": "قدیمی‌ترین ماه سپرده",
+            "topic": "deposit",
+            "derived": false,
+            "preserveFraction": false,
+            "display": "monthRange",
+            "stats": [
+              "count",
+              "min",
+              "max"
+            ],
+            "source": "collectedData.postBankDepositAverageResult.data.averageList",
+            "formula": "کمترین شاخص ماه معتبر در ماه‌های حساب‌های گزارش؛ count/min/max بین گزارش‌ها.",
+            "code": "(c, s) => depositInfo(c, s).minIdx",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "depMax",
+            "label": "جدیدترین ماه سپرده",
+            "topic": "deposit",
+            "derived": false,
+            "preserveFraction": false,
+            "display": "monthRange",
+            "stats": [
+              "count",
+              "min",
+              "max"
+            ],
+            "source": "collectedData.postBankDepositAverageResult.data.averageList",
+            "formula": "بزرگ‌ترین شاخص ماه معتبر در ماه‌های حساب‌های گزارش؛ count/min/max بین گزارش‌ها.",
+            "code": "(c, s) => depositInfo(c, s).maxIdx",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "depAvg36",
+            "label": "میانگین ۳۶ ماههٔ مجموع سپرده‌ها",
+            "topic": "deposit",
+            "derived": true,
+            "preserveFraction": false,
+            "source": "collectedData.postBankDepositAverageResult.data.averageList",
+            "formula": "ابتدا جمع مبالغ حساب‌ها در هر ماه؛ سپس sum(حداکثر ۳۶ ماه یکتای جدیدتر)/۳۶؛ گردکردن فقط در نمایش؛ هر مقدار نامعتبر گزارش را از میانگین حذف می‌کند.",
+            "code": "(c, s) => { const i = depositInfo(c, s); return i.present ? i.avg36 : null; }",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "totalTime",
+            "label": "زمان اجرای مدل (ثانیه)",
+            "topic": "overview",
+            "derived": false,
+            "preserveFraction": false,
+            "summaryDecimals": 2,
+            "source": "output.total_time",
+            "formula": "خواندن مستقیم مقدار عددی از مسیر؛ سپس count/min/Q1/median/mean/Q3/max بین گزارش‌های دارای مقدار معتبر.",
+            "code": "(_c, s) => num(get(s, 'output.total_time'))",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "facilityCount",
+            "label": "تعداد تسهیلات هر گزارش",
+            "topic": "facilities",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "collectedData.samatFacilitiesResult.data.ReturnValue.TashilatItem",
+            "formula": "در هر سه بانک: null یا [] مقدار صفر؛ آبجکت آیتم غیرخالی مقدار یک؛ آرایهٔ سالم طول آرایه. کلید غایب، آبجکت خالی، نوع نامعتبر یا آرایهٔ دارای عضو نامعتبر از آمار شمار کل حذف می‌شود. تغییر شکل فقط محاسباتی و بدون تغییر JSON خام است.",
+            "code": "(c, s) => [null, 'emptyArray', 'null'].includes(info(c, s).kind) ? info(c, s).items.length : null",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "facilityBankCount",
+            "label": "تعداد بانک‌های شناسایی‌شده",
+            "topic": "facilities",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "collectedData.samatFacilitiesResult.data.ReturnValue.TashilatItem[*].BnkCD",
+            "formula": "count(distinct BnkCD) فقط کدهای رقمی خوانا با نرمال‌سازی صفر ابتدایی؛ بدون کد معتبر حذف می‌شود.",
+            "code": "(c, s) => info(c, s).banks || null",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "facilitySumAmOriginal",
+            "label": "جمع اصل تسهیلات، بدون سود در هر گزارش (ریال)",
+            "topic": "facilities",
+            "derived": true,
+            "preserveFraction": false,
+            "source": "collectedData.samatFacilitiesResult.data.ReturnValue.TashilatItem[*].AmOriginal",
+            "formula": "sum(AmOriginal) در ردیف‌های همان گزارش؛ فقط آیتم منفرد یا آرایهٔ سالم پس از یکسان‌سازی شکل داده، همهٔ مبالغ معتبر و نامنفی و همهٔ واحدها IRR.",
+            "code": "(c, s) => info(c, s).sums[field]",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "facilitySumAmBenefit",
+            "label": "جمع سود تسهیلات در هر گزارش (ریال)",
+            "topic": "facilities",
+            "derived": true,
+            "preserveFraction": false,
+            "source": "collectedData.samatFacilitiesResult.data.ReturnValue.TashilatItem[*].AmBenefit",
+            "formula": "sum(AmBenefit) در ردیف‌های همان گزارش؛ فقط آیتم منفرد یا آرایهٔ سالم پس از یکسان‌سازی شکل داده، همهٔ مبالغ معتبر و نامنفی و همهٔ واحدها IRR.",
+            "code": "(c, s) => info(c, s).sums[field]",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "facilityPrincipalAndBenefit",
+            "label": "جمع اصل و سود تسهیلات در هر گزارش (ریال)",
+            "topic": "facilities",
+            "derived": true,
+            "preserveFraction": false,
+            "source": "collectedData.samatFacilitiesResult.data.ReturnValue.TashilatItem[*]: AmOriginal + AmBenefit",
+            "formula": "sum(AmOriginal + AmBenefit) در تسهیلات همان گزارش؛ تنها وقتی هر دو فیلد در تمام ردیف‌ها معتبر و نامنفی، آیتم منفرد یا آرایه سالم و واحد همه IRR باشد. سود صفر معتبر و null نامعلوم است. بدون کسر پرداخت؛ نه مانده بدهی. AmBedehiKol تغییر نمی‌کند.",
+            "code": "(c,s)=>info(c,s).sums.principalAndBenefit",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "facilitySumAmBedehiKol",
+            "label": "جمع بدهی کل در هر گزارش (ریال)",
+            "topic": "facilities",
+            "derived": true,
+            "preserveFraction": false,
+            "source": "collectedData.samatFacilitiesResult.data.ReturnValue.TashilatItem[*].AmBedehiKol",
+            "formula": "sum(AmBedehiKol) در ردیف‌های همان گزارش؛ فقط آیتم منفرد یا آرایهٔ سالم پس از یکسان‌سازی شکل داده، همهٔ مبالغ معتبر و نامنفی و همهٔ واحدها IRR.",
+            "code": "(c, s) => info(c, s).sums[field]",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "facilitySumAmMoavagh",
+            "label": "جمع بدهی معوق در هر گزارش (ریال)",
+            "topic": "facilities",
+            "derived": true,
+            "preserveFraction": false,
+            "source": "collectedData.samatFacilitiesResult.data.ReturnValue.TashilatItem[*].AmMoavagh",
+            "formula": "sum(AmMoavagh) در ردیف‌های همان گزارش؛ فقط آیتم منفرد یا آرایهٔ سالم پس از یکسان‌سازی شکل داده، همهٔ مبالغ معتبر و نامنفی و همهٔ واحدها IRR.",
+            "code": "(c, s) => info(c, s).sums[field]",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "facilitySumAmSarResid",
+            "label": "جمع بدهی سررسیدگذشته در هر گزارش (ریال)",
+            "topic": "facilities",
+            "derived": true,
+            "preserveFraction": false,
+            "source": "collectedData.samatFacilitiesResult.data.ReturnValue.TashilatItem[*].AmSarResid",
+            "formula": "sum(AmSarResid) در ردیف‌های همان گزارش؛ فقط آیتم منفرد یا آرایهٔ سالم پس از یکسان‌سازی شکل داده، همهٔ مبالغ معتبر و نامنفی و همهٔ واحدها IRR.",
+            "code": "(c, s) => info(c, s).sums[field]",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "facilitySumAmMashkuk",
+            "label": "جمع مطالبات مشکوک‌الوصول در هر گزارش (ریال)",
+            "topic": "facilities",
+            "derived": true,
+            "preserveFraction": false,
+            "source": "collectedData.samatFacilitiesResult.data.ReturnValue.TashilatItem[*].AmMashkuk",
+            "formula": "sum(AmMashkuk) در ردیف‌های همان گزارش؛ فقط آیتم منفرد یا آرایهٔ سالم پس از یکسان‌سازی شکل داده، همهٔ مبالغ معتبر و نامنفی و همهٔ واحدها IRR.",
+            "code": "(c, s) => info(c, s).sums[field]",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "lnMaxDelay",
+            "label": "بیشترین تأخیر یک قسط (روز)",
+            "topic": "loans",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "collectedData.postBankLoansDataResult.data.resultData[*].installments[*].numberOfDaysOfDelay",
+            "formula": "بیشینهٔ روز تأخیر معتبرِ اقساط گزارش؛ گزارش بدون عدد معتبر حذف می‌شود.",
+            "code": "(c, s) => stats(c, s).max",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "lnDelayed",
+            "label": "تعداد اقساط دارای تأخیر",
+            "topic": "loans",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "collectedData.postBankLoansDataResult.data.resultData[*].installments[*].numberOfDaysOfDelay",
+            "formula": "تعداد اقساط با روز تأخیر معتبر >۰؛ فقط گزارش دارای حداقل یک روز معتبر وارد محاسبه می‌شود.",
+            "code": "(c, s) => stats(c, s).observed ? stats(c, s).delayed : null",
+            "onlyStatus": "ALL"
+          }
+        ],
+        "categories": [
+          {
+            "id": "installmentsStatus",
+            "label": "وضعیت اقساط در فهرست وام‌ها",
+            "topic": "loans",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "collectedData.postBankLoansDataResult.data.resultData",
+            "formula": "(c) => installmentsStatus(c)",
+            "code": "(c) => installmentsStatus(c)",
+            "onlyStatus": "ALL",
+            "categories": {
+              "ok": "تمام وام‌ها اقساط غیرخالی دارند",
+              "partial": "فقط بخشی از وام‌ها اقساط غیرخالی دارند",
+              "noneFullMissing": "هیچ قسط غیرخالی ثبت نشده؛ کلید برخی وام‌ها موجود نیست",
+              "noneFullEmpty": "همهٔ آرایه‌های اقساط خالی هستند",
+              "resultDataEmpty": "فهرست وام‌ها خالی است",
+              "resultDataMissing": "فهرست وام‌ها موجود نیست یا null است"
+            }
+          },
+          {
+            "id": "statusCode",
+            "label": "کد وضعیت خروجی (output.statusCode)",
+            "topic": "status",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "output.statusCode",
+            "formula": "(_c, report, folderStatus) => {\n      const value = get(report, 'output.statusCode');\n      if (value === null || value === undefined || value === '') return folderStatus === 'success' ? '200' : 'ثبت نشده';\n      return String(value) === '200' ? '200' : String(value);\n    }",
+            "code": "(_c, report, folderStatus) => {\n      const value = get(report, 'output.statusCode');\n      if (value === null || value === undefined || value === '') return folderStatus === 'success' ? '200' : 'ثبت نشده';\n      return String(value) === '200' ? '200' : String(value);\n    }",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "errorCode",
+            "label": "کد خطای سرویس در گزارش‌های ناموفق (output.meta.code)",
+            "topic": "status",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "output.meta.code",
+            "formula": "(_c, s) => String(get(s, 'output.meta.code') ?? 'کد خطا ثبت نشده است')",
+            "code": "(_c, s) => String(get(s, 'output.meta.code') ?? 'کد خطا ثبت نشده است')",
+            "onlyStatus": "fail"
+          },
+          {
+            "id": "messageSuccess",
+            "label": "پیام‌های گزارش‌های موفق",
+            "topic": "status",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "output.message.fa/en ; output.data.message.fa/en ; output.message ; output.data.message",
+            "formula": "(_c, s) => messageOf(s)",
+            "code": "(_c, s) => messageOf(s)",
+            "onlyStatus": "success"
+          },
+          {
+            "id": "messageFail",
+            "label": "پیام‌های گزارش‌های ناموفق",
+            "topic": "status",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "output.message.fa/en ; output.data.message.fa/en ; output.message ; output.data.message",
+            "formula": "(_c, s) => messageOf(s)",
+            "code": "(_c, s) => messageOf(s)",
+            "onlyStatus": "fail"
+          },
+          {
+            "id": "modelName",
+            "label": "تعداد درخواست‌های موفق به تفکیک مدل",
+            "topic": "model",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "output.model_name",
+            "formula": "(_c, s) => { const output = get(s, 'output'), name = get(s, 'output.model_name');\n      return output && typeof output === 'object' && !Array.isArray(output) && typeof name === 'string' && name.trim() ? name.trim() : 'نام مدل ثبت نشده است'; }",
+            "code": "(_c, s) => { const output = get(s, 'output'), name = get(s, 'output.model_name');\n      return output && typeof output === 'object' && !Array.isArray(output) && typeof name === 'string' && name.trim() ? name.trim() : 'نام مدل ثبت نشده است'; }",
+            "onlyStatus": "success"
+          }
+        ],
+        "counters": [
+          {
+            "id": "loansTotal",
+            "label": "تعداد کل وام‌ها",
+            "topic": "loans",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "collectedData.postBankLoansDataResult.data.resultData",
+            "formula": "(c) => loanStats(c).total || 0",
+            "code": "(c) => loanStats(c).total || 0",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "loansFull",
+            "label": "وام‌های دارای اقساط غیرخالی",
+            "topic": "loans",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "collectedData.postBankLoansDataResult.data.resultData",
+            "formula": "آرایهٔ قطعی سابقهٔ وام غیرخالی است؛ شمارش حفظ و فهرست عادی حذف شده است.",
+            "code": "(c) => loanStats(c).full || 0",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "loansEmpty",
+            "label": "وام‌های دارای آرایهٔ اقساط خالی",
+            "topic": "loans",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "collectedData.postBankLoansDataResult.data.resultData",
+            "formula": "(c) => loanStats(c).empty || 0",
+            "code": "(c) => loanStats(c).empty || 0",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "loansMissing",
+            "label": "وام‌های فاقد کلید اقساط",
+            "topic": "loans",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "collectedData.postBankLoansDataResult.data.resultData",
+            "formula": "(c) => loanStats(c).missing || 0",
+            "code": "(c) => loanStats(c).missing || 0",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "monitorLoanTotal",
+            "label": "کل وام‌های قابل خواندن",
+            "topic": "loans",
+            "derived": false,
+            "preserveFraction": false,
+            "display": "paymentCoverage",
+            "source": "collectedData.postBankLoansDataResult.data.resultData",
+            "formula": "تعداد اشیای غیرخالی وام در مسیر قطعی؛ بدون حذف وام کرونا یا مبلغ صفر/null؛ بدون یکتاسازی بین گزارش‌ها.",
+            "code": "(_c,s)=>loans(_c,s).total",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "monitorLoanEligible",
+            "label": "وام‌های دارای اقساط غیرخالی و سالم",
+            "topic": "loans",
+            "derived": false,
+            "preserveFraction": false,
+            "display": "paymentCoverage",
+            "source": "collectedData.postBankLoansDataResult.data.resultData[*].installments",
+            "formula": "تعداد وام‌هایی که installments آرایهٔ غیرخالی و تمام اعضای آن شیء غیرخالی است؛ مخرج درصد تمام تاریخ‌ها null.",
+            "code": "(_c,s)=>loans(_c,s).eligible",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "paymentDateAllNullLoans",
+            "label": "وام با تمام تاریخ‌های تاریخ پرداخت قسط برابر null — تعداد وام",
+            "topic": "loans",
+            "derived": false,
+            "preserveFraction": false,
+            "display": "paymentCoverage",
+            "source": "collectedData.postBankLoansDataResult.data.resultData[*].installments[*].installmentPaymentDate",
+            "formula": "تعداد وام‌های دارای تمام تاریخ‌های صریحاً null؛ درصد در نمایش = مجموع این شمارنده / مجموع monitorLoanEligible × ۱۰۰.",
+            "code": "(c,s)=>loans(c,s).paths[p.id][key]",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "paymentDateHasValueLoans",
+            "label": "وجود مقدار غیرتهی در تاریخ پرداخت قسط — تعداد وام",
+            "topic": "loans",
+            "derived": false,
+            "preserveFraction": false,
+            "display": "paymentCoverage",
+            "source": "collectedData.postBankLoansDataResult.data.resultData[*].installments[*].installmentPaymentDate",
+            "formula": "تعداد وام‌های دارای حداقل یک مقدار غیرتهی در این مسیر؛ هر وام در یک گزارش یک بار.",
+            "code": "(c,s)=>loans(c,s).paths[p.id][key]",
+            "onlyStatus": "ALL"
+          }
+        ]
+      },
+      "cross": [
+        {
+          "id": "rotbe",
+          "topic": "rotbe",
+          "title": "ارتباط رتبه‌بندی با تسهیلات و وام‌ها",
+          "row": "rotbeNull",
+          "rowHeader": "وضعیت رتبه‌بندی",
+          "rowYes": "رتبه‌بندی فاقد داده",
+          "rowNo": "رتبه‌بندی دارای داده",
+          "cols": [
+            {
+              "flag": "tashilatFull",
+              "name": "تسهیلات"
+            },
+            {
+              "flag": "loansFull",
+              "name": "وام‌ها"
+            }
+          ]
+        }
+      ],
+      "lists": [
+        {
+          "title": "وام‌های دارای اطلاعات اقساط ناقص",
+          "filter": "(f) => f.installmentsBad",
+          "row": "(c) => { const i = loanStats(c); return { 'نوع نقص': STATUS_LABELS[installmentsStatus(c)],\n        'تعداد وام‌ها': i.total || 0, 'وام با اقساط غیرخالی': i.full || 0 }; }"
+        }
+      ]
+    },
+    {
+      "id": "tavan_resalat",
+      "label": "رسالت",
+      "schema": {
+        "root": "input.data.collectedData",
+        "rotbe": "input.data.collectedData.rotbebandiStandard.data",
+        "facilities": "input.data.collectedData.samatFacilities.tashilat.TashilatItem",
+        "facilityEnvelope": "input.data.collectedData.samatFacilities.tashilat",
+        "cheques": "input.data.collectedData.samatCheque.chequeList",
+        "loans": "input.data.collectedData.historicalLoans",
+        "deposit": "input.data.collectedData.depositAverage",
+        "currency": "ArzCode",
+        "bankCode": "BankCode",
+        "requestNumber": "RequestNum"
+      },
+      "sections": [
+        {
+          "id": "overview",
+          "icon": "◈",
+          "label": "نمای کلی",
+          "desc": "حجم داده، نرخ موفقیت و توزیع شاخص‌های اصلی مدل"
+        },
+        {
+          "id": "rotbe",
+          "label": "رتبه‌بندی",
+          "desc": "کامل بودن رتبه‌بندی در کنار اطلاعات تسهیلات و سوابق وام",
+          "details": "اگر رتبه‌بندی null باشد یا دست‌کم <b>3</b> کلید از 10 کلید اصلی آن null باشند، فاقد داده محسوب می‌شود. تسهیلات در <code>samatFacilities.tashilat.TashilatItem</code> بررسی می‌شود."
+        },
+        {
+          "id": "loans",
+          "label": "سوابق وام",
+          "desc": "گزارش‌های دارای سابقه یا بدون سابقهٔ ثبت‌شده، تأخیر و تعداد اقساط وام‌های قبلی",
+          "details": "وجود سابقه از فهرست <code>historicalLoans</code> تعیین می‌شود؛ «بدون سابقه وام» فقط برای آرایهٔ صریحاً خالی است و فهرست غایب یا نامعتبر در این دو گروه وارد نمی‌شود. این شاخص اثبات نداشتن وام در واقعیت نیست. تأخیر در این بخش تعداد روزهای دیرکرد پرداخت قسطِ ثبت‌شده در <code>historicalLoans[*].delay_dayes_*</code> است. بیشترین تأخیر هر گزارش تعیین می‌کند که در کدام بازهٔ بدون هم‌پوشانی قرار بگیرد: ۳۰ تا کمتر از ۶۰، ۶۰ تا ۹۰ (شامل ۹۰)، یا بیشتر از ۹۰ روز. شاخص «میانگین تعداد اقساط وام‌های قبلی» برای هر گزارش، میانگین مقدار معتبر <code>count_installment</code> وام‌های آن گزارش است؛ گزارش‌های بدون مقدار معتبر از این شاخص عددی کنار می‌روند."
+        },
+        {
+          "id": "deposit",
+          "label": "سپرده‌ها",
+          "desc": "تعداد حساب‌ها در همهٔ گزارش‌ها، میانگین‌های مدل و اثر سپرده بر بازپرداخت",
+          "details": "سپردهٔ این بانک سری ماهانه نیست. تعداد حساب‌ها از تعداد اعضای <code>depositAverage</code> خوانده می‌شود. هر گزارش در شاخص تعداد حساب‌ها یک مقدار دارد؛ برای گزارش بدون حساب صفر ثبت می‌شود و چارک‌ها و میانگین روی کل گزارش‌های محدودهٔ انتخاب‌شده محاسبه می‌شوند. حسابی با <code>dep_avg = 0</code> همچنان یک حساب است. میانگین‌های ۶ و ۳۶ ماهه از خروجی مدل خوانده می‌شوند؛ <code>output.deposit_ok = 1</code> به معنی اثر مستقیم سپرده بر توان بازپرداخت است."
+        },
+        {
+          "id": "features",
+          "label": "خروجی مدل",
+          "desc": "ردهٔ امتیاز، آستانهٔ نکول و سایر خروجی‌های قابل مقایسه",
+          "details": "شاخص «احتمال نکول بالاتر از آستانه» زمانی فعال است که <code>base_pd_default</code> از <code>model_default_threshold</code> بزرگ‌تر باشد. ویژگی‌های داخلی مدل در گزارش جزئیات نمایش داده نمی‌شوند."
+        },
+        {
+          "id": "facilities",
+          "label": "تسهیلات سمات",
+          "desc": "تعداد تسهیلات، اجزای بدهی، پوشش مبلغ و کیفیت دادهٔ سمات",
+          "details": "منبع قطعی: <code>input.data.collectedData.samatFacilities.tashilat.TashilatItem</code>. در هر سه بانک، null صریح یا [] در همین کلید یعنی بدون تسهیلات؛ یک شیء غیرخالی یک تسهیلات و آرایهٔ اشیا چند تسهیلات است. کلید غایب، آبجکت خالی و ساختار نامعتبر بدون تسهیلات فرض نمی‌شوند. تبدیل شکل داده فقط در محاسبه است و JSON خام تغییر نمی‌کند. هر گزارش یک‌بار در هر شاخص شمرده می‌شود؛ وجود مبلغ مثبت در دست‌کم یک تسهیلات کافی است. این بخش فقط دادهٔ سمات را توصیف می‌کند و برخلاف هشدار تأییدشدهٔ بدهی، نیازمند پیام خروجی نیست. جمع‌ها به‌ازای هر گزارش و فقط برای آیتم منفرد یا آرایهٔ سالم، مبالغ کامل و نامنفی و واحد IRR در تمام ردیف‌ها محاسبه می‌شوند. null، دادهٔ پوشانده‌شده و واحد نامعلوم صفر یا ریال فرض نمی‌شوند. جمع اجزای بدهی به‌عنوان بدهی کل استفاده نمی‌شود؛ AmBedehiKol مستقیماً خوانده می‌شود. «تعداد بانک‌های شناسایی‌شده» یعنی تعداد بانک‌های متفاوت بر اساس کد بانک در تسهیلات این گزارش؛ کد تکراری یک‌بار شمرده می‌شود و کد نامعلوم کنار می‌رود. نام و شناسهٔ اشخاص، قرارداد، درخواست، بانک و شعبه در جدول عمومی ردیف‌ها منتشر نمی‌شوند."
+        },
+        {
+          "id": "risk",
+          "icon": "⚠",
+          "label": "بدهی معوق و چک برگشتی",
+          "desc": "موارد تأییدشده در گزارش‌های موفق با تطبیق پیام خروجی و دادهٔ سمات"
+        },
+        {
+          "id": "status",
+          "icon": "☷",
+          "label": "وضعیت و پیام‌ها",
+          "desc": "کدها، پیام‌های خروجی و کامل بودن وضعیت سرویس‌های ورودی"
+        },
+        {
+          "id": "model",
+          "icon": "◇",
+          "label": "مدل‌های اجراشده",
+          "desc": "تعداد درخواست‌های موفق برای هر نام مدل"
+        },
+        {
+          "id": "empty",
+          "icon": "◫",
+          "label": "کیفیت کلیدها",
+          "desc": "درصد مقدارهای خالی، کلیدهای غایب و نوع نقص داده"
+        },
+        {
+          "id": "lists",
+          "icon": "⚑",
+          "label": "گزارش‌های قابل بررسی",
+          "desc": "فهرست گزارش‌های نیازمند بررسی با امکان جست‌وجو و مشاهدهٔ جزئیات"
+        },
+        {
+          "id": "daily",
+          "icon": "▦",
+          "label": "روند روزانه",
+          "desc": "تعداد و نسبت شاخص‌های منتخب در هر روز"
+        }
+      ],
+      "paths": [
+        {
+          "key": "tashilat",
+          "label": "آیتم یا آرایهٔ تسهیلات سمات",
+          "path": "input.data.collectedData.samatFacilities.tashilat.TashilatItem"
+        },
+        {
+          "key": "samatChequeList",
+          "label": "آرایهٔ چک‌های برگشتی",
+          "path": "input.data.collectedData.samatCheque.chequeList"
+        },
+        {
+          "key": "historicalLoans",
+          "label": "آرایهٔ سابقهٔ وام",
+          "path": "input.data.collectedData.historicalLoans"
+        },
+        {
+          "key": "depositRecords",
+          "label": "آرایهٔ سپرده",
+          "path": "input.data.collectedData.depositAverage"
+        },
+        {
+          "key": "meratInformation",
+          "label": "اطلاعات مرآت",
+          "path": "input.data.collectedData.meratInformation"
+        }
+      ],
+      "definitions": {
+        "flags": [
+          {
+            "id": "zeroRepayment",
+            "label": "توان بازپرداخت صفر",
+            "topic": "overview",
+            "derived": false,
+            "preserveFraction": false,
+            "note": "فقط صفر ثبت‌شده؛ مقدار غایب یا null در این شاخص نیست",
+            "source": "output.suggested_tavan_bazpardakht",
+            "formula": "مقدار عددی output.suggested_tavan_bazpardakht دقیقاً صفر؛ رشتهٔ عددی صفر پذیرفته است، null، غیاب، خالی، غیرعددی و boolean حذف؛ هر گزارش یک بار، در همهٔ وضعیت‌ها، فهرست قابل بررسی دارد.",
+            "code": "(_c,s) => num(outOf(s,'suggested_tavan_bazpardakht')) === 0",
+            "onlyStatus": "ALL",
+            "inspect": true,
+            "daily": false
+          },
+          {
+            "id": "rotbeNull",
+            "label": "رتبه‌بندی فاقد داده است",
+            "topic": "rotbe",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "input.data.collectedData.rotbebandiStandard.data ; input.data.collectedData.samatFacilities.tashilat.TashilatItem ; input.data.collectedData.historicalLoans",
+            "formula": "دادهٔ رتبه‌بندی غایب/null/غیرشیء، یا تعداد کلیدهای اصلی null/غایب >= ۳ (آستانهٔ ثابت داخلی).",
+            "code": "(c) => isRotbeNullData(rotbce-dashboardta(c), minNull)",
+            "onlyStatus": "ALL",
+            "inspect": true,
+            "daily": true
+          },
+          {
+            "id": "tashilatFull",
+            "label": "اطلاعات تسهیلات موجود است",
+            "topic": "rotbe",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "input.data.collectedData.rotbebandiStandard.data ; input.data.collectedData.samatFacilities.tashilat.TashilatItem ; input.data.collectedData.historicalLoans",
+            "formula": "حداقل یک آیتم شیء غیرخالی در مسیر قطعی TashilatItem؛ آبجکت منفرد یک آیتم و آرایه فهرست آیتم‌هاست. null یا [] بدون تسهیلات؛ غیاب/ساختار نامعتبر وجود تسهیلات را اثبات نمی‌کند. فهرست عادی حذف مانده است.",
+            "code": "(c) => hasFacilities(tashilat(c))",
+            "onlyStatus": "ALL",
+            "inspect": false,
+            "daily": false
+          },
+          {
+            "id": "loansFull",
+            "label": "سوابق وام موجود است",
+            "topic": "rotbe",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "input.data.collectedData.rotbebandiStandard.data ; input.data.collectedData.samatFacilities.tashilat.TashilatItem ; input.data.collectedData.historicalLoans",
+            "formula": "آرایهٔ قطعی سابقهٔ وام غیرخالی است؛ شمارش حفظ و فهرست عادی حذف شده است.",
+            "code": "(c) => isFullArray(get(c, 'historicalLoans'))",
+            "onlyStatus": "ALL",
+            "inspect": false,
+            "daily": false
+          },
+          {
+            "id": "rotbeNullTashilat",
+            "label": "رتبه‌بندی فاقد داده، اما تسهیلات موجود است",
+            "topic": "rotbe",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "input.data.collectedData.rotbebandiStandard.data ; input.data.collectedData.samatFacilities.tashilat.TashilatItem ; input.data.collectedData.historicalLoans",
+            "formula": "rotbeNull AND tashilatFull",
+            "code": "(_c, _s, f) => f.rotbeNull && f.tashilatFull",
+            "onlyStatus": "ALL",
+            "inspect": true,
+            "daily": true
+          },
+          {
+            "id": "rotbeNullLoans",
+            "label": "رتبه‌بندی فاقد داده، اما سوابق وام موجود است",
+            "topic": "rotbe",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "input.data.collectedData.rotbebandiStandard.data ; input.data.collectedData.samatFacilities.tashilat.TashilatItem ; input.data.collectedData.historicalLoans",
+            "formula": "rotbeNull AND loansFull",
+            "code": "(_c, _s, f) => f.rotbeNull && f.loansFull",
+            "onlyStatus": "ALL",
+            "inspect": true,
+            "daily": true
+          },
+          {
+            "id": "rotbeNullBoth",
+            "label": "رتبه‌بندی فاقد داده، اما تسهیلات و سوابق وام موجودند",
+            "topic": "rotbe",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "input.data.collectedData.rotbebandiStandard.data ; input.data.collectedData.samatFacilities.tashilat.TashilatItem ; input.data.collectedData.historicalLoans",
+            "formula": "rotbeNull AND tashilatFull AND loansFull",
+            "code": "(_c, _s, f) => f.rotbeNull && f.tashilatFull && f.loansFull",
+            "onlyStatus": "ALL",
+            "inspect": true,
+            "daily": true
+          },
+          {
+            "id": "hasLoan",
+            "label": "دارای سابقه وام",
+            "topic": "loans",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "input.data.collectedData.historicalLoans",
+            "formula": "(c) => loanStats(c).loans > 0",
+            "code": "(c) => loanStats(c).loans > 0",
+            "onlyStatus": "ALL",
+            "inspect": false,
+            "daily": false
+          },
+          {
+            "id": "noLoan",
+            "label": "بدون سابقه وام",
+            "topic": "loans",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "input.data.collectedData.historicalLoans",
+            "formula": "(c) => Array.isArray(get(c, 'historicalLoans')) && get(c, 'historicalLoans').length === 0",
+            "code": "(c) => Array.isArray(get(c, 'historicalLoans')) && get(c, 'historicalLoans').length === 0",
+            "onlyStatus": "ALL",
+            "inspect": false,
+            "daily": false
+          },
+          {
+            "id": "delay30",
+            "label": "تأخیر از ۳۰ تا کمتر از ۶۰ روز",
+            "topic": "loans",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "input.data.collectedData.historicalLoans[*].delay_dayes_*",
+            "formula": "۳۰ <= D < ۶۰؛ D بیشترین تأخیر گزارش است. فهرست نزولی قبل از سقف انتخاب می‌شود.",
+            "code": "(c, s) => stats(c, s).max !== null && matches(stats(c, s).max)",
+            "onlyStatus": "ALL",
+            "inspect": true,
+            "daily": true
+          },
+          {
+            "id": "delay60",
+            "label": "تأخیر از ۶۰ تا ۹۰ روز",
+            "topic": "loans",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "input.data.collectedData.historicalLoans[*].delay_dayes_*",
+            "formula": "۶۰ <= D <= ۹۰؛ D بیشترین تأخیر گزارش است. فهرست نزولی قبل از سقف انتخاب می‌شود.",
+            "code": "(c, s) => stats(c, s).max !== null && matches(stats(c, s).max)",
+            "onlyStatus": "ALL",
+            "inspect": true,
+            "daily": true
+          },
+          {
+            "id": "delay90",
+            "label": "تأخیر بیشتر از ۹۰ روز",
+            "topic": "loans",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "input.data.collectedData.historicalLoans[*].delay_dayes_*",
+            "formula": "D > ۹۰؛ D بیشترین تأخیر گزارش است. فهرست نزولی قبل از سقف انتخاب می‌شود.",
+            "code": "(c, s) => stats(c, s).max !== null && matches(stats(c, s).max)",
+            "onlyStatus": "ALL",
+            "inspect": true,
+            "daily": true
+          },
+          {
+            "id": "depositPresent",
+            "label": "دست‌کم یک حساب سپرده وجود دارد",
+            "topic": "deposit",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "input.data.collectedData.depositAverage",
+            "formula": "(c, s) => depositInfo(c, s).present",
+            "code": "(c, s) => depositInfo(c, s).present",
+            "onlyStatus": "ALL",
+            "inspect": false,
+            "daily": false
+          },
+          {
+            "id": "depositEmpty",
+            "label": "گزارش‌های بدون حساب",
+            "topic": "deposit",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "input.data.collectedData.depositAverage",
+            "formula": "(c, s) => !depositInfo(c, s).present",
+            "code": "(c, s) => !depositInfo(c, s).present",
+            "onlyStatus": "ALL",
+            "inspect": true,
+            "daily": true
+          },
+          {
+            "id": "pdAboveThr",
+            "label": "احتمال نکول از آستانهٔ مدل بیشتر است",
+            "topic": "features",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "output.requested_loan.base_loan.base_pd_default ; output.model_default_threshold",
+            "formula": "(_c, s) => pdOf(s) !== null && thresholdOf(s) !== null && pdOf(s) > thresholdOf(s)",
+            "code": "(_c, s) => pdOf(s) !== null && thresholdOf(s) !== null && pdOf(s) > thresholdOf(s)",
+            "onlyStatus": "ALL",
+            "inspect": true,
+            "daily": true
+          },
+          {
+            "id": "facilityEmpty",
+            "label": "بدون تسهیلات",
+            "topic": "facilities",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "input.data.collectedData.samatFacilities.tashilat.TashilatItem",
+            "formula": "در هر سه بانک، null صریح یا [] در مسیر قطعی TashilatItem یعنی بدون تسهیلات؛ کلید غایب، آبجکت خالی یا نوع نامعتبر مشمول نیست.",
+            "code": "(c, s) => ['emptyArray','null'].includes(info(c, s).kind)",
+            "onlyStatus": "ALL",
+            "inspect": false,
+            "daily": false
+          },
+          {
+            "id": "facilityPresent",
+            "label": "دارای تسهیلات",
+            "topic": "facilities",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "input.data.collectedData.samatFacilities.tashilat.TashilatItem",
+            "formula": "حداقل یک شیء غیرخالی تسهیلات وجود دارد.",
+            "code": "(c, s) => info(c, s).items.length > 0",
+            "onlyStatus": "ALL",
+            "inspect": false,
+            "daily": false
+          },
+          {
+            "id": "facilityOverdue",
+            "label": "بدهی معوق مثبت در تسهیلات",
+            "topic": "facilities",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "input.data.collectedData.samatFacilities.tashilat.TashilatItem",
+            "formula": "حداقل یک ردیف شیء با AmMoavagh معتبر >۰؛ مستقل از پیام و وضعیت success/fail.",
+            "code": "(c, s) => info(c, s).positive[field] > 0",
+            "onlyStatus": "ALL",
+            "inspect": true,
+            "daily": true
+          },
+          {
+            "id": "facilityPastDue",
+            "label": "بدهی سررسیدگذشتهٔ مثبت در تسهیلات",
+            "topic": "facilities",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "input.data.collectedData.samatFacilities.tashilat.TashilatItem",
+            "formula": "حداقل یک ردیف شیء با AmSarResid معتبر >۰.",
+            "code": "(c, s) => info(c, s).positive[field] > 0",
+            "onlyStatus": "ALL",
+            "inspect": true,
+            "daily": true
+          },
+          {
+            "id": "facilityDoubtful",
+            "label": "مطالبات مشکوک‌الوصول مثبت در تسهیلات",
+            "topic": "facilities",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "input.data.collectedData.samatFacilities.tashilat.TashilatItem",
+            "formula": "حداقل یک ردیف شیء با AmMashkuk معتبر >۰.",
+            "code": "(c, s) => info(c, s).positive[field] > 0",
+            "onlyStatus": "ALL",
+            "inspect": true,
+            "daily": true
+          },
+          {
+            "id": "hasLegalDeposit",
+            "label": "دارای سپردهٔ حقوقی",
+            "topic": "deposit",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "input.data.collectedData.depositAverage[*].deposit_number ; input.data.collectedData.depositAverage[*].customer_code",
+            "formula": "حداقل یک ردیف سپرده که بخش میانی deposit_number سه‌بخشیِ رقمی، با customer_code رقمی متفاوت باشد؛ هر گزارش یک بار.",
+            "code": "(c,s)=>info(c,s).legal>0",
+            "onlyStatus": "ALL",
+            "inspect": true,
+            "daily": false
+          },
+          {
+            "id": "onlyLegalDeposits",
+            "label": "فقط دارای سپردهٔ حقوقی",
+            "topic": "deposit",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "input.data.collectedData.depositAverage[*].deposit_number ; input.data.collectedData.depositAverage[*].customer_code",
+            "formula": "آرایهٔ سپرده موجود و غیرخالی؛ تمام ردیف‌ها حقوقی قابل‌تشخیص؛ هیچ حقیقی یا ردیف نامشخص وجود نداشته باشد. زیرمجموعهٔ دارای حقوقی است، نه گروه مجزا برای جمع‌زدن.",
+            "code": "(c,s)=>{const i=info(c,s);return i.known&&i.legal>0&&i.natural===0&&i.unknown===0;}",
+            "onlyStatus": "ALL",
+            "inspect": true,
+            "daily": false
+          },
+          {
+            "id": "depositTypeUnknown",
+            "label": "نوع سپرده قابل تشخیص نیست",
+            "topic": "deposit",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "input.data.collectedData.depositAverage[*].deposit_number ; input.data.collectedData.depositAverage[*].customer_code",
+            "formula": "فهرست سپرده غایب/نامعتبر یا حداقل یک ردیف با شماره/کد غایب، پوشانده‌شده یا نامعتبر. آرایهٔ خالی نامشخص نیست.",
+            "code": "(c,s)=>{const i=info(c,s);return !i.known||i.unknown>0;}",
+            "onlyStatus": "ALL",
+            "inspect": true,
+            "daily": false
+          },
+          {
+            "id": "noUsableCreditSources",
+            "label": "فاقد منابع اطلاعاتی مورد بررسی",
+            "topic": "overview",
+            "derived": false,
+            "preserveFraction": false,
+            "note": "بدون تسهیلات و سابقهٔ وام؛ رتبه‌بندی فاقد داده و بدون سپردهٔ حقیقی.",
+            "source": "input.data.collectedData.samatFacilities.tashilat.TashilatItem ; input.data.collectedData.historicalLoans ; input.data.collectedData.rotbebandiStandard.data ; input.data.collectedData.depositAverage[*].deposit_number ; input.data.collectedData.depositAverage[*].customer_code",
+            "formula": "TashilatItem صریحاً null یا []؛ historicalLoans=[]؛ رتبه‌بندی فاقد داده طبق آستانهٔ ثابت ۳؛ و آرایهٔ سپردهٔ موجود با شمار حقیقی و نامشخص هر دو صفر. فقط وضعیت ورودی‌های مورد بررسی؛ بدون نتیجه‌گیری دربارهٔ نام مدل یا مبلغ خروجی.",
+            "code": "(c,s)=>info(c,s).noUsableSources",
+            "onlyStatus": "ALL",
+            "inspect": true,
+            "daily": false
+          },
+          {
+            "id": "negativeLastYear",
+            "label": "وضعیت‌های منفی سال اخیر",
+            "topic": "features",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "output.num_negative_status_last_year",
+            "formula": "output.num_negative_status_last_year معتبر و >۰؛ تعداد همان گزارش در ردیف نمایش داده می‌شود.",
+            "code": "(_c, s) => require('../banks/_helpers').num(get(s, path)) > 0",
+            "onlyStatus": "ALL",
+            "inspect": true,
+            "daily": false
+          },
+          {
+            "id": "negativePreviousYear",
+            "label": "وضعیت‌های منفی یک تا دو سال اخیر",
+            "topic": "features",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "output.num_negative_status_1_2years",
+            "formula": "output.num_negative_status_1_2years معتبر و >۰؛ تعداد همان گزارش در ردیف نمایش داده می‌شود.",
+            "code": "(_c, s) => require('../banks/_helpers').num(get(s, path)) > 0",
+            "onlyStatus": "ALL",
+            "inspect": true,
+            "daily": false
+          }
+        ],
+        "metrics": [
+          {
+            "id": "rPd",
+            "label": "احتمال نکول پایهٔ وام",
+            "topic": "overview",
+            "derived": false,
+            "preserveFraction": true,
+            "source": "output.requested_loan.base_loan.base_pd_default",
+            "formula": "خواندن مستقیم مقدار عددی از مسیر؛ سپس count/min/Q1/median/mean/Q3/max بین گزارش‌های دارای مقدار معتبر.",
+            "code": "(_c, s) => pdOf(s)",
+            "onlyStatus": "ALL",
+            "histogram": {
+              "bins": [
+                {
+                  "min": 0,
+                  "max": 0.1,
+                  "label": "۰ تا کمتر از ۰٫۱۰"
+                },
+                {
+                  "min": 0.1,
+                  "max": 0.2,
+                  "label": "۰٫۱۰ تا کمتر از ۰٫۲۰"
+                },
+                {
+                  "min": 0.2,
+                  "max": 0.3,
+                  "label": "۰٫۲۰ تا کمتر از ۰٫۳۰"
+                },
+                {
+                  "min": 0.3,
+                  "max": 0.4,
+                  "label": "۰٫۳۰ تا کمتر از ۰٫۴۰"
+                },
+                {
+                  "min": 0.4,
+                  "max": 0.5,
+                  "label": "۰٫۴۰ تا کمتر از ۰٫۵۰"
+                },
+                {
+                  "value": 0.5,
+                  "label": "۰٫۵۰ — بدون استراتژی"
+                },
+                {
+                  "min": 0.5,
+                  "max": 0.6,
+                  "excludeMin": true,
+                  "label": "بیشتر از ۰٫۵۰ تا کمتر از ۰٫۶۰"
+                },
+                {
+                  "min": 0.6,
+                  "max": 0.7,
+                  "label": "۰٫۶۰ تا کمتر از ۰٫۷۰"
+                },
+                {
+                  "min": 0.7,
+                  "max": 0.8,
+                  "label": "۰٫۷۰ تا کمتر از ۰٫۸۰"
+                },
+                {
+                  "min": 0.8,
+                  "max": 0.9,
+                  "label": "۰٫۸۰ تا کمتر از ۰٫۹۰"
+                },
+                {
+                  "min": 0.9,
+                  "max": 1.0000001,
+                  "label": "۰٫۹۰ تا ۱"
+                }
+              ]
+            }
+          },
+          {
+            "id": "rScore",
+            "label": "امتیاز اعتبارسنجی",
+            "topic": "overview",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "output.requested_loan.score.score_value",
+            "formula": "خواندن مستقیم مقدار عددی از مسیر؛ سپس count/min/Q1/median/mean/Q3/max بین گزارش‌های دارای مقدار معتبر.",
+            "code": "(_c, s) => num(outOf(s, 'requested_loan.score.score_value'))",
+            "onlyStatus": "ALL",
+            "histogram": {
+              "bins": [
+                {
+                  "min": 300,
+                  "max": 401,
+                  "label": "۳۰۰ تا ۴۰۰ — خیلی بد"
+                },
+                {
+                  "min": 401,
+                  "max": 451,
+                  "label": "۴۰۱ تا ۴۵۰ — بد"
+                },
+                {
+                  "min": 451,
+                  "max": 501,
+                  "label": "۴۵۱ تا ۵۰۰ — متوسط رو به بد"
+                },
+                {
+                  "min": 501,
+                  "max": 551,
+                  "label": "۵۰۱ تا ۵۵۰ — متوسط"
+                },
+                {
+                  "min": 551,
+                  "max": 601,
+                  "label": "۵۵۱ تا ۶۰۰ — متوسط رو به خوب"
+                },
+                {
+                  "min": 601,
+                  "max": 651,
+                  "label": "۶۰۱ تا ۶۵۰ — خوب"
+                },
+                {
+                  "min": 651,
+                  "max": 751,
+                  "label": "۶۵۱ تا ۷۵۰ — خیلی خوب"
+                },
+                {
+                  "min": 751,
+                  "max": 801,
+                  "label": "۷۵۱ تا ۸۰۰ — عالی"
+                }
+              ]
+            }
+          },
+          {
+            "id": "rTavan",
+            "label": "توان بازپرداخت پیشنهادی (ریال)",
+            "topic": "overview",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "output.suggested_tavan_bazpardakht",
+            "formula": "خواندن مستقیم مقدار عددی از مسیر؛ سپس count/min/Q1/median/mean/Q3/max بین گزارش‌های دارای مقدار معتبر.",
+            "code": "(_c, s) => num(outOf(s, 'suggested_tavan_bazpardakht'))",
+            "onlyStatus": "ALL",
+            "histogram": {
+              "omitUnmatched": true,
+              "omitAbove": 1000000000,
+              "bins": [
+                {
+                  "min": 0,
+                  "max": 10000000,
+                  "label": "۰ تا ۱۰ میلیون"
+                },
+                {
+                  "min": 10000000,
+                  "max": 20000000,
+                  "label": "۱۰ تا ۲۰ میلیون"
+                },
+                {
+                  "min": 20000000,
+                  "max": 30000000,
+                  "label": "۲۰ تا ۳۰ میلیون"
+                },
+                {
+                  "min": 30000000,
+                  "max": 50000000,
+                  "label": "۳۰ تا ۵۰ میلیون"
+                },
+                {
+                  "min": 50000000,
+                  "max": 75000000,
+                  "label": "۵۰ تا ۷۵ میلیون"
+                },
+                {
+                  "min": 75000000,
+                  "max": 100000000,
+                  "label": "۷۵ تا ۱۰۰ میلیون"
+                },
+                {
+                  "min": 100000000,
+                  "max": 150000000,
+                  "label": "۱۰۰ تا ۱۵۰ میلیون"
+                },
+                {
+                  "min": 150000000,
+                  "max": 200000000,
+                  "label": "۱۵۰ تا ۲۰۰ میلیون"
+                },
+                {
+                  "min": 200000000,
+                  "max": 300000000,
+                  "label": "۲۰۰ تا ۳۰۰ میلیون"
+                },
+                {
+                  "min": 300000000,
+                  "max": 500000000,
+                  "label": "۳۰۰ تا ۵۰۰ میلیون"
+                },
+                {
+                  "min": 500000000,
+                  "max": 750000000,
+                  "label": "۵۰۰ تا ۷۵۰ میلیون"
+                },
+                {
+                  "min": 750000000,
+                  "max": 1000000000,
+                  "includeMax": true,
+                  "label": "۷۵۰ تا ۱٬۰۰۰ میلیون (تا سقف)"
+                }
+              ]
+            }
+          },
+          {
+            "id": "rAdjMax",
+            "label": "سقف قسط تعدیل‌شده",
+            "topic": "overview",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "output.adj_max_installment",
+            "formula": "خواندن مستقیم مقدار عددی از مسیر؛ سپس count/min/Q1/median/mean/Q3/max بین گزارش‌های دارای مقدار معتبر.",
+            "code": "(_c, s) => num(outOf(s, 'adj_max_installment'))",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "rGuar",
+            "label": "ظرفیت ضمانت تأییدشده",
+            "topic": "overview",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "output.approved_guarantee_capacity",
+            "formula": "خواندن مستقیم مقدار عددی از مسیر؛ سپس count/min/Q1/median/mean/Q3/max بین گزارش‌های دارای مقدار معتبر.",
+            "code": "(_c, s) => num(outOf(s, 'approved_guarantee_capacity'))",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "cca_Excellent",
+            "label": "ردهٔ «عالی» (Excellent)",
+            "topic": "overview",
+            "derived": false,
+            "preserveFraction": false,
+            "note": "این جدول مرز عددی بازهٔ مبلغ هر رده را از output.credit_categories_amount همان رده می‌خواند؛ نه تعداد وام، جمع تسهیلات دریافتی یا مبلغ مصوب. مثلاً از متن 10000000 - 20000000 عدد 20000000 استخراج می‌شود؛ سپس کمینه، میانگین، میانه و چارک‌های این مرزها بین گزارش‌ها محاسبه می‌شوند. هر گزارش برای هر رده حداکثر یک مقدار دارد؛ تعداد گزارش معتبر در رده‌ها ممکن است متفاوت باشد. در بازهٔ باز مثل >20000000، عدد 20000000 مرز شروع بازه است، نه سقف واقعی؛ آمار چنین رده‌ای را سقف وام تلقی نکنید. استخراج فعلی آخرین دنبالهٔ رقم از رشته است و اعتبار کل قالب بازه را تضمین نمی‌کند؛ null، کلید غایب و متن بدون عدد وارد آمار نمی‌شوند. اعداد در همان واحد خروجی و بدون تبدیل واحد هستند.",
+            "source": "output.credit_categories_amount.Excellent",
+            "formula": "آخرین دنبالهٔ رقم در متن بازه، به عدد تبدیل می‌شود؛ برای بازهٔ باز مانند >X این مقدار مرز رده است، نه سقف واقعی.",
+            "code": "(_c, s) => upperEdge(outOf(s, `credit_categories_amount.${key}`))",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "cca_Very_Good",
+            "label": "ردهٔ «خیلی خوب» (Very_Good)",
+            "topic": "overview",
+            "derived": false,
+            "preserveFraction": false,
+            "note": "این جدول مرز عددی بازهٔ مبلغ هر رده را از output.credit_categories_amount همان رده می‌خواند؛ نه تعداد وام، جمع تسهیلات دریافتی یا مبلغ مصوب. مثلاً از متن 10000000 - 20000000 عدد 20000000 استخراج می‌شود؛ سپس کمینه، میانگین، میانه و چارک‌های این مرزها بین گزارش‌ها محاسبه می‌شوند. هر گزارش برای هر رده حداکثر یک مقدار دارد؛ تعداد گزارش معتبر در رده‌ها ممکن است متفاوت باشد. در بازهٔ باز مثل >20000000، عدد 20000000 مرز شروع بازه است، نه سقف واقعی؛ آمار چنین رده‌ای را سقف وام تلقی نکنید. استخراج فعلی آخرین دنبالهٔ رقم از رشته است و اعتبار کل قالب بازه را تضمین نمی‌کند؛ null، کلید غایب و متن بدون عدد وارد آمار نمی‌شوند. اعداد در همان واحد خروجی و بدون تبدیل واحد هستند.",
+            "source": "output.credit_categories_amount.Very_Good",
+            "formula": "آخرین دنبالهٔ رقم در متن بازه، به عدد تبدیل می‌شود؛ برای بازهٔ باز مانند >X این مقدار مرز رده است، نه سقف واقعی.",
+            "code": "(_c, s) => upperEdge(outOf(s, `credit_categories_amount.${key}`))",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "cca_Good",
+            "label": "ردهٔ «خوب» (Good)",
+            "topic": "overview",
+            "derived": false,
+            "preserveFraction": false,
+            "note": "این جدول مرز عددی بازهٔ مبلغ هر رده را از output.credit_categories_amount همان رده می‌خواند؛ نه تعداد وام، جمع تسهیلات دریافتی یا مبلغ مصوب. مثلاً از متن 10000000 - 20000000 عدد 20000000 استخراج می‌شود؛ سپس کمینه، میانگین، میانه و چارک‌های این مرزها بین گزارش‌ها محاسبه می‌شوند. هر گزارش برای هر رده حداکثر یک مقدار دارد؛ تعداد گزارش معتبر در رده‌ها ممکن است متفاوت باشد. در بازهٔ باز مثل >20000000، عدد 20000000 مرز شروع بازه است، نه سقف واقعی؛ آمار چنین رده‌ای را سقف وام تلقی نکنید. استخراج فعلی آخرین دنبالهٔ رقم از رشته است و اعتبار کل قالب بازه را تضمین نمی‌کند؛ null، کلید غایب و متن بدون عدد وارد آمار نمی‌شوند. اعداد در همان واحد خروجی و بدون تبدیل واحد هستند.",
+            "source": "output.credit_categories_amount.Good",
+            "formula": "آخرین دنبالهٔ رقم در متن بازه، به عدد تبدیل می‌شود؛ برای بازهٔ باز مانند >X این مقدار مرز رده است، نه سقف واقعی.",
+            "code": "(_c, s) => upperEdge(outOf(s, `credit_categories_amount.${key}`))",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "cca_Medium_Good",
+            "label": "ردهٔ «متوسط رو به خوب» (Medium_Good)",
+            "topic": "overview",
+            "derived": false,
+            "preserveFraction": false,
+            "note": "این جدول مرز عددی بازهٔ مبلغ هر رده را از output.credit_categories_amount همان رده می‌خواند؛ نه تعداد وام، جمع تسهیلات دریافتی یا مبلغ مصوب. مثلاً از متن 10000000 - 20000000 عدد 20000000 استخراج می‌شود؛ سپس کمینه، میانگین، میانه و چارک‌های این مرزها بین گزارش‌ها محاسبه می‌شوند. هر گزارش برای هر رده حداکثر یک مقدار دارد؛ تعداد گزارش معتبر در رده‌ها ممکن است متفاوت باشد. در بازهٔ باز مثل >20000000، عدد 20000000 مرز شروع بازه است، نه سقف واقعی؛ آمار چنین رده‌ای را سقف وام تلقی نکنید. استخراج فعلی آخرین دنبالهٔ رقم از رشته است و اعتبار کل قالب بازه را تضمین نمی‌کند؛ null، کلید غایب و متن بدون عدد وارد آمار نمی‌شوند. اعداد در همان واحد خروجی و بدون تبدیل واحد هستند.",
+            "source": "output.credit_categories_amount.Medium_Good",
+            "formula": "آخرین دنبالهٔ رقم در متن بازه، به عدد تبدیل می‌شود؛ برای بازهٔ باز مانند >X این مقدار مرز رده است، نه سقف واقعی.",
+            "code": "(_c, s) => upperEdge(outOf(s, `credit_categories_amount.${key}`))",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "cca_Medium",
+            "label": "ردهٔ «متوسط» (Medium)",
+            "topic": "overview",
+            "derived": false,
+            "preserveFraction": false,
+            "note": "این جدول مرز عددی بازهٔ مبلغ هر رده را از output.credit_categories_amount همان رده می‌خواند؛ نه تعداد وام، جمع تسهیلات دریافتی یا مبلغ مصوب. مثلاً از متن 10000000 - 20000000 عدد 20000000 استخراج می‌شود؛ سپس کمینه، میانگین، میانه و چارک‌های این مرزها بین گزارش‌ها محاسبه می‌شوند. هر گزارش برای هر رده حداکثر یک مقدار دارد؛ تعداد گزارش معتبر در رده‌ها ممکن است متفاوت باشد. در بازهٔ باز مثل >20000000، عدد 20000000 مرز شروع بازه است، نه سقف واقعی؛ آمار چنین رده‌ای را سقف وام تلقی نکنید. استخراج فعلی آخرین دنبالهٔ رقم از رشته است و اعتبار کل قالب بازه را تضمین نمی‌کند؛ null، کلید غایب و متن بدون عدد وارد آمار نمی‌شوند. اعداد در همان واحد خروجی و بدون تبدیل واحد هستند.",
+            "source": "output.credit_categories_amount.Medium",
+            "formula": "آخرین دنبالهٔ رقم در متن بازه، به عدد تبدیل می‌شود؛ برای بازهٔ باز مانند >X این مقدار مرز رده است، نه سقف واقعی.",
+            "code": "(_c, s) => upperEdge(outOf(s, `credit_categories_amount.${key}`))",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "cca_Medium_Bad",
+            "label": "ردهٔ «متوسط رو به بد» (Medium_Bad)",
+            "topic": "overview",
+            "derived": false,
+            "preserveFraction": false,
+            "note": "این جدول مرز عددی بازهٔ مبلغ هر رده را از output.credit_categories_amount همان رده می‌خواند؛ نه تعداد وام، جمع تسهیلات دریافتی یا مبلغ مصوب. مثلاً از متن 10000000 - 20000000 عدد 20000000 استخراج می‌شود؛ سپس کمینه، میانگین، میانه و چارک‌های این مرزها بین گزارش‌ها محاسبه می‌شوند. هر گزارش برای هر رده حداکثر یک مقدار دارد؛ تعداد گزارش معتبر در رده‌ها ممکن است متفاوت باشد. در بازهٔ باز مثل >20000000، عدد 20000000 مرز شروع بازه است، نه سقف واقعی؛ آمار چنین رده‌ای را سقف وام تلقی نکنید. استخراج فعلی آخرین دنبالهٔ رقم از رشته است و اعتبار کل قالب بازه را تضمین نمی‌کند؛ null، کلید غایب و متن بدون عدد وارد آمار نمی‌شوند. اعداد در همان واحد خروجی و بدون تبدیل واحد هستند.",
+            "source": "output.credit_categories_amount.Medium_Bad",
+            "formula": "آخرین دنبالهٔ رقم در متن بازه، به عدد تبدیل می‌شود؛ برای بازهٔ باز مانند >X این مقدار مرز رده است، نه سقف واقعی.",
+            "code": "(_c, s) => upperEdge(outOf(s, `credit_categories_amount.${key}`))",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "cca_Bad",
+            "label": "ردهٔ «بد» (Bad)",
+            "topic": "overview",
+            "derived": false,
+            "preserveFraction": false,
+            "note": "این جدول مرز عددی بازهٔ مبلغ هر رده را از output.credit_categories_amount همان رده می‌خواند؛ نه تعداد وام، جمع تسهیلات دریافتی یا مبلغ مصوب. مثلاً از متن 10000000 - 20000000 عدد 20000000 استخراج می‌شود؛ سپس کمینه، میانگین، میانه و چارک‌های این مرزها بین گزارش‌ها محاسبه می‌شوند. هر گزارش برای هر رده حداکثر یک مقدار دارد؛ تعداد گزارش معتبر در رده‌ها ممکن است متفاوت باشد. در بازهٔ باز مثل >20000000، عدد 20000000 مرز شروع بازه است، نه سقف واقعی؛ آمار چنین رده‌ای را سقف وام تلقی نکنید. استخراج فعلی آخرین دنبالهٔ رقم از رشته است و اعتبار کل قالب بازه را تضمین نمی‌کند؛ null، کلید غایب و متن بدون عدد وارد آمار نمی‌شوند. اعداد در همان واحد خروجی و بدون تبدیل واحد هستند.",
+            "source": "output.credit_categories_amount.Bad",
+            "formula": "آخرین دنبالهٔ رقم در متن بازه، به عدد تبدیل می‌شود؛ برای بازهٔ باز مانند >X این مقدار مرز رده است، نه سقف واقعی.",
+            "code": "(_c, s) => upperEdge(outOf(s, `credit_categories_amount.${key}`))",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "cca_Very_Bad",
+            "label": "ردهٔ «خیلی بد» (Very_Bad)",
+            "topic": "overview",
+            "derived": false,
+            "preserveFraction": false,
+            "note": "این جدول مرز عددی بازهٔ مبلغ هر رده را از output.credit_categories_amount همان رده می‌خواند؛ نه تعداد وام، جمع تسهیلات دریافتی یا مبلغ مصوب. مثلاً از متن 10000000 - 20000000 عدد 20000000 استخراج می‌شود؛ سپس کمینه، میانگین، میانه و چارک‌های این مرزها بین گزارش‌ها محاسبه می‌شوند. هر گزارش برای هر رده حداکثر یک مقدار دارد؛ تعداد گزارش معتبر در رده‌ها ممکن است متفاوت باشد. در بازهٔ باز مثل >20000000، عدد 20000000 مرز شروع بازه است، نه سقف واقعی؛ آمار چنین رده‌ای را سقف وام تلقی نکنید. استخراج فعلی آخرین دنبالهٔ رقم از رشته است و اعتبار کل قالب بازه را تضمین نمی‌کند؛ null، کلید غایب و متن بدون عدد وارد آمار نمی‌شوند. اعداد در همان واحد خروجی و بدون تبدیل واحد هستند.",
+            "source": "output.credit_categories_amount.Very_Bad",
+            "formula": "آخرین دنبالهٔ رقم در متن بازه، به عدد تبدیل می‌شود؛ برای بازهٔ باز مانند >X این مقدار مرز رده است، نه سقف واقعی.",
+            "code": "(_c, s) => upperEdge(outOf(s, `credit_categories_amount.${key}`))",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "oCompleted",
+            "label": "وام‌های تکمیل‌شده در هفت سال اخیر",
+            "topic": "features",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "output.completed_loans_last_7_years",
+            "formula": "خواندن مستقیم مقدار عددی از مسیر؛ سپس count/min/Q1/median/mean/Q3/max بین گزارش‌های دارای مقدار معتبر.",
+            "code": "(_c, s) => num(outOf(s, 'completed_loans_last_7_years'))",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "oNegYear",
+            "label": "وضعیت‌های منفی سال اخیر",
+            "topic": "features",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "output.num_negative_status_last_year",
+            "formula": "خواندن مستقیم مقدار عددی از مسیر؛ سپس count/min/Q1/median/mean/Q3/max بین گزارش‌های دارای مقدار معتبر.",
+            "code": "(_c, s) => num(outOf(s, 'num_negative_status_last_year'))",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "oNeg12",
+            "label": "وضعیت‌های منفی یک تا دو سال اخیر",
+            "topic": "features",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "output.num_negative_status_1_2years",
+            "formula": "خواندن مستقیم مقدار عددی از مسیر؛ سپس count/min/Q1/median/mean/Q3/max بین گزارش‌های دارای مقدار معتبر.",
+            "code": "(_c, s) => num(outOf(s, 'num_negative_status_1_2years'))",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "oAdjExist",
+            "label": "سقف قسط وام‌های جاری",
+            "topic": "features",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "output.adj_max_installment_exist_loans",
+            "formula": "خواندن مستقیم مقدار عددی از مسیر؛ سپس count/min/Q1/median/mean/Q3/max بین گزارش‌های دارای مقدار معتبر.",
+            "code": "(_c, s) => num(outOf(s, 'adj_max_installment_exist_loans'))",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "oAdjLost",
+            "label": "سقف قسط وام‌های تسویه‌شده",
+            "topic": "features",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "output.adj_max_installment_lost_loans",
+            "formula": "خواندن مستقیم مقدار عددی از مسیر؛ سپس count/min/Q1/median/mean/Q3/max بین گزارش‌های دارای مقدار معتبر.",
+            "code": "(_c, s) => num(outOf(s, 'adj_max_installment_lost_loans'))",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "lnCount",
+            "label": "تعداد وام‌های قبلی (گزارش‌های دارای وام)",
+            "topic": "loans",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "input.data.collectedData.historicalLoans",
+            "formula": "تعداد اشیای غیرخالی در آرایهٔ سابقهٔ وام؛ فقط مقدار مثبت وارد جدول می‌شود.",
+            "code": "(c) => loanStats(c).loans || null",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "lnMaxDelay",
+            "label": "بیشترین تأخیر یک قسط (روز)",
+            "topic": "loans",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "input.data.collectedData.historicalLoans[*].delay_dayes_*",
+            "formula": "بیشینهٔ روز تأخیر معتبرِ اقساط گزارش؛ گزارش بدون عدد معتبر حذف می‌شود.",
+            "code": "(c, s) => stats(c, s).max",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "lnDelayed",
+            "label": "تعداد اقساط دارای تأخیر",
+            "topic": "loans",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "input.data.collectedData.historicalLoans[*].delay_dayes_*",
+            "formula": "تعداد اقساط با روز تأخیر معتبر >۰؛ فقط گزارش دارای حداقل یک روز معتبر وارد محاسبه می‌شود.",
+            "code": "(c, s) => stats(c, s).observed ? stats(c, s).delayed : null",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "lnAvgInstallments",
+            "label": "میانگین تعداد اقساط وام‌های قبلی",
+            "topic": "loans",
+            "derived": true,
+            "preserveFraction": false,
+            "source": "input.data.collectedData.historicalLoans[*].count_installment",
+            "formula": "mean(count_installment) روی وام‌های دارای عدد صحیح نامنفی.",
+            "code": "(c) => meanInstallments(get(c, 'historicalLoans'), declaredInstallments)",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "dpAccounts",
+            "label": "تعداد حساب‌ها به‌ازای هر گزارش (کل گزارش‌ها؛ بدون حساب = صفر)",
+            "topic": "deposit",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "input.data.collectedData.depositAverage",
+            "formula": "تعداد اشیای حساب در آرایهٔ قطعی سپرده؛ حساب با dep_avg=۰ نیز شمرده می‌شود؛ برای بدون حساب صفر.",
+            "code": "(c, s) => depositInfo(c, s).accounts",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "dp36",
+            "label": "میانگین سپردهٔ ۳۶ ماهه در خروجی مدل",
+            "topic": "deposit",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "output.average_deposit_36_month",
+            "formula": "خواندن مستقیم مقدار عددی از مسیر؛ سپس count/min/Q1/median/mean/Q3/max بین گزارش‌های دارای مقدار معتبر.",
+            "code": "(_c, s) => num(outOf(s, 'average_deposit_36_month'))",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "dp6",
+            "label": "میانگین سپردهٔ ۶ ماهه در خروجی مدل",
+            "topic": "deposit",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "output.average_deposit_6_month",
+            "formula": "خواندن مستقیم مقدار عددی از مسیر؛ سپس count/min/Q1/median/mean/Q3/max بین گزارش‌های دارای مقدار معتبر.",
+            "code": "(_c, s) => num(outOf(s, 'average_deposit_6_month'))",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "pd",
+            "label": "احتمال نکول (PD)",
+            "topic": "overview",
+            "derived": false,
+            "preserveFraction": true,
+            "source": "output.PD",
+            "formula": "خواندن مستقیم مقدار عددی از مسیر؛ سپس count/min/Q1/median/mean/Q3/max بین گزارش‌های دارای مقدار معتبر.",
+            "code": "(_c, s) => num(get(s, 'output.PD'))",
+            "onlyStatus": "ALL",
+            "histogram": {
+              "edges": [
+                0,
+                0.05,
+                0.1,
+                0.2,
+                0.3,
+                0.4,
+                0.5,
+                0.6,
+                0.8,
+                1.0000001
+              ]
+            }
+          },
+          {
+            "id": "creditBasket",
+            "label": "سبد اعتباری (Credit_Basket)",
+            "topic": "overview",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "output.Credit_Basket",
+            "formula": "خواندن مستقیم مقدار عددی از مسیر؛ سپس count/min/Q1/median/mean/Q3/max بین گزارش‌های دارای مقدار معتبر.",
+            "code": "(_c, s) => num(get(s, 'output.Credit_Basket'))",
+            "onlyStatus": "ALL",
+            "histogram": {
+              "edges": [
+                0,
+                10000000,
+                20000000,
+                30000000,
+                50000000,
+                75000000,
+                100000000,
+                150000000,
+                200000000,
+                300000000,
+                500000000,
+                "Infinity"
+              ]
+            }
+          },
+          {
+            "id": "totalTime",
+            "label": "زمان اجرای مدل (ثانیه)",
+            "topic": "overview",
+            "derived": false,
+            "preserveFraction": false,
+            "summaryDecimals": 2,
+            "source": "output.total_time",
+            "formula": "خواندن مستقیم مقدار عددی از مسیر؛ سپس count/min/Q1/median/mean/Q3/max بین گزارش‌های دارای مقدار معتبر.",
+            "code": "(_c, s) => num(get(s, 'output.total_time'))",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "tbp_Excellent",
+            "label": "ردهٔ «عالی» (Excellent)",
+            "topic": "overview",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "output.Tavan_Baz_Pardakht.Excellent.max",
+            "formula": "مقدار عددی max همان رده، سپس آمار بین گزارش‌ها؛ min در این شاخص وارد نمی‌شود.",
+            "code": "(_c, s) => num(get(s, `output.Tavan_Baz_Pardakht.${key}.max`))",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "tbp_Very_Good",
+            "label": "ردهٔ «خیلی خوب» (Very_Good)",
+            "topic": "overview",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "output.Tavan_Baz_Pardakht.Very_Good.max",
+            "formula": "مقدار عددی max همان رده، سپس آمار بین گزارش‌ها؛ min در این شاخص وارد نمی‌شود.",
+            "code": "(_c, s) => num(get(s, `output.Tavan_Baz_Pardakht.${key}.max`))",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "tbp_Good",
+            "label": "ردهٔ «خوب» (Good)",
+            "topic": "overview",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "output.Tavan_Baz_Pardakht.Good.max",
+            "formula": "مقدار عددی max همان رده، سپس آمار بین گزارش‌ها؛ min در این شاخص وارد نمی‌شود.",
+            "code": "(_c, s) => num(get(s, `output.Tavan_Baz_Pardakht.${key}.max`))",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "tbp_Medium_Good",
+            "label": "ردهٔ «متوسط رو به خوب» (Medium_Good)",
+            "topic": "overview",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "output.Tavan_Baz_Pardakht.Medium_Good.max",
+            "formula": "مقدار عددی max همان رده، سپس آمار بین گزارش‌ها؛ min در این شاخص وارد نمی‌شود.",
+            "code": "(_c, s) => num(get(s, `output.Tavan_Baz_Pardakht.${key}.max`))",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "tbp_Medium",
+            "label": "ردهٔ «متوسط» (Medium)",
+            "topic": "overview",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "output.Tavan_Baz_Pardakht.Medium.max",
+            "formula": "مقدار عددی max همان رده، سپس آمار بین گزارش‌ها؛ min در این شاخص وارد نمی‌شود.",
+            "code": "(_c, s) => num(get(s, `output.Tavan_Baz_Pardakht.${key}.max`))",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "tbp_Medium_Bad",
+            "label": "ردهٔ «متوسط رو به بد» (Medium_Bad)",
+            "topic": "overview",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "output.Tavan_Baz_Pardakht.Medium_Bad.max",
+            "formula": "مقدار عددی max همان رده، سپس آمار بین گزارش‌ها؛ min در این شاخص وارد نمی‌شود.",
+            "code": "(_c, s) => num(get(s, `output.Tavan_Baz_Pardakht.${key}.max`))",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "tbp_Bad",
+            "label": "ردهٔ «بد» (Bad)",
+            "topic": "overview",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "output.Tavan_Baz_Pardakht.Bad.max",
+            "formula": "مقدار عددی max همان رده، سپس آمار بین گزارش‌ها؛ min در این شاخص وارد نمی‌شود.",
+            "code": "(_c, s) => num(get(s, `output.Tavan_Baz_Pardakht.${key}.max`))",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "tbp_Very_Bad",
+            "label": "ردهٔ «خیلی بد» (Very_Bad)",
+            "topic": "overview",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "output.Tavan_Baz_Pardakht.Very_Bad.max",
+            "formula": "مقدار عددی max همان رده، سپس آمار بین گزارش‌ها؛ min در این شاخص وارد نمی‌شود.",
+            "code": "(_c, s) => num(get(s, `output.Tavan_Baz_Pardakht.${key}.max`))",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "facilityCount",
+            "label": "تعداد تسهیلات هر گزارش",
+            "topic": "facilities",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "input.data.collectedData.samatFacilities.tashilat.TashilatItem",
+            "formula": "در هر سه بانک: null یا [] مقدار صفر؛ آبجکت آیتم غیرخالی مقدار یک؛ آرایهٔ سالم طول آرایه. کلید غایب، آبجکت خالی، نوع نامعتبر یا آرایهٔ دارای عضو نامعتبر از آمار شمار کل حذف می‌شود. تغییر شکل فقط محاسباتی و بدون تغییر JSON خام است.",
+            "code": "(c, s) => [null, 'emptyArray', 'null'].includes(info(c, s).kind) ? info(c, s).items.length : null",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "facilityBankCount",
+            "label": "تعداد بانک‌های شناسایی‌شده",
+            "topic": "facilities",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "input.data.collectedData.samatFacilities.tashilat.TashilatItem[*].BankCode",
+            "formula": "count(distinct BankCode) فقط کدهای رقمی خوانا با نرمال‌سازی صفر ابتدایی؛ بدون کد معتبر حذف می‌شود.",
+            "code": "(c, s) => info(c, s).banks || null",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "facilitySumAmOriginal",
+            "label": "جمع اصل تسهیلات، بدون سود در هر گزارش (ریال)",
+            "topic": "facilities",
+            "derived": true,
+            "preserveFraction": false,
+            "source": "input.data.collectedData.samatFacilities.tashilat.TashilatItem[*].AmOriginal",
+            "formula": "sum(AmOriginal) در ردیف‌های همان گزارش؛ فقط آیتم منفرد یا آرایهٔ سالم پس از یکسان‌سازی شکل داده، همهٔ مبالغ معتبر و نامنفی و همهٔ واحدها IRR.",
+            "code": "(c, s) => info(c, s).sums[field]",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "facilitySumAmBenefit",
+            "label": "جمع سود تسهیلات در هر گزارش (ریال)",
+            "topic": "facilities",
+            "derived": true,
+            "preserveFraction": false,
+            "source": "input.data.collectedData.samatFacilities.tashilat.TashilatItem[*].AmBenefit",
+            "formula": "sum(AmBenefit) در ردیف‌های همان گزارش؛ فقط آیتم منفرد یا آرایهٔ سالم پس از یکسان‌سازی شکل داده، همهٔ مبالغ معتبر و نامنفی و همهٔ واحدها IRR.",
+            "code": "(c, s) => info(c, s).sums[field]",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "facilityPrincipalAndBenefit",
+            "label": "جمع اصل و سود تسهیلات در هر گزارش (ریال)",
+            "topic": "facilities",
+            "derived": true,
+            "preserveFraction": false,
+            "source": "input.data.collectedData.samatFacilities.tashilat.TashilatItem[*]: AmOriginal + AmBenefit",
+            "formula": "sum(AmOriginal + AmBenefit) در تسهیلات همان گزارش؛ تنها وقتی هر دو فیلد در تمام ردیف‌ها معتبر و نامنفی، آیتم منفرد یا آرایه سالم و واحد همه IRR باشد. سود صفر معتبر و null نامعلوم است. بدون کسر پرداخت؛ نه مانده بدهی. AmBedehiKol تغییر نمی‌کند.",
+            "code": "(c,s)=>info(c,s).sums.principalAndBenefit",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "facilitySumAmBedehiKol",
+            "label": "جمع بدهی کل در هر گزارش (ریال)",
+            "topic": "facilities",
+            "derived": true,
+            "preserveFraction": false,
+            "source": "input.data.collectedData.samatFacilities.tashilat.TashilatItem[*].AmBedehiKol",
+            "formula": "sum(AmBedehiKol) در ردیف‌های همان گزارش؛ فقط آیتم منفرد یا آرایهٔ سالم پس از یکسان‌سازی شکل داده، همهٔ مبالغ معتبر و نامنفی و همهٔ واحدها IRR.",
+            "code": "(c, s) => info(c, s).sums[field]",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "facilitySumAmMoavagh",
+            "label": "جمع بدهی معوق در هر گزارش (ریال)",
+            "topic": "facilities",
+            "derived": true,
+            "preserveFraction": false,
+            "source": "input.data.collectedData.samatFacilities.tashilat.TashilatItem[*].AmMoavagh",
+            "formula": "sum(AmMoavagh) در ردیف‌های همان گزارش؛ فقط آیتم منفرد یا آرایهٔ سالم پس از یکسان‌سازی شکل داده، همهٔ مبالغ معتبر و نامنفی و همهٔ واحدها IRR.",
+            "code": "(c, s) => info(c, s).sums[field]",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "facilitySumAmSarResid",
+            "label": "جمع بدهی سررسیدگذشته در هر گزارش (ریال)",
+            "topic": "facilities",
+            "derived": true,
+            "preserveFraction": false,
+            "source": "input.data.collectedData.samatFacilities.tashilat.TashilatItem[*].AmSarResid",
+            "formula": "sum(AmSarResid) در ردیف‌های همان گزارش؛ فقط آیتم منفرد یا آرایهٔ سالم پس از یکسان‌سازی شکل داده، همهٔ مبالغ معتبر و نامنفی و همهٔ واحدها IRR.",
+            "code": "(c, s) => info(c, s).sums[field]",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "facilitySumAmMashkuk",
+            "label": "جمع مطالبات مشکوک‌الوصول در هر گزارش (ریال)",
+            "topic": "facilities",
+            "derived": true,
+            "preserveFraction": false,
+            "source": "input.data.collectedData.samatFacilities.tashilat.TashilatItem[*].AmMashkuk",
+            "formula": "sum(AmMashkuk) در ردیف‌های همان گزارش؛ فقط آیتم منفرد یا آرایهٔ سالم پس از یکسان‌سازی شکل داده، همهٔ مبالغ معتبر و نامنفی و همهٔ واحدها IRR.",
+            "code": "(c, s) => info(c, s).sums[field]",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "legalDepositsPerReport",
+            "label": "تعداد سپرده‌های حقوقی قابل‌تشخیص در هر گزارش",
+            "topic": "deposit",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "input.data.collectedData.depositAverage[*].deposit_number ; input.data.collectedData.depositAverage[*].customer_code",
+            "formula": "تعداد ردیف‌های حقوقی طبق مقایسهٔ شناسه‌ها در هر گزارش؛ تنها گزارش‌های با شمار حقوقی >۰ وارد count/min/Q1/median/mean/Q3/max می‌شوند؛ گزارش‌های بدون حقوقی با صفر به مخرج اضافه نمی‌شوند.",
+            "code": "(c,s)=>info(c,s).legal||null",
+            "onlyStatus": "ALL"
+          }
+        ],
+        "categories": [
+          {
+            "id": "scoreCategory",
+            "label": "ردهٔ امتیاز مدل",
+            "topic": "features",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "output.requested_loan.score.category",
+            "formula": "(_c, s) => String(outOf(s, 'requested_loan.score.category') ?? 'رده ثبت نشده')",
+            "code": "(_c, s) => String(outOf(s, 'requested_loan.score.category') ?? 'رده ثبت نشده')",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "scoreRange",
+            "label": "بازهٔ امتیاز مدل",
+            "topic": "features",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "output.requested_loan.score.category_range",
+            "formula": "(_c, s) => String(outOf(s, 'requested_loan.score.category_range') ?? 'بازه ثبت نشده')",
+            "code": "(_c, s) => String(outOf(s, 'requested_loan.score.category_range') ?? 'بازه ثبت نشده')",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "depositOk",
+            "label": "اثر مستقیم سپرده بر توان بازپرداخت (deposit_ok)",
+            "topic": "deposit",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "output.deposit_ok",
+            "formula": "(_c, s) => { const value = outOf(s, 'deposit_ok'); return value == null || !String(value).trim() || String(value).trim().toLowerCase() === 'null' ? 'undefined' : String(value); }",
+            "code": "(_c, s) => { const value = outOf(s, 'deposit_ok'); return value == null || !String(value).trim() || String(value).trim().toLowerCase() === 'null' ? 'undefined' : String(value); }",
+            "onlyStatus": "ALL",
+            "categories": {
+              "0": "۰ — بدون اثر مستقیم",
+              "1": "۱ — دارای اثر مستقیم",
+              "undefined": "وضعیت ثبت نشده"
+            }
+          },
+          {
+            "id": "statusCode",
+            "label": "کد وضعیت خروجی (output.statusCode)",
+            "topic": "status",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "output.statusCode",
+            "formula": "(_c, report, folderStatus) => {\n      const value = get(report, 'output.statusCode');\n      if (value === null || value === undefined || value === '') return folderStatus === 'success' ? '200' : 'ثبت نشده';\n      return String(value) === '200' ? '200' : String(value);\n    }",
+            "code": "(_c, report, folderStatus) => {\n      const value = get(report, 'output.statusCode');\n      if (value === null || value === undefined || value === '') return folderStatus === 'success' ? '200' : 'ثبت نشده';\n      return String(value) === '200' ? '200' : String(value);\n    }",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "errorCode",
+            "label": "کد خطای سرویس در گزارش‌های ناموفق (output.meta.code)",
+            "topic": "status",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "output.meta.code",
+            "formula": "(_c, s) => String(get(s, 'output.meta.code') ?? 'کد خطا ثبت نشده است')",
+            "code": "(_c, s) => String(get(s, 'output.meta.code') ?? 'کد خطا ثبت نشده است')",
+            "onlyStatus": "fail"
+          },
+          {
+            "id": "messageSuccess",
+            "label": "پیام‌های گزارش‌های موفق",
+            "topic": "status",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "output.message.fa/en ; output.data.message.fa/en ; output.message ; output.data.message",
+            "formula": "(_c, s) => messageOf(s)",
+            "code": "(_c, s) => messageOf(s)",
+            "onlyStatus": "success"
+          },
+          {
+            "id": "messageFail",
+            "label": "پیام‌های گزارش‌های ناموفق",
+            "topic": "status",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "output.message.fa/en ; output.data.message.fa/en ; output.message ; output.data.message",
+            "formula": "(_c, s) => messageOf(s)",
+            "code": "(_c, s) => messageOf(s)",
+            "onlyStatus": "fail"
+          },
+          {
+            "id": "modelName",
+            "label": "تعداد درخواست‌های موفق به تفکیک مدل",
+            "topic": "model",
+            "derived": false,
+            "preserveFraction": false,
+            "source": "output.model_name",
+            "formula": "(_c, s) => { const output = get(s, 'output'), name = get(s, 'output.model_name');\n      return output && typeof output === 'object' && !Array.isArray(output) && typeof name === 'string' && name.trim() ? name.trim() : 'نام مدل ثبت نشده است'; }",
+            "code": "(_c, s) => { const output = get(s, 'output'), name = get(s, 'output.model_name');\n      return output && typeof output === 'object' && !Array.isArray(output) && typeof name === 'string' && name.trim() ? name.trim() : 'نام مدل ثبت نشده است'; }",
+            "onlyStatus": "success"
+          }
+        ],
+        "counters": [
+          {
+            "id": "depositType_natural",
+            "label": "ردیف‌های سپردهٔ حقیقی",
+            "topic": "deposit",
+            "derived": false,
+            "preserveFraction": false,
+            "display": "chartOnly",
+            "source": "input.data.collectedData.depositAverage[*].deposit_number ; input.data.collectedData.depositAverage[*].customer_code",
+            "formula": "جمع تعداد ردیف‌های ردیف‌های سپردهٔ حقیقی در تمام گزارش‌های دامنه؛ رخداد ردیف‌ها، نه حساب‌های یکتای بین گزارش‌ها.",
+            "code": "(c,s)=>info(c,s)[kind]",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "depositType_legal",
+            "label": "ردیف‌های سپردهٔ حقوقی",
+            "topic": "deposit",
+            "derived": false,
+            "preserveFraction": false,
+            "display": "chartOnly",
+            "source": "input.data.collectedData.depositAverage[*].deposit_number ; input.data.collectedData.depositAverage[*].customer_code",
+            "formula": "جمع تعداد ردیف‌های ردیف‌های سپردهٔ حقوقی در تمام گزارش‌های دامنه؛ رخداد ردیف‌ها، نه حساب‌های یکتای بین گزارش‌ها.",
+            "code": "(c,s)=>info(c,s)[kind]",
+            "onlyStatus": "ALL"
+          },
+          {
+            "id": "depositType_unknown",
+            "label": "ردیف‌های سپردهٔ غیرقابل‌تشخیص",
+            "topic": "deposit",
+            "derived": false,
+            "preserveFraction": false,
+            "display": "chartOnly",
+            "source": "input.data.collectedData.depositAverage[*].deposit_number ; input.data.collectedData.depositAverage[*].customer_code",
+            "formula": "جمع تعداد ردیف‌های ردیف‌های سپردهٔ غیرقابل‌تشخیص در تمام گزارش‌های دامنه؛ رخداد ردیف‌ها، نه حساب‌های یکتای بین گزارش‌ها.",
+            "code": "(c,s)=>info(c,s)[kind]",
+            "onlyStatus": "ALL"
+          }
+        ]
+      },
+      "cross": [
+        {
+          "id": "rotbe",
+          "topic": "rotbe",
+          "title": "ارتباط رتبه‌بندی با تسهیلات و سوابق وام",
+          "row": "rotbeNull",
+          "rowHeader": "وضعیت رتبه‌بندی",
+          "rowYes": "رتبه‌بندی فاقد داده",
+          "rowNo": "رتبه‌بندی دارای داده",
+          "cols": [
+            {
+              "flag": "tashilatFull",
+              "name": "تسهیلات"
+            },
+            {
+              "flag": "loansFull",
+              "name": "سوابق وام"
+            }
+          ]
+        }
+      ],
+      "lists": [
+        {
+          "title": "رتبه‌بندی فاقد داده با وجود سوابق وام",
+          "filter": "(f) => f.rotbeNullLoans",
+          "row": "(c) => ({ 'تعداد وام‌ها': asList(get(c, 'historicalLoans')).length, 'تعداد تسهیلات': normalizeFacilities(tashilat(c)).items.length })"
+        }
+      ]
+    }
+  ]
+}

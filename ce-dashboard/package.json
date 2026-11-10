@@ -1,0 +1,14 @@
+{
+  "name": "ce-dashboard",
+  "version": "2.18.0",
+  "private": true,
+  "description": "داشبورد مستقل کنترل کیفیت داده‌های اعتبارسنجی بانک‌ها",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node index.js"
+  },
+  "license": "UNLICENSED"
+}

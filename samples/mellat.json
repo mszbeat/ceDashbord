@@ -1,0 +1,843 @@
+{
+  "output": {
+    "Credit_Basket": 25000000,
+    "Tavan_Baz_Pardakht": {
+      "Very_Bad": {
+        "min": 45000000,
+        "max": 45000000
+      },
+      "Excellent": {
+        "max": 12000000,
+        "min": 12000000
+      },
+      "Medium_Bad": {
+        "min": 32000000,
+        "max": 40000000
+      },
+      "Medium_Good": {
+        "min": 22000000,
+        "max": 25000000
+      },
+      "Bad": {
+        "max": 45000000,
+        "min": 40000000
+      },
+      "Very_Good": {
+        "max": 18000000,
+        "min": 12000000
+      },
+      "Medium": {
+        "max": 32000000,
+        "min": 25000000
+      },
+      "Good": {
+        "max": 22000000,
+        "min": 18000000
+      }
+    },
+    "PD": 0.5,
+    "national_code": "unknown",
+    "description": "ایشان دارای میانگین سپرده صفر در بانک عامل است.  , مشتری فاقد رفتار اثبات شده اعتباری در شبکه بانکی است. پیشنهاد فعال سازی تسهیلات با سقف اعتبار پایین ",
+    "message": {
+      "en": "Your historical data is not enough.",
+      "fa": "اطلاعات تاریخچه اعتباری شما کافی نیست."
+    },
+    "score": {
+      "score_value": 501,
+      "category": "Medium",
+      "category_range": "501-550"
+    },
+    "version": "1.5.3",
+    "date_granted": "14050726",
+    "model_name": "no_strategy",
+    "total_time": 0.04
+  },
+  "input": {
+    "data": {
+      "samatFacilities": {
+        "TotalAmSarResid": "0",
+        "LegalId": null,
+        "TashilatItem": [
+          {
+            "AmPeigiri": null,
+            "EmhalBase": null,
+            "EmhalType": null,
+            "EmhalStatus": null,
+            "EmhalDate": null,
+            "GrpType": null,
+            "LastVarizDate": null,
+            "Status": null,
+            "AmBedehiKol": "104730999",
+            "AmBenefit": "256959345",
+            "AmDirkard": null,
+            "AmEltezam": null,
+            "AmMashkuk": "0",
+            "AmMoavagh": "0",
+            "AmOriginal": "1000000000",
+            "AmSarResid": "0",
+            "AmSukht": null,
+            "AmTahod": "0",
+            "DasteBandi": 1,
+            "Date": 14030820,
+            "DateEstehal": null,
+            "DateSarResid": 14050820,
+            "Estehal": null,
+            "HadafAzDaryaft": null,
+            "MainIdNo": null,
+            "MainLName": null,
+            "MainLgId": null,
+            "MainName": null,
+            "PlaceCdMasraf": null,
+            "RequstType": null,
+            "RsrcTamin": null,
+            "Type": null,
+            "ArzCD": null,
+            "ArzRate": null,
+            "BnkCD": 12,
+            "BnkShb": "بانك ملت - بازار اصفهان",
+            "GhrType": null,
+            "RequestNO": null,
+            "ShbCD": null
+          },
+          {
+            "AmPeigiri": null,
+            "EmhalBase": null,
+            "EmhalType": null,
+            "EmhalStatus": null,
+            "EmhalDate": null,
+            "GrpType": null,
+            "LastVarizDate": null,
+            "Status": null,
+            "AmBedehiKol": "507448260",
+            "AmBenefit": "691428260",
+            "AmDirkard": null,
+            "AmEltezam": null,
+            "AmMashkuk": "0",
+            "AmMoavagh": "0",
+            "AmOriginal": "1000000000",
+            "AmSarResid": "0",
+            "AmSukht": null,
+            "AmTahod": "0",
+            "DasteBandi": 1,
+            "Date": 14020120,
+            "DateEstehal": null,
+            "DateSarResid": 14070120,
+            "Estehal": null,
+            "HadafAzDaryaft": null,
+            "MainIdNo": null,
+            "MainLName": null,
+            "MainLgId": null,
+            "MainName": null,
+            "PlaceCdMasraf": null,
+            "RequstType": null,
+            "RsrcTamin": null,
+            "Type": null,
+            "ArzCD": null,
+            "ArzRate": null,
+            "BnkCD": 66,
+            "BnkShb": "بانك دي - اصفهان",
+            "GhrType": null,
+            "RequestNO": null,
+            "ShbCD": null
+          },
+          {
+            "AmPeigiri": null,
+            "EmhalBase": null,
+            "EmhalType": null,
+            "EmhalStatus": null,
+            "EmhalDate": null,
+            "GrpType": null,
+            "LastVarizDate": null,
+            "Status": null,
+            "AmBedehiKol": "1077190640",
+            "AmBenefit": "0",
+            "AmDirkard": null,
+            "AmEltezam": null,
+            "AmMashkuk": "0",
+            "AmMoavagh": "0",
+            "AmOriginal": "2270000000",
+            "AmSarResid": "0",
+            "AmSukht": null,
+            "AmTahod": "0",
+            "DasteBandi": 0,
+            "Date": 14040603,
+            "DateEstehal": null,
+            "DateSarResid": 14060603,
+            "Estehal": null,
+            "HadafAzDaryaft": null,
+            "MainIdNo": null,
+            "MainLName": null,
+            "MainLgId": null,
+            "MainName": null,
+            "PlaceCdMasraf": null,
+            "RequstType": null,
+            "RsrcTamin": null,
+            "Type": null,
+            "ArzCD": null,
+            "ArzRate": null,
+            "BnkCD": 12,
+            "BnkShb": "بانك ملت - خيابان توحيد اصفهان",
+            "GhrType": null,
+            "RequestNO": null,
+            "ShbCD": null
+          }
+        ],
+        "SabtDT": null,
+        "ShenaseRes": null,
+        "DateEstlm": 14050726,
+        "TotalAmTahodST": "0",
+        "LName": null,
+        "TotalAmMashkuk": "0",
+        "ShenaseEstlm": 405629678520,
+        "TotalAmTashilat": "2000000000",
+        "NationalCd": "",
+        "SabtCD": null,
+        "Name": null,
+        "SabtNO": null,
+        "IDNO": null,
+        "CustomerType": null,
+        "TotalAmBedehi": "612179259",
+        "TotalAmMoavagh": "0",
+        "BadHesabiDT": 0
+      },
+      "historicalLoans": [
+        {
+          "contractNumber": 1,
+          "requestDate": "1392/08/09",
+          "originalLoanAmount": 0,
+          "benefitLoanAmount": 0,
+          "installmentCount": 36,
+          "approvedDuration": 36,
+          "grantDate": "1392/08/09",
+          "expectedEndDate": "1395/10/10",
+          "realEndDate": "1395/09/03",
+          "loanTypeCode": 58,
+          "loanTypeName": "مرابحه",
+          "status": 8,
+          "installments": []
+        },
+        {
+          "contractNumber": 2,
+          "requestDate": "1403/08/20",
+          "originalLoanAmount": 101795259,
+          "benefitLoanAmount": 2935740,
+          "installmentCount": 24,
+          "approvedDuration": 24,
+          "grantDate": "1403/08/20",
+          "expectedEndDate": "1405/08/20",
+          "realEndDate": null,
+          "loanTypeCode": 58,
+          "loanTypeName": "مرابحه",
+          "status": 1,
+          "installments": [
+            {
+              "installmentNumber": 1,
+              "amount": 33213678,
+              "interest": 19166667,
+              "penalty": 457791,
+              "scheduledDate": "1403/09/20",
+              "deliveryDate": null,
+              "remainingAmount": null,
+              "installmentPayments": [
+                {
+                  "amount": 52838136,
+                  "interest": 0,
+                  "penalty": 0,
+                  "date": null,
+                  "delay": null
+                }
+              ]
+            },
+            {
+              "installmentNumber": 2,
+              "amount": 33842793,
+              "interest": 18530207,
+              "penalty": 642509,
+              "scheduledDate": "1403/10/20",
+              "deliveryDate": null,
+              "remainingAmount": null,
+              "installmentPayments": [
+                {
+                  "amount": 1864,
+                  "interest": 0,
+                  "penalty": 0,
+                  "date": null,
+                  "delay": null
+                },
+                {
+                  "amount": 52380000,
+                  "interest": 0,
+                  "penalty": 0,
+                  "date": null,
+                  "delay": null
+                },
+                {
+                  "amount": 633645,
+                  "interest": 0,
+                  "penalty": 0,
+                  "date": null,
+                  "delay": null
+                }
+              ]
+            },
+            {
+              "installmentNumber": 3,
+              "amount": 34491453,
+              "interest": 17881547,
+              "penalty": 981528,
+              "scheduledDate": "1403/11/20",
+              "deliveryDate": null,
+              "remainingAmount": null,
+              "installmentPayments": [
+                {
+                  "amount": 51746355,
+                  "interest": 0,
+                  "penalty": 0,
+                  "date": null,
+                  "delay": null
+                },
+                {
+                  "amount": 633645,
+                  "interest": 0,
+                  "penalty": 0,
+                  "date": null,
+                  "delay": null
+                },
+                {
+                  "amount": 974528,
+                  "interest": 0,
+                  "penalty": 0,
+                  "date": null,
+                  "delay": null
+                }
+              ]
+            },
+            {
+              "installmentNumber": 4,
+              "amount": 35152545,
+              "interest": 17220455,
+              "penalty": 1081898,
+              "scheduledDate": "1403/12/20",
+              "deliveryDate": null,
+              "remainingAmount": null,
+              "installmentPayments": [
+                {
+                  "amount": 53454898,
+                  "interest": 0,
+                  "penalty": 0,
+                  "date": null,
+                  "delay": null
+                }
+              ]
+            },
+            {
+              "installmentNumber": 5,
+              "amount": 35826308,
+              "interest": 16546692,
+              "penalty": 0,
+              "scheduledDate": "1404/01/20",
+              "deliveryDate": null,
+              "remainingAmount": null,
+              "installmentPayments": [
+                {
+                  "amount": 52373000,
+                  "interest": 0,
+                  "penalty": 0,
+                  "date": null,
+                  "delay": null
+                }
+              ]
+            },
+            {
+              "installmentNumber": 6,
+              "amount": 36512985,
+              "interest": 15860015,
+              "penalty": 0,
+              "scheduledDate": "1404/02/20",
+              "deliveryDate": null,
+              "remainingAmount": null,
+              "installmentPayments": [
+                {
+                  "amount": 52373000,
+                  "interest": 0,
+                  "penalty": 0,
+                  "date": null,
+                  "delay": null
+                }
+              ]
+            },
+            {
+              "installmentNumber": 7,
+              "amount": 37212823,
+              "interest": 15160177,
+              "penalty": 0,
+              "scheduledDate": "1404/03/20",
+              "deliveryDate": null,
+              "remainingAmount": null,
+              "installmentPayments": [
+                {
+                  "amount": 127000,
+                  "interest": 0,
+                  "penalty": 0,
+                  "date": null,
+                  "delay": null
+                },
+                {
+                  "amount": 52246000,
+                  "interest": 0,
+                  "penalty": 0,
+                  "date": null,
+                  "delay": null
+                }
+              ]
+            },
+            {
+              "installmentNumber": 8,
+              "amount": 37926074,
+              "interest": 14446926,
+              "penalty": 0,
+              "scheduledDate": "1404/04/20",
+              "deliveryDate": null,
+              "remainingAmount": null,
+              "installmentPayments": [
+                {
+                  "amount": 154000,
+                  "interest": 0,
+                  "penalty": 0,
+                  "date": null,
+                  "delay": null
+                },
+                {
+                  "amount": 52219000,
+                  "interest": 0,
+                  "penalty": 0,
+                  "date": null,
+                  "delay": null
+                }
+              ]
+            },
+            {
+              "installmentNumber": 9,
+              "amount": 38652997,
+              "interest": 13720003,
+              "penalty": 0,
+              "scheduledDate": "1404/05/20",
+              "deliveryDate": null,
+              "remainingAmount": null,
+              "installmentPayments": [
+                {
+                  "amount": 181000,
+                  "interest": 0,
+                  "penalty": 0,
+                  "date": null,
+                  "delay": null
+                },
+                {
+                  "amount": 52192000,
+                  "interest": 0,
+                  "penalty": 0,
+                  "date": null,
+                  "delay": null
+                }
+              ]
+            },
+            {
+              "installmentNumber": 10,
+              "amount": 39393852,
+              "interest": 12979148,
+              "penalty": 0,
+              "scheduledDate": "1404/06/20",
+              "deliveryDate": null,
+              "remainingAmount": null,
+              "installmentPayments": [
+                {
+                  "amount": 188000,
+                  "interest": 0,
+                  "penalty": 0,
+                  "date": null,
+                  "delay": null
+                },
+                {
+                  "amount": 52185000,
+                  "interest": 0,
+                  "penalty": 0,
+                  "date": null,
+                  "delay": null
+                }
+              ]
+            },
+            {
+              "installmentNumber": 11,
+              "amount": 40148906,
+              "interest": 12224094,
+              "penalty": 0,
+              "scheduledDate": "1404/07/20",
+              "deliveryDate": null,
+              "remainingAmount": null,
+              "installmentPayments": [
+                {
+                  "amount": 215000,
+                  "interest": 0,
+                  "penalty": 0,
+                  "date": null,
+                  "delay": null
+                },
+                {
+                  "amount": 52158000,
+                  "interest": 0,
+                  "penalty": 0,
+                  "date": null,
+                  "delay": null
+                }
+              ]
+            },
+            {
+              "installmentNumber": 12,
+              "amount": 40918433,
+              "interest": 11454567,
+              "penalty": 0,
+              "scheduledDate": "1404/08/20",
+              "deliveryDate": null,
+              "remainingAmount": null,
+              "installmentPayments": [
+                {
+                  "amount": 242000,
+                  "interest": 0,
+                  "penalty": 0,
+                  "date": null,
+                  "delay": null
+                },
+                {
+                  "amount": 52131000,
+                  "interest": 0,
+                  "penalty": 0,
+                  "date": null,
+                  "delay": null
+                }
+              ]
+            },
+            {
+              "installmentNumber": 13,
+              "amount": 41702709,
+              "interest": 10670291,
+              "penalty": 0,
+              "scheduledDate": "1404/09/20",
+              "deliveryDate": null,
+              "remainingAmount": null,
+              "installmentPayments": [
+                {
+                  "amount": 269000,
+                  "interest": 0,
+                  "penalty": 0,
+                  "date": null,
+                  "delay": null
+                },
+                {
+                  "amount": 52104000,
+                  "interest": 0,
+                  "penalty": 0,
+                  "date": null,
+                  "delay": null
+                }
+              ]
+            },
+            {
+              "installmentNumber": 14,
+              "amount": 42502017,
+              "interest": 9870983,
+              "penalty": 0,
+              "scheduledDate": "1404/10/20",
+              "deliveryDate": null,
+              "remainingAmount": null,
+              "installmentPayments": [
+                {
+                  "amount": 896000,
+                  "interest": 0,
+                  "penalty": 0,
+                  "date": null,
+                  "delay": null
+                },
+                {
+                  "amount": 51477000,
+                  "interest": 0,
+                  "penalty": 0,
+                  "date": null,
+                  "delay": null
+                }
+              ]
+            },
+            {
+              "installmentNumber": 15,
+              "amount": 43316644,
+              "interest": 9056356,
+              "penalty": 0,
+              "scheduledDate": "1404/11/20",
+              "deliveryDate": null,
+              "remainingAmount": null,
+              "installmentPayments": [
+                {
+                  "amount": 923000,
+                  "interest": 0,
+                  "penalty": 0,
+                  "date": null,
+                  "delay": null
+                },
+                {
+                  "amount": 51450000,
+                  "interest": 0,
+                  "penalty": 0,
+                  "date": null,
+                  "delay": null
+                }
+              ]
+            },
+            {
+              "installmentNumber": 16,
+              "amount": 44146886,
+              "interest": 8226114,
+              "penalty": 0,
+              "scheduledDate": "1404/12/20",
+              "deliveryDate": null,
+              "remainingAmount": null,
+              "installmentPayments": [
+                {
+                  "amount": 923000,
+                  "interest": 0,
+                  "penalty": 0,
+                  "date": null,
+                  "delay": null
+                },
+                {
+                  "amount": 51450000,
+                  "interest": 0,
+                  "penalty": 0,
+                  "date": null,
+                  "delay": null
+                }
+              ]
+            },
+            {
+              "installmentNumber": 17,
+              "amount": 44993041,
+              "interest": 7379959,
+              "penalty": 324206,
+              "scheduledDate": "1405/01/20",
+              "deliveryDate": null,
+              "remainingAmount": null,
+              "installmentPayments": [
+                {
+                  "amount": 923000,
+                  "interest": 0,
+                  "penalty": 0,
+                  "date": null,
+                  "delay": null
+                },
+                {
+                  "amount": 51774206,
+                  "interest": 0,
+                  "penalty": 0,
+                  "date": null,
+                  "delay": null
+                }
+              ]
+            },
+            {
+              "installmentNumber": 18,
+              "amount": 45855413,
+              "interest": 6517587,
+              "penalty": 424596,
+              "scheduledDate": "1405/02/20",
+              "deliveryDate": null,
+              "remainingAmount": null,
+              "installmentPayments": [
+                {
+                  "amount": 625794,
+                  "interest": 0,
+                  "penalty": 0,
+                  "date": null,
+                  "delay": null
+                },
+                {
+                  "amount": 52171802,
+                  "interest": 0,
+                  "penalty": 0,
+                  "date": null,
+                  "delay": null
+                }
+              ]
+            },
+            {
+              "installmentNumber": 19,
+              "amount": 46734314,
+              "interest": 5638686,
+              "penalty": 1812071,
+              "scheduledDate": "1405/03/20",
+              "deliveryDate": null,
+              "remainingAmount": null,
+              "installmentPayments": [
+                {
+                  "amount": 228198,
+                  "interest": 0,
+                  "penalty": 0,
+                  "date": null,
+                  "delay": null
+                },
+                {
+                  "amount": 52400000,
+                  "interest": 0,
+                  "penalty": 0,
+                  "date": null,
+                  "delay": null
+                },
+                {
+                  "amount": 1556873,
+                  "interest": 0,
+                  "penalty": 0,
+                  "date": null,
+                  "delay": null
+                }
+              ]
+            },
+            {
+              "installmentNumber": 20,
+              "amount": 47630061,
+              "interest": 4742939,
+              "penalty": 1248344,
+              "scheduledDate": "1405/04/20",
+              "deliveryDate": null,
+              "remainingAmount": null,
+              "installmentPayments": [
+                {
+                  "amount": 52143127,
+                  "interest": 0,
+                  "penalty": 0,
+                  "date": null,
+                  "delay": null
+                },
+                {
+                  "amount": 1478217,
+                  "interest": 0,
+                  "penalty": 0,
+                  "date": null,
+                  "delay": null
+                }
+              ]
+            },
+            {
+              "installmentNumber": 21,
+              "amount": 48542977,
+              "interest": 3830023,
+              "penalty": 498588,
+              "scheduledDate": "1405/05/20",
+              "deliveryDate": null,
+              "remainingAmount": null,
+              "installmentPayments": [
+                {
+                  "amount": 273994,
+                  "interest": 0,
+                  "penalty": 0,
+                  "date": null,
+                  "delay": null
+                },
+                {
+                  "amount": 52597594,
+                  "interest": 0,
+                  "penalty": 0,
+                  "date": null,
+                  "delay": null
+                }
+              ]
+            },
+            {
+              "installmentNumber": 22,
+              "amount": 49473389,
+              "interest": 2899611,
+              "penalty": 1119067,
+              "scheduledDate": "1405/06/20",
+              "deliveryDate": null,
+              "remainingAmount": null,
+              "installmentPayments": [
+                {
+                  "amount": 402406,
+                  "interest": 0,
+                  "penalty": 0,
+                  "date": null,
+                  "delay": null
+                },
+                {
+                  "amount": 53089661,
+                  "interest": 0,
+                  "penalty": 0,
+                  "date": null,
+                  "delay": null
+                }
+              ]
+            },
+            {
+              "installmentNumber": 23,
+              "amount": 50421635,
+              "interest": 1951365,
+              "penalty": 0,
+              "scheduledDate": "1405/07/20",
+              "deliveryDate": null,
+              "remainingAmount": null,
+              "installmentPayments": [
+                {
+                  "amount": 210339,
+                  "interest": 0,
+                  "penalty": 0,
+                  "date": null,
+                  "delay": null
+                }
+              ]
+            },
+            {
+              "installmentNumber": 24,
+              "amount": 51388067,
+              "interest": 984933,
+              "penalty": 0,
+              "scheduledDate": "1405/08/20",
+              "deliveryDate": null,
+              "remainingAmount": null,
+              "installmentPayments": []
+            }
+          ]
+        }
+      ],
+      "rotbebandiStandard": {
+        "data": {
+          "inquiryCreatedDate": null,
+          "personRoles": null,
+          "inquiryHistories": null,
+          "contractNegativeStatus": null,
+          "indirectContracts": null,
+          "personInformation": null,
+          "reportUniqueId": null,
+          "summaryInformationRelatedToContractsSumWithRoleType": null,
+          "summaryInformationRelatedToContractsSum": null,
+          "summaryInformationRelatedToContracts": null,
+          "inquiryStats": null,
+          "directContracts": null,
+          "personNegativeStatus": null,
+          "summaryInformationRelatedToContractsWithRoleType": null
+        },
+        "messageList": [],
+        "total": null,
+        "status": 200
+      },
+      "samatCheque": {
+        "chequeList": [],
+        "name": ""
+      },
+      "depositAverage": []
+    },
+    "uniqueKey": "1405129072607262621659",
+    "method": "tavan_mellat"
+  },
+  "requestId": "5e15ce81-c392-4e34-aca3-4778cea7e8b9",
+  "insertDate_yearMonth": "140507",
+  "insertDate_full": "14050726165957743",
+  "sourceIp": "::ffff:192.168.67.243",
+  "insertDate_yearMonthDay": "14050726",
+  "insertDate_year": "1405"
+}
