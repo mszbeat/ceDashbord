@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json.schemastore.org/nest-cli",
+  "collection": "@nestjs/schematics",
+  "sourceRoot": "src",
+  "compilerOptions": {
+    "deleteOutDir": true,
+    "assets": [
+      "evaluator/legacy/**/*.js",
+      "evaluator/legacy-report/**/*.js",
+      "db/*.sql"
+    ],
+    "watchAssets": true
+  }
+}

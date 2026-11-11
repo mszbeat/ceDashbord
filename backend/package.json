@@ -1,0 +1,33 @@
+{
+  "name": "ce-dashboard-backend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "CE Dashboard Server - Backend (NestJS) - ملت اول",
+  "scripts": {
+    "build": "nest build",
+    "start": "nest start",
+    "start:dev": "nest start --watch",
+    "start:prod": "node dist/main",
+    "migrate": "node src/db/migrate.js",
+    "ingest": "node -r ts-node/register src/ingestion/run-ingest.ts",
+    "ingest:mellat": "node -r ts-node/register src/ingestion/run-ingest.ts --bank=tavan_mellat",
+    "test": "node -r ts-node/register src/evaluator/evaluator.test.ts"
+  },
+  "dependencies": {
+    "@nestjs/common": "^10.3.0",
+    "@nestjs/core": "^10.3.0",
+    "@nestjs/platform-express": "^10.3.0",
+    "dotenv": "^16.4.5",
+    "pg": "^8.11.3",
+    "reflect-metadata": "^0.2.1",
+    "rxjs": "^7.8.1"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^10.3.0",
+    "@nestjs/testing": "^10.3.0",
+    "@types/node": "^20.11.0",
+    "@types/pg": "^8.10.9",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  }
+}

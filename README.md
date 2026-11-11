@@ -1,184 +1,259 @@
-# راهنمای پروژه ce-scripts
+# CE Dashboard Server — نسخه سروری
 
-این مخزن مجموعه‌ای از اسکریپت‌های Node.js برای دریافت گزارش‌های سرویس اعتبارسنجی و تحلیل آن‌هاست. جریان اصلی کار دو مرحله دارد:
+پیادهسازی صفر تا صد PRD `CE-Dashboard-Server-PRD.md` با ساختار `frontend/` + `backend/`، **بدون Docker**. نصب Node.js و PostgreSQL بر عهده شماست؛ اسکریپتها فقط پروژه را نصب، مایگریشن، اجرا و Ingestion میکنند.
 
-1. اسکریپت `report` گزارش‌ها را از API سرویس دریافت می‌کند، آن‌ها را بر اساس وضعیت موفق یا ناموفق دسته‌بندی می‌کند و در پوشهٔ `reports` به‌صورت فایل‌های JSON ذخیره می‌کند.
-2. ابزار `ce-dashboard` فایل‌های JSON داخل `reports` را می‌خواند، شاخص‌ها و نمودارها را محاسبه می‌کند و داشبورد HTML را می‌سازد.
+> نسخه ۱ فقط **بانک ملت (`tavan_mellat`)** فعال است. رسالت و پستبانک بعد از تست تطبیق اضافه میشوند؛ سپاه خارج از دامنه v1 است.
 
-## پیش‌نیازها
+---
 
-- Node.js نسخهٔ ۱۸ یا بالاتر
-- دسترسی شبکه به API گزارش‌های اعتبارسنجی برای اجرای مرحلهٔ دریافت گزارش
-- نصب وابستگی‌های ریشهٔ پروژه با `npm install`
-- مرورگر به‌روز برای مشاهدهٔ داشبورد
+## تصمیمهای ثبتشده
 
-ابزار `ce-dashboard` مستقل و آفلاین است و برای تحلیل گزارش‌ها به اینترنت یا نصب وابستگی جداگانه نیاز ندارد. وابستگی‌های نصب‌شده در ریشه برای اسکریپت `report` استفاده می‌شوند.
-
-## ساختار پروژه
-
-```text
-ce-scripts/
-├── report/
-│   ├── index.js                  نقطهٔ شروع اسکریپت دریافت گزارش
-│   └── src/
-│       ├── config.js             تنظیمات دریافت گزارش از API
-│       ├── main.js                منطق اصلی اجرای دریافت گزارش
-│       ├── services/
-│       │   ├── reportProcess.js  دریافت، پردازش و دسته‌بندی گزارش‌ها
-│       │   └── aiInputKeyMaps.js  نگاشت کلیدهای داده برای بانک‌ها
-│       └── utils/
-│           ├── buildAiInput.js   ساخت ورودی استاندارد هوش مصنوعی از گزارش
-│           └── fileUtils.js      ساخت پوشه‌ها و ذخیرهٔ فایل‌های خروجی
-├── ce-dashboard/
-│   ├── index.js                  نقطهٔ شروع ساخت داشبورد
-│   ├── src/                      اسکن، تحلیل و آماده‌سازی داده‌ها
-│   ├── banks/                    قواعد تحلیل اختصاصی هر بانک
-│   ├── assets/                   فایل‌های CSS و JavaScript داشبورد
-│   ├── docs/                     مستندات روش‌شناسی شاخص‌ها
-│   └── README.md                 راهنمای کامل ابزار CE DASHBOARD
-├── reports/                      داده‌های تولیدشده توسط report
-├── samples/                      نمونه فایل‌های JSON
-├── package.json
-└── README.md
-```
-
-## مرحلهٔ اول: دریافت گزارش‌ها با report
-
-نقطهٔ شروع اسکریپت دریافت گزارش فایل `report/index.js` است. این فایل `report/src/main.js` را اجرا می‌کند. منطق اصلی، تنظیمات را از `report/src/config.js` می‌خواند و پردازش را با سرویس `reportProcess` انجام می‌دهد.
-
-برای اجرا از ریشهٔ مخزن:
-
-```bash
-node report
-```
-
-Node.js فایل `index.js` داخل پوشهٔ `report` را اجرا می‌کند. پیش از اجرا، تنظیمات `report/src/config.js` را متناسب با بازه و فیلتر موردنظر بررسی کنید.
-
-### اجرای خودکار هر دو مرحله
-
-برای دریافت گزارش‌ها و ساخت داشبورد به‌صورت متوالی، از ریشهٔ مخزن دستور زیر را اجرا کنید:
-
-```bash
-npm run generate
-```
-
-این دستور، اسکریپت `generate` تعریف‌شده در `package.json` را اجرا می‌کند:
-
-```json
-"generate": "node report && node ce-dashboard"
-```
-
-ابتدا `node report` گزارش‌ها را دریافت و پوشهٔ `reports` را ایجاد می‌کند. پس از پایان موفق این مرحله، `node ce-dashboard` داده‌ها را تحلیل و فایل `report.html` را تولید می‌کند. عملگر `&&` باعث می‌شود اگر مرحلهٔ دریافت گزارش با خطا متوقف شود، مرحلهٔ ساخت داشبورد اجرا نشود.
-
-### تنظیمات report
-
-تنظیمات در شیء `config` داخل `report/src/config.js` قرار دارند:
-
-| گزینه | کاربرد |
+| موضوع | انتخاب |
 |---|---|
-| `url.url` | آدرس endpoint دریافت گزارش‌ها |
-| `url.protocol` | پروتکل درخواست؛ در تنظیم فعلی `http` است |
-| `url.method` | متد HTTP؛ در تنظیم فعلی `GET` است |
-| `url.params` | پارامترهای درخواست API مانند `page`، `limit`، `status`، `date`، `nationalCode`، `requestId` و `uniqueKey` |
-| `headers` | هدرهای احراز هویت و شناسایی سامانه؛ شامل `gateway-system` و `gateway-token` |
-| `count` | تعداد گزارش موردنظر در حالت محدود؛ در صورت `null` از مقدار کل API استفاده می‌شود، مشروط به `all` |
-| `all` | اگر `true` باشد همهٔ گزارش‌های منطبق با فیلتر دریافت می‌شوند |
-| `nationalCode`، `uniqueKey`، `requestId` | مقادیر فیلترهای اختصاصی که در مسیر اجرای فیلتر انتخاب‌شده استفاده می‌شوند |
-| `date` | آرایهٔ دو عضوی تاریخ شروع و پایان شمسی با قالب `YYYY/MM/DD`؛ هر دو سر بازه در پردازش روزانه لحاظ می‌شوند |
-| `filterKey` | تعیین فیلتر اصلی اجرا؛ برای نمونه `date` باعث پردازش روزبه‌روز بازهٔ `date` می‌شود |
+| فرانتاند | Next.js 14 + React 18 + Tailwind CSS |
+| بکاند | NestJS 10 + PostgreSQL (`pg`) |
+| اولین بانک | ملت |
+| احراز هویت | فعلاً ندارد؛ بعداً با سرویس بومی شرکت وصل میشود |
+| اجرا | `install.sh` / `start.sh` / `migrate.sh` / `ingest.sh` در ریشه و هر پوشه |
+| Push | همین ریپو، برنچ `main` با Deploy Key (بعداً انتقال به ریپوی سازمانی) |
+| Docker Compose | حذف شد |
 
-پارامترهای `url.params` که مقدارشان `null` باشد، هنگام ارسال درخواست حذف می‌شوند. مقدار `url.params.limit` اندازهٔ صفحهٔ دریافت از API است و در کد فعلی ۵۰ تنظیم شده است. پردازش هر روز تا دریافت تعداد گزارش موردنیاز ادامه پیدا می‌کند.
+---
 
-**نکتهٔ مهم دربارهٔ خروجی:** اجرای `report` در ابتدای کار پوشهٔ `reports` موجود را به‌صورت بازگشتی حذف می‌کند و سپس خروجی تازه را می‌سازد. بنابراین اگر دادهٔ قبلی داخل این پوشه لازم است، پیش از اجرای مجدد از آن نسخهٔ پشتیبان تهیه کنید.
+## ساختار
 
-### ساختار خروجی report
-
-گزارش‌ها در پوشه‌ای به نام `reports` و بر اساس مقدار فیلتر مرتب می‌شوند. برای فیلتر تاریخ، `/` به `-` تبدیل می‌شود:
-
-```text
-reports/
-├── 1405-08-10/
-│   ├── success/
-│   │   └── 1405-08-10(1).json
-│   └── fail/
-│       └── 1405-08-10(1).json
-└── final.txt
+```
+ce-dashboard-server/
+├── install.sh              # نصب هر دو پوشه
+├── start.sh                # اجرای بکاند :3000 + فرانتاند :3001
+├── dev.sh                  # حالت توسعه با watch
+├── migrate.sh              # ساخت جداول PostgreSQL
+├── ingest.sh               # اجرای Ingestion (شبانه / میانروز / بکفیل)
+├── backend/
+│   ├── install.sh
+│   ├── start.sh
+│   ├── .env.example
+│   ├── package.json
+│   ├── src/
+│   │   ├── main.ts
+│   │   ├── config.ts
+│   │   ├── db/               # schema.sql + migrate.js + DatabaseService
+│   │   ├── evaluator/
+│   │   │   ├── legacy/       # کپی banks/* و src/* از ریپو قدیمی (قواعد دستنخورده)
+│   │   │   ├── legacy-report/# buildAiInput.js + aiInputKeyMaps.js از report/
+│   │   │   ├── evaluator.service.ts   # استخراج analyzeOne بهعنوان کتابخانه (M1)
+│   │   │   └── evaluator.test.ts      # تست تطبیق روی نمونه ملت
+│   │   ├── ingestion/        # Worker صفحهای + checkpoint + advisory lock
+│   │   ├── summary/          # Web API فقطخواندنی + پروکسی جزئیات
+│   │   └── utils/date.ts     # تاریخ شمسی با timezone Asia/Tehran
+│   └── test-data/mellat-sample.json
+└── frontend/
+    ├── install.sh
+    ├── start.sh
+    ├── .env.example
+    ├── app/
+    │   ├── layout.tsx        # RTL / فارسی
+    │   ├── page.tsx          # داشبورد کامل
+    │   ├── api.ts
+    │   └── globals.css
+    ├── next.config.js        # پروکسی /api به بکاند
+    └── tailwind.config.js
 ```
 
-هر فایل JSON شامل یک صفحه از گزارش‌هاست. گزارش‌ها در دو گروه `success` و `fail` قرار می‌گیرند. فایل `final.txt` تعداد موفق و ناموفق را برای هر مقدار فیلتر ثبت می‌کند.
+---
 
-در زمان پردازش، ورودی‌های AI قدیمی و جدید تا حد پشتیبانی کد به ساختار قابل‌استفاده تبدیل می‌شوند. نگاشت نام فیلدهای اختصاصی بانک‌ها در `aiInputKeyMaps.js` تعریف شده است. بانک‌های پشتیبانی‌شده در سازندهٔ ورودی AI عبارت‌اند از ملت (`tavan_mellat`)، رسالت (`tavan_resalat`)، پست‌بانک (`tavan_postBank`) و سپه (`tavan_sepah`).
+## M0 — باگهایی که قبل از هر کاری رفع شد
 
-## مرحلهٔ دوم: ساخت داشبورد با ce-dashboard
+همانطور که PRD §1.3 گفته بود، یک جایگزینی متنی سراسری کد قدیمی را خراب کرده بود:
 
-پس از اینکه پوشهٔ `reports` توسط مرحلهٔ قبل ساخته و با فایل‌های JSON پر شد، از ریشهٔ مخزن دستور زیر را اجرا کنید:
+| فایل | قبل | بعد |
+|---|---|---|
+| `banks/resalat.js` | `rotbce-dashboardta` | `rotbeData` |
+| `banks/postbank.js` | `rotbce-dashboardta` | `rotbeData` |
+| `src/data-monitoring.js` | `approvce-dashboardmount` | `approvedAmount` |
+| `src/credit-alerts.js` | `chequCEdashboardte` | `chequeDate` |
+
+الان `node --check` روی همه فایلهای legacy پاس میشود و `loadBanks()` هر سه بانک را لود میکند. قواعد تحلیل **بازنویسی نشدهاند**؛ فقط `analyzeOne` از `src/analyze.js` به یک تابع قابل فراخوانی (`createEvaluator`) استخراج شده است.
+
+---
+
+## نصب و اجرا
+
+### ۱) پیشنیازها (با خودتان)
 
 ```bash
-node ce-dashboard
+node -v        # >= 18، پیشنهاد 20
+psql --version # PostgreSQL 14+ 
+createdb ce_dashboard
+# یا:
+# sudo -u postgres psql -c "CREATE USER ce_user WITH PASSWORD 'ce_pass';"
+# sudo -u postgres psql -c "CREATE DATABASE ce_dashboard OWNER ce_user;"
 ```
 
-این دستور `ce-dashboard/index.js` را اجرا می‌کند. ابزار، داده‌های `./reports` را تحلیل می‌کند و فایل `./report.html` را در ریشهٔ پروژه می‌سازد. سپس فایل `report.html` را با مرورگر باز کنید.
-
-برای اجرای سفارشی می‌توانید مسیر ورودی، مسیر خروجی و سقف ردیف‌های فهرست‌ها را مشخص کنید:
+### ۲) تنظیم متغیرها
 
 ```bash
-node ce-dashboard [INPUT_DIR] [OUTPUT_HTML] [MAX_ROWS]
+cp backend/.env.example backend/.env
+cp frontend/.env.example frontend/.env.local
 ```
 
-برای مثال:
+`backend/.env` مهمترین مقادیر:
+
+```env
+DATABASE_URL=postgres://ce_user:ce_pass@localhost:5432/ce_dashboard
+CE_API_BASE_URL=http://creditevaluation-v2.ara.partdp.ir/creditEvaluation@2/report
+CE_GATEWAY_TOKEN=توکن_واقعی
+BACKEND_PORT=3000
+```
+
+> هدرهای `gateway-system` و `gateway-token` دقیقاً مثل `report/src/config.js` قدیمی ارسال میشوند. توکن دیگر داخل کد نیست.
+
+### ۳) نصب
 
 ```bash
-node ce-dashboard ./reports ./report.html 100
+./install.sh
+# یا جداگانه:
+./backend/install.sh
+./frontend/install.sh
 ```
 
-- `INPUT_DIR`: مسیر پوشهٔ داده‌ها؛ پیش‌فرض `./reports` است.
-- `OUTPUT_HTML`: مسیر فایل داشبورد؛ پیش‌فرض `./report.html` است.
-- `MAX_ROWS`: سقف ردیف‌های قابل نمایش در فهرست‌ها؛ پیش‌فرض ۱۰۰ و محدودهٔ مجاز ۱ تا ۱۰٬۰۰۰ است. این مقدار تعداد گزارش‌های تحلیل‌شده یا آمار کلی را محدود نمی‌کند.
+### ۴) ساخت جداول
 
-مسیرهای نسبی از پوشه‌ای محاسبه می‌شوند که دستور را در آن اجرا می‌کنید. برای راهنمای آرگومان‌ها اجرا کنید:
-
-
-### روند کامل اجرا
-
-```text
-ویرایش report/src/config.js
-          │
-          ▼
-اجرای npm run generate
-          │
-          ▼
-دریافت و دسته‌بندی گزارش‌ها
-          │
-          ▼
-ساخته شدن پوشهٔ reports و فایل‌های JSON
-          │
-          ▼
-اجرای خودکار node ce-dashboard پس از موفقیت report
-          │
-          ▼
-تحلیل داده‌ها و ساخت report.html
-          │
-          ▼
-مشاهدهٔ داشبورد در مرورگر
+```bash
+./migrate.sh
 ```
 
-### نکته‌های مهم CE DASHBOARD
+جداول: `day_runs`، `samples_mellat`، `message_dict`، `sample_access_logs`.
 
-- بانک از مقدار `input.method` در گزارش‌ها تشخیص داده می‌شود. اگر چند بانک در ورودی باشند، بانکی که بیشترین گزارش معتبر را دارد انتخاب می‌شود؛ برای داشبورد جداگانهٔ هر بانک، داده‌های بانک‌ها را جداگانه تحلیل کنید.
-- نام پوشهٔ ورودی برای تولید فایل جزئیات خصوصی باید دقیقاً `reports` باشد و فایل HTML باید کنار همان پوشه تولید شود. در اجرای پیش‌فرض `node ce-dashboard` این چیدمان رعایت می‌شود.
-- داشبورد HTML آمار و نمودارهای عمومی را در خود دارد. دادهٔ کامل گزارش‌های منتخب در فایل همراهی زیر `reports/_ce-dashboard-private` ذخیره می‌شود و برای نمایش جزئیات لازم است.
-- HTML و فایل همراه خصوصی متناظر با آن را با هم جابه‌جا کنید؛ جابه‌جایی تنها HTML باعث از دسترس خارج شدن جزئیات می‌شود.
-- فایل HTML ممکن است شامل شناسه‌ها، نام مدل‌ها، پیام‌ها و بعضی مقادیر حساس باشد. فایل همراه خصوصی نیز دادهٔ کامل گزارش‌های منتخب را نگه می‌دارد. پیش از اشتراک‌گذاری خروجی‌ها، محتوای آن‌ها را بررسی کنید.
+### ۵) اجرا
 
-برای جزئیات شاخص‌ها، نمودارها، قواعد تحلیل بانک‌ها، محرمانگی و عیب‌یابی، فایل [`ce-dashboard/README.md`](ce-dashboard/README.md) را مطالعه کنید.
+```bash
+./start.sh
+```
 
-## عیب‌یابی ابتدایی
+- بکاند: `http://localhost:3000/api/health`
+- فرانتاند: `http://localhost:3001`
+- مرورگر فقط `/api/...` را صدا میزند؛ `next.config.js` آن را به بکاند پروکسی میکند (پس در محیط Preview هم `localhost` مرورگر مشکلی ایجاد نمیکند).
 
-| مشکل | بررسی |
+لاگها در `logs/backend.log` و `logs/frontend.log`.
+
+حالت توسعه:
+
+```bash
+./dev.sh
+```
+
+---
+
+## Ingestion
+
+```bash
+# نهاییسازی خودکار دیروز (پیشفرض)
+./ingest.sh --mode=nightly
+
+# میانروز: بازخوانی کامل روز جاری، وضعیت partial
+./ingest.sh --mode=intraday
+
+# یک روز مشخص
+./ingest.sh --day=1405-08-18 --mode=nightly
+
+# بکفیل ۷ روز قبل تا دیروز
+./ingest.sh --days=7
+```
+
+رفتار:
+
+1. قفل `pg_advisory_lock` روی `(bank, day)` تا دو اجرا همزمان نشوند.
+2. `source_total` از `page=1&limit=1` خوانده میشود.
+3. صفحهها با `limit=50` پشتسرهم گرفته میشوند.
+4. هر گزارش با همان `buildAiInput.js` نرمال میشود؛ موفق/ناموفق دقیقاً با همان چهار پیام انگلیسی `isReportSuccess` مشخص میشود.
+5. `analyzeOne` قدیمی اجرا میشود و فقط ردیف تحلیلشده با `ON CONFLICT(request_id) DO UPDATE` در PostgreSQL ذخیره میشود. **گزارش خام، کد ملی، متن آزاد پیام و نام شعبه ذخیره نمیشود.**
+6. بعد از هر صفحه `checkpoint` در `day_runs` بهروز میشود؛ اجرای بعدی از همانجا ادامه پیدا میکند.
+7. شبانه: `complete` (یا `needs_review` اگر مغایرت/پرش باشد). میانروز: همیشه `partial`.
+
+### زمانبندی پیشنهادی (cron روی سرور، timezone Tehran)
+
+```cron
+30 0 * * *  cd /path/ce-dashboard-server && ./ingest.sh --mode=nightly >> logs/cron-nightly.log 2>&1
+*/30 8-20 * * * cd /path/ce-dashboard-server && ./ingest.sh --mode=intraday >> logs/cron-intraday.log 2>&1
+```
+
+---
+
+## API بکاند
+
+| متد | مسیر | توضیح |
+|---|---|---|
+| GET | `/api/health` | سلامت سرویس |
+| GET | `/api/banks` | بانکهای فعال |
+| GET | `/api/specs?bank=tavan_mellat` | تعریف شاخصها، دستهها، متریکها، موضوعات |
+| GET | `/api/summary?bank=&from=&to=` | آمار کامل: KPI، `percentile_cont`، هیستوگرام،flags،دستهها،سرویسها،کیفیت داده،روند روزانه،اجراها |
+| GET | `/api/list?bank=&from=&to=&type=flag&id=rotbeNull&limit=100&offset=0` | فهرست حداکثر ۱۰۰تایی + `COUNT(*) OVER()` |
+| GET | `/api/list?...&type=metric&id=totalTime` | مرتبسازی بر مقدار عددی در SQL |
+| GET | `/api/list?...&type=cat&id=depositLength&value=empty` | فیلتر روی مقدار دسته |
+| GET | `/api/list?...&type=slow` | گزارشهای کندتر از ۴ ثانیه |
+| GET | `/api/sample/{requestId}` | پروکسی لحظهای به API اصلی؛ `no-store` + لاگ ممیزی |
+| GET | `/api/runs` | وضعیت اجراها |
+| POST | `/api/runs` | اجرای دستی `{ "bank", "day", "mode" }` |
+
+`from`/`to` شمسی `YYYY-MM-DD` یا `YYYY/MM/DD` قبول میکند. پیشفرض ۳۰ روز اخیر تهران است.
+
+---
+
+## نکات طراحی مهم
+
+- **همان قواعد، تجمیع متفاوت:** بهجای `stats.metrics[id].push(...)` در RAM، مقادیر در `metrics JSONB` ذخیره و چارکها با `percentile_cont` در SQL گرفته میشوند.
+- **پیامها:** `messageSuccess` / `messageFail` قدیمی متن آزاد پیام را نگه میداشتند. اینجا به کلید پایدار (`MSG_VALIDATION_SUCCESS` و …) تبدیل میشوند؛ برچسب فارسی آنها در `message_dict` است. پیام ناشناخته فقط هش کوتاه میگیرد، متنش ذخیره نمیشود.
+- **PD دقیقاً ۰٫۵:** مقدار خام و بدون گردکردن ذخیره میشود و هیستوگرام PD ردیف مستقل «دقیقاً ۰٫۵۰» دارد.
+- **ملت:** طبق `overviewNote` قدیمی، `output.Credit_Basket` توان بازپرداخت (ریال) است؛ `amount_kind=repayment_capacity` گذاشته شده تا با سبد ردهای `Tavan_Baz_Pardakht` اشتباه نشود.
+- **نمونه کامل:** فقط با کلیک روی `request_id` و با فیلتر همان شناسه از API اصلی گرفته میشود؛ پاسخ `Cache-Control: no-store` دارد، کد ملی/`sourceIp` از پاسخ حذف میشود و فقط یک ردیف ممیزی در `sample_access_logs` ثبت میشود.
+- **احراز هویت:** فعلاً `POST /api/runs` و مشاهده جزئیات باز هستند. ساختار طوری است که بعداً یک Guard سرویس بومی شرکت به `SummaryController` / `IngestionController` اضافه شود.
+
+---
+
+## تست تطبیق
+
+```bash
+cd backend
+npm test
+```
+
+خروجی نمونه:
+
+```
+✅ evaluator parity test passed: { requestId: ..., flags: 10, metrics: 27, cats: 7, paths: 4, services: 5 }
+```
+
+این تست روی `test-data/mellat-sample.json` بررسی میکند که `requestId`، `PD=0.5`، `total_time=0.04`، ۱۰ فلگ فعال، وضعیت سرویس `iran=failed` و حذف متن پیام/کد ملی با کد قدیمی همخوانی دارد.
+
+---
+
+## موارد باز (از PRD)
+
+- **D-01:** ترتیب/کرسر API برای میانروز قطعی نیست. فعلاً گزینه B پیاده شده: میانروز کل روز جاری را از صفحه ۱ بازخوانی میکند و چون `upsert` است تکراری ایجاد نمیشود. اگر API ترتیب پایدار دارد، بعداً به گزینه A (ادامه از checkpoint) تغییر میدهیم.
+- **D-02..D-12:** نوع آرایه فلگها، حداکثر لیست، rollup، قالب پیام، زمانبندی دقیق، retention، SSO، autoBank، سطح جزئیات و ذخیره `uniqueKey` همچنان در PRD باز هستند. تصمیمهای پیشفرض این نسخه: لیست حداکثر ۱۰۰، بدون rollup جداگانه (SQL مستقیم)، بدون retention خودکار، بدون SSO، بدون autoBank، `uniqueKey` ذخیره نمیشود.
+- **M5:** اضافهشدن رسالت و پستبانک، بکفیل کامل و سختسازی باقی مانده است.
+- **Sepah:** طبق PRD خارج از v1.
+
+---
+
+## Push با Deploy Key
+
+1. در گیتاب: `Settings → Deploy keys → Add deploy key`، تیک **Allow write access** را بزن.
+2. کلید خصوصی را به من بده/آپلود کن؛ کلون SSH میشود (`git@github.com:mszbeat/ceDashbord.git`).
+3. کامیت روی `main` Push میشود. اگر Branch Protection روی `main` فعال باشد، Push مستقیم رد میشود — در آن صورت یا موقتاً برداشته شود یا یک برنچ `server-dashboard` استفاده شود.
+4. محدودیت Deploy Key: فقط همین ریپو؛ امکان PR / Issue / Release / تنظیمات ریپو ندارد. بعد از تحویل حتماً Rotate کن.
+5. هیچ کلید خصوصی و هیچ توکنی کامیت نمیشود؛ `.env` در `.gitignore` است.
+
+---
+
+## عیبیابی کوتاه
+
+| خطا | بررسی |
 |---|---|
-| خطای ارتباط با API | آدرس endpoint، پروتکل، هدرها، توکن و دسترسی شبکه را در `report/src/config.js` بررسی کنید. |
-| پوشهٔ `reports` خالی است | مقدار `filterKey` و فیلترهای متناظر را بررسی کنید و مطمئن شوید API برای آن فیلتر داده دارد. |
-| داشبورد داده‌ای نمایش نمی‌دهد | وجود فایل‌های JSON در ساختار روز/`success` یا روز/`fail` و مقدار `input.method` را بررسی کنید. |
-| جزئیات گزارش در داشبورد باز نمی‌شود | نام ورودی باید `reports` باشد، HTML باید کنار آن ساخته شود و فایل همراه متناظر در `reports/_ce-dashboard-private` موجود باشد. |
-| تغییرات داشبورد دیده نمی‌شود | پس از تغییر فایل‌های CE DASHBOARD، دستور `node ce-dashboard` را دوباره اجرا و HTML تازه را باز کنید. |
-
+| `DATABASE_URL تنظیم نشده` | `backend/.env` ساخته نشده |
+| `relation "samples_mellat" does not exist` | `./migrate.sh` اجرا نشده |
+| `دریافت صفحه ... ناموفق بود` | `CE_GATEWAY_TOKEN` / دسترسی شبکهای به API اصلی |
+| فرانتاند داده نشان نمیدهد | بکاند بالا نیست یا `BACKEND_URL` در `frontend/.env.local` اشتباه است |
+| `partial` همیشه میماند | طبیعی است؛ حالت میانروز است. شبانه `complete` میشود |
+| `needs_review` | مغایرت `source_total` با پردازش یا وجود نمونه پرشده؛ `day_runs.error` و لاگ Ingestion را ببین |
