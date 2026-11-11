@@ -1,18 +1,19 @@
 # قدیمی
 reports*/
-node_modules/
 
 # نسخه سروری
-backend/node_modules/
-frontend/node_modules/
-backend/dist/
-frontend/.next/
-frontend/out/
+node_modules/
+dist/
+.next/
+out/
 logs/
 *.log
-*.tsbuildinfo
 .env
 .env.local
 .env.*.local
+*.tsbuildinfo
 .DS_Store
 coverage/
+# خروجیهای تست تطبیق و بایگانی UI قبلی (تحویل داده نمیشوند)
+backend/test-data/*.html
+frontend/tailwind-page.tsx.bak

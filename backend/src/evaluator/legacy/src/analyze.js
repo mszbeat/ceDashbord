@@ -308,4 +308,4 @@ function createEvaluator(bank, selectedServices = [], log = () => {}) {
   };
 }
 
-module.exports = { analyze, createEvaluator, serviceState, publicIdentifiers, stampOf, rotbeKind, SERVICE_KINDS };
+module.exports = { analyze, createEvaluator, serviceState, publicIdentifiers, stampOf, baseRow, rotbeKind, newStats, bump, SERVICE_KINDS };

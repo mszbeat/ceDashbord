@@ -7,6 +7,9 @@
     "assets": [
       "evaluator/legacy/**/*.js",
       "evaluator/legacy-report/**/*.js",
+      "legacy-report/**/*.js",
+      "legacy-report/assets/*.css",
+      "legacy-report/assets/*.js",
       "db/*.sql"
     ],
     "watchAssets": true

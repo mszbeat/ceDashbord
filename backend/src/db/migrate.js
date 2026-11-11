@@ -10,7 +10,7 @@ const { Pool } = require('pg');
   const sql = fs.readFileSync(path.join(process.cwd(), 'src/db/schema.sql'), 'utf8');
   try {
     await pool.query(sql);
-    console.log('✅ Migration انجام شد: day_runs, samples_mellat, message_dict, sample_access_logs');
+    console.log('✅ Migration انجام شد: day_runs, samples_{mellat,resalat,postbank}, message_dict, sample_access_logs');
   } catch (error) {
     console.error('❌ Migration خطا داد:', error.message);
     process.exitCode = 1;

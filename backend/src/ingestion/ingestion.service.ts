@@ -6,10 +6,10 @@ import { normalizeDay, tehranToday, tehranYesterday, toApiDate } from '../utils/
 export { normalizeDay, tehranToday, tehranYesterday } from '../utils/date';
 
 const UPSERT_COLUMNS = [
-  'request_id', 'day', 'inserted_at', 'is_success', 'model_name', 'status_code', 'error_code', 'message_key',
+  'request_id', 'day', 'inserted_at', 'stamp_key', 'unique_key', 'is_success', 'model_name', 'status_code', 'error_code', 'message_key',
   'total_time_s', 'pd', 'suggested_amount', 'amount_kind', 'score_req', 'credit_basket', 'avg36',
   'ln_avg_installments', 'rotbe', 'flags', 'cats', 'counters', 'metrics', 'paths', 'services',
-  'credit_alerts', 'analysis_version',
+  'credit_alerts', 'display_extras', 'analysis_version',
 ] as const;
 
 @Injectable()
@@ -52,10 +52,14 @@ export class IngestionService {
     if (!rows.length) return;
     const values: string[] = [];
     const params: any[] = [];
+    const jsonColumns = new Set(['flags', 'cats', 'counters', 'metrics', 'paths', 'services', 'credit_alerts', 'display_extras']);
     rows.forEach((row, index) => {
       const base = index * UPSERT_COLUMNS.length;
       values.push(`(${UPSERT_COLUMNS.map((_, i) => `$${base + i + 1}`).join(',')})`);
-      for (const column of UPSERT_COLUMNS) params.push((row as any)[column]);
+      for (const column of UPSERT_COLUMNS) {
+        const value = (row as any)[column];
+        params.push(jsonColumns.has(column) && value !== null && value !== undefined ? JSON.stringify(value) : value);
+      }
     });
     const updates = UPSERT_COLUMNS.filter((c) => c !== 'request_id')
       .map((c) => `${c}=EXCLUDED.${c}`).join(', ');
@@ -75,7 +79,7 @@ export class IngestionService {
        VALUES($1,$2,$3,'running',$4,$5,now())
        ON CONFLICT(bank,day) DO UPDATE SET mode=EXCLUDED.mode, status='running', checkpoint=EXCLUDED.checkpoint,
          analysis_version=EXCLUDED.analysis_version, started_at=now(), finished_at=NULL, error=NULL, updated_at=now()`,
-      [bankKey, day, mode, checkpoint, this.evaluator.analysisVersion],
+      [bankKey, day, mode, checkpoint, this.evaluator.versionOf(bankKey)],
     );
     return checkpoint;
   }
@@ -92,7 +96,7 @@ export class IngestionService {
   async runDay(bankInput: string, dayInput?: string, mode: 'nightly' | 'intraday' = 'nightly') {
     const bankKey = bankInput as BankKey;
     const bank = BANKS[bankKey];
-    if (!bank) throw new Error(`بانک پشتیبانیشده نیست: ${bankInput} (نسخه ۱ فقط tavan_mellat)`);
+    if (!bank) throw new Error(`بانک پشتیبانیشده نیست: ${bankInput} (بانکهای پشتیبانیشده: ملت، رسالت، پستبانک)`);
     const day = normalizeDay(dayInput ?? (mode === 'nightly' ? tehranYesterday() : tehranToday()));
     const client = await this.db.getClient();
     const lockKey = `ce-ingest:${bankKey}:${day}`;
@@ -120,7 +124,7 @@ export class IngestionService {
             const method = String(sample?.input?.method ?? '').toLowerCase();
             if (method !== bank.method) { skipped++; continue; }
             const isSuccess = this.evaluator.isReportSuccess(sample);
-            const row = this.evaluator.evaluate(sample, isSuccess, day);
+            const row = this.evaluator.evaluate(sample, isSuccess, day, bankKey);
             if (!row.request_id) { skipped++; continue; }
             rows.push(row);
             if (isSuccess) success++; else fail++;
@@ -130,6 +134,12 @@ export class IngestionService {
           }
         }
         await this.upsertBatch(bank.table, rows);
+        const unknownKeys = [...new Set(rows.map((row) => row.message_key).filter((key) => key && key.startsWith('MSG_UNKNOWN:')))];
+        if (unknownKeys.length) await this.db.query(
+          `INSERT INTO message_dict(message_key, label, topic, message_text)
+           SELECT key, 'سایر پیامها', 'other', 'سایر پیامها' FROM unnest($1::text[]) AS key
+           ON CONFLICT (message_key) DO NOTHING`, [unknownKeys],
+        );
         checkpoint += slice.length;
         await this.updateRun(client, bankKey, day, {
           checkpoint, ingested_count: processed, success_count: success, fail_count: fail, skipped_count: skipped,

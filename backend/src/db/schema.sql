@@ -1,6 +1,7 @@
--- CE Dashboard Server - PostgreSQL Schema (M2/M3)
--- بانک فعال نسخه ۱: ملت (samples_mellat)
--- اصل PRD: کد ملی، متن آزاد پیام، نام شعبه و گزارش خام ذخیره نمی‌شود.
+-- CE Dashboard Server - PostgreSQL Schema
+-- بانکهای نسخه ۱: ملت، رسالت، پستبانک (همان رجیستری banks/*.js)
+-- اصل PRD: کد ملی، متن آزاد پیام، نام شعبه و گزارش خام ذخیره نمیشود.
+-- پیامهای قالبی فقط در message_dict نگهداری میشوند تا خروجی دقیقاً مثل report.html باشد.
 
 CREATE TABLE IF NOT EXISTS day_runs (
   bank TEXT NOT NULL,
@@ -25,13 +26,15 @@ CREATE TABLE IF NOT EXISTS samples_mellat (
   request_id TEXT PRIMARY KEY,
   day TEXT NOT NULL,
   inserted_at TEXT,
+  stamp_key TEXT,
+  unique_key TEXT,
   is_success BOOLEAN NOT NULL,
   model_name TEXT,
   status_code TEXT,
   error_code TEXT,
   message_key TEXT,
   total_time_s DOUBLE PRECISION,
-  pd DOUBLE PRECISION, -- مقدار خام، بدون گرد کردن (برای تفکیک دقیقاً ۰٫۵)
+  pd DOUBLE PRECISION,
   suggested_amount NUMERIC(20,0),
   amount_kind TEXT,
   score_req DOUBLE PRECISION,
@@ -46,35 +49,71 @@ CREATE TABLE IF NOT EXISTS samples_mellat (
   paths JSONB NOT NULL DEFAULT '{}'::jsonb,
   services JSONB NOT NULL DEFAULT '{}'::jsonb,
   credit_alerts JSONB,
+  display_extras JSONB NOT NULL DEFAULT '{}'::jsonb,
   analysis_version TEXT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- ستونهای نسخه «تطابق دقیق» (برای دیتابیسهای از قبل ساختهشده)
+ALTER TABLE samples_mellat ADD COLUMN IF NOT EXISTS stamp_key TEXT;
+ALTER TABLE samples_mellat ADD COLUMN IF NOT EXISTS unique_key TEXT;
+ALTER TABLE samples_mellat ADD COLUMN IF NOT EXISTS display_extras JSONB NOT NULL DEFAULT '{}'::jsonb;
+
 CREATE INDEX IF NOT EXISTS idx_samples_mellat_day ON samples_mellat(day);
 CREATE INDEX IF NOT EXISTS idx_samples_mellat_day_success ON samples_mellat(day, is_success);
+CREATE INDEX IF NOT EXISTS idx_samples_mellat_stamp ON samples_mellat(day, stamp_key, request_id);
+CREATE INDEX IF NOT EXISTS idx_samples_mellat_cursor ON samples_mellat(day, COALESCE(stamp_key, ''), request_id);
 CREATE INDEX IF NOT EXISTS idx_samples_mellat_model ON samples_mellat(model_name);
 CREATE INDEX IF NOT EXISTS idx_samples_mellat_flags ON samples_mellat USING GIN(flags);
 CREATE INDEX IF NOT EXISTS idx_samples_mellat_cats ON samples_mellat USING GIN(cats);
 CREATE INDEX IF NOT EXISTS idx_samples_mellat_metrics ON samples_mellat USING GIN(metrics);
 CREATE INDEX IF NOT EXISTS idx_samples_mellat_total_time ON samples_mellat(total_time_s DESC) WHERE total_time_s IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_samples_mellat_pd ON samples_mellat(pd) WHERE pd IS NOT NULL;
--- نمونه ایندکس partial برای پرتکرارترین فهرست؛ بعد از اندازهگیری روی سرور بقیه اضافه میشود
 CREATE INDEX IF NOT EXISTS idx_mellat_rotbe_null ON samples_mellat(day) WHERE (flags->>'rotbeNull') = 'true';
+
+-- دو جدول دیگر همان ساختار و ایندکسها را از جدول ملت میگیرند.
+CREATE TABLE IF NOT EXISTS samples_resalat (LIKE samples_mellat INCLUDING ALL);
+CREATE TABLE IF NOT EXISTS samples_postbank (LIKE samples_mellat INCLUDING ALL);
+
+ALTER TABLE samples_resalat ADD COLUMN IF NOT EXISTS stamp_key TEXT;
+ALTER TABLE samples_resalat ADD COLUMN IF NOT EXISTS unique_key TEXT;
+ALTER TABLE samples_resalat ADD COLUMN IF NOT EXISTS display_extras JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE samples_postbank ADD COLUMN IF NOT EXISTS stamp_key TEXT;
+ALTER TABLE samples_postbank ADD COLUMN IF NOT EXISTS unique_key TEXT;
+ALTER TABLE samples_postbank ADD COLUMN IF NOT EXISTS display_extras JSONB NOT NULL DEFAULT '{}'::jsonb;
+
+CREATE INDEX IF NOT EXISTS idx_samples_resalat_day ON samples_resalat(day);
+CREATE INDEX IF NOT EXISTS idx_samples_resalat_day_success ON samples_resalat(day, is_success);
+CREATE INDEX IF NOT EXISTS idx_samples_resalat_stamp ON samples_resalat(day, stamp_key, request_id);
+CREATE INDEX IF NOT EXISTS idx_samples_resalat_cursor ON samples_resalat(day, COALESCE(stamp_key, ''), request_id);
+CREATE INDEX IF NOT EXISTS idx_samples_resalat_flags ON samples_resalat USING GIN(flags);
+CREATE INDEX IF NOT EXISTS idx_samples_resalat_cats ON samples_resalat USING GIN(cats);
+CREATE INDEX IF NOT EXISTS idx_samples_resalat_metrics ON samples_resalat USING GIN(metrics);
+
+CREATE INDEX IF NOT EXISTS idx_samples_postbank_day ON samples_postbank(day);
+CREATE INDEX IF NOT EXISTS idx_samples_postbank_day_success ON samples_postbank(day, is_success);
+CREATE INDEX IF NOT EXISTS idx_samples_postbank_stamp ON samples_postbank(day, stamp_key, request_id);
+CREATE INDEX IF NOT EXISTS idx_samples_postbank_cursor ON samples_postbank(day, COALESCE(stamp_key, ''), request_id);
+CREATE INDEX IF NOT EXISTS idx_samples_postbank_flags ON samples_postbank USING GIN(flags);
+CREATE INDEX IF NOT EXISTS idx_samples_postbank_cats ON samples_postbank USING GIN(cats);
+CREATE INDEX IF NOT EXISTS idx_samples_postbank_metrics ON samples_postbank USING GIN(metrics);
 
 CREATE TABLE IF NOT EXISTS message_dict (
   message_key TEXT PRIMARY KEY,
   label TEXT NOT NULL,
   topic TEXT NOT NULL
 );
+ALTER TABLE message_dict ADD COLUMN IF NOT EXISTS message_text TEXT;
 
-INSERT INTO message_dict(message_key, label, topic) VALUES
-  ('MSG_VALIDATION_SUCCESS', 'اعتبارسنجی موفق', 'success'),
-  ('MSG_HISTORY_NOT_ENOUGH', 'سابقه اعتباری کافی نیست', 'success'),
-  ('MSG_OVERDUE_DEBT', 'بدهی معوق', 'success'),
-  ('MSG_BOUNCED_CHECK', 'چک برگشتی', 'success'),
-  ('MSG_UNKNOWN', 'پیام طبقهبندی نشده', 'other')
-ON CONFLICT (message_key) DO NOTHING;
+INSERT INTO message_dict(message_key, label, topic, message_text) VALUES
+  ('MSG_VALIDATION_SUCCESS', 'اعتبارسنجی موفق', 'success', E'درخواست اعتبارسنجی با موفقیت انجام شد.\nValidation was successful.'),
+  ('MSG_HISTORY_NOT_ENOUGH', 'سابقه اعتباری کافی نیست', 'success', E'اطلاعات تاریخچه اعتباری شما کافی نیست.\nYour historical data is not enough.'),
+  ('MSG_OVERDUE_DEBT', 'بدهی معوق', 'success', E'شما در حال حاضر بدهی معوق دارید. لطفا رفتار اعتباری خود را بهبود بخشید و دوباره امتحان کنید.\nYou currently have overdue debt.please improve your credit behavior and try again.'),
+  ('MSG_BOUNCED_CHECK', 'چک برگشتی', 'success', E'شما همچنان چک برگشتی دارید. لطفا رفتار اعتباری خود را بهبود بخشید و دوباره امتحان کنید.\nYou still have bounced check. please improve your credit behavior and try again.'),
+  ('MSG_DUPLICATE_UNIQUE_KEY', 'شناسه یکتا تکراری', 'fail', E'شناسه یکتا تکراری است!\nduplicate UniqueKey!'),
+  ('MSG_UNKNOWN', 'سایر پیامها', 'other', 'سایر پیامها')
+ON CONFLICT (message_key) DO UPDATE SET label=EXCLUDED.label, topic=EXCLUDED.topic, message_text=EXCLUDED.message_text;
 
 CREATE TABLE IF NOT EXISTS sample_access_logs (
   id BIGSERIAL PRIMARY KEY,

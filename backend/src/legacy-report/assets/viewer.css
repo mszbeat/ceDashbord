@@ -1,0 +1,82 @@
+:root {
+  color-scheme:light; --bg:#f3f6f8; --card:#fff; --ink:#1b2b36; --muted:#607482;
+  --line:#d4e0e2; --soft:#e7f5ef; --accent:#087b72; --navy:#102d3c;
+  --green:#078263; --amber:#af711e; --stripe:#e7f0f2; --hover:#d0ece6;
+}
+:root[data-theme="dark"] {
+  color-scheme:dark; --bg:#0d1920; --card:#172831; --ink:#eaf1f0; --muted:#abbfc2;
+  --line:#3c555c; --soft:#153d36; --accent:#7be4c9; --navy:#173749;
+  --green:#5ed7b0; --amber:#f6c17c; --stripe:#203640; --hover:#285049;
+}
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.9 Tahoma,"Segoe UI",sans-serif; }
+.viewer { max-width:1180px; margin:0 auto; padding:0 20px 70px; }
+.detail-topbar { position:sticky; top:0; z-index:20; height:74px; background:var(--bg); backdrop-filter:blur(14px); border-bottom:1px solid var(--line);
+  display:flex; align-items:center; justify-content:space-between; gap:15px; margin-bottom:22px; }
+.detail-topbar strong { font-size:17px; }.detail-actions { display:flex; gap:9px; }
+.detail-actions button { font-size:13px; padding:7px 14px; }
+.hero { position:relative; overflow:hidden; background:linear-gradient(115deg,#103341,#16505a 65%,#0c3549); color:#fff; border-radius:18px; padding:28px 32px; }
+.hero:after { content:"";position:absolute;left:-75px;top:-100px;width:280px;height:280px;border-radius:50%;border:1px solid rgba(205,255,230,.23); }
+.eyebrow { font-size:12px; color:#a8e7d4; margin:0 0 4px; letter-spacing:.06em; }
+.hero h1 { font-size:25px; line-height:1.6; margin:0 0 14px; }
+.chips { display:flex; gap:7px; flex-wrap:wrap; position:relative; z-index:1; }
+.chip { border:1px solid rgba(255,255,255,.22); border-radius:7px; padding:4px 11px; font-size:13px; background:rgba(255,255,255,.08); }
+.chip b { font-weight:700; color:#fff; display:inline-block; margin-right:3px; }
+.copy-chip { display:inline-flex; align-items:center; gap:5px; max-width:100%; color:#fff;
+  border-color:rgba(255,255,255,.35); cursor:copy; }
+.copy-chip:hover,.copy-chip:focus-visible,.copy-chip.copied { background:rgba(115,244,196,.23); color:#fff; }
+.copy-chip b { max-width:none; min-width:0; overflow:visible; white-space:normal; overflow-wrap:anywhere;
+  direction:ltr; text-align:left; unicode-bidi:isolate; }
+.copy-chip span:last-child { color:#a8e7d4; }
+.chip.privacy { background:rgba(115,244,196,.19); border-color:rgba(161,252,214,.6); }
+.cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:11px; margin:18px 0; }
+.card { background:var(--card); border:1px solid var(--line); border-radius:11px; padding:13px 16px; min-width:0; overflow-wrap:anywhere; }
+.card .label { font-size:12px; color:var(--muted); }.card .value { font-size:20px; font-weight:800; line-height:1.65; }
+.card.hot { border-top:3px solid var(--accent); background:var(--soft); }.card.ok .value { color:var(--green); }
+.card.bad .value { color:var(--amber); }.card.privacy { border-top:3px solid var(--accent); }
+h2 { font-size:18px; margin:30px 0 11px; }
+.note { background:var(--card); border:1px solid var(--line); border-right:3px solid var(--accent); border-radius:10px; padding:12px 15px; margin:15px 0; }
+.note .label { color:var(--muted); font-size:12px; }
+.message-line { display:block; overflow-wrap:anywhere; unicode-bidi:isolate; }
+.message-line+.message-line { border-top:1px dashed var(--line); margin-top:8px; padding-top:8px; color:var(--muted); }
+.flags { display:flex; flex-wrap:wrap; gap:7px; }.flag { border-radius:7px; padding:3px 10px; background:var(--soft); border:1px solid var(--accent); font-size:13px; color:var(--accent); }
+.table-wrap { max-width:100%; overflow:auto; border:1px solid var(--line); border-radius:9px; }
+table { border-collapse:collapse; background:var(--card); width:100%; font-size:14px; }
+td,th { text-align:right; padding:10px 13px; border-bottom:1px solid var(--line); white-space:nowrap; }
+th { background:var(--soft); } tbody tr:nth-child(even) { background:var(--stripe); }
+tbody tr:hover { background:var(--hover); }tr:last-child td { border-bottom:0; }
+.toolbar { position:sticky; top:74px; z-index:5; display:flex; align-items:center; gap:7px; flex-wrap:wrap; padding:10px 0; background:var(--bg); }
+button { font:inherit; cursor:pointer; border:1px solid var(--line); color:var(--ink); background:var(--card); border-radius:8px; padding:6px 11px; }
+button:hover { background:var(--soft); }button:focus-visible,summary:focus-visible { outline:3px solid var(--accent);outline-offset:2px; }
+.toolbar span { color:var(--muted); font-size:12px; margin-right:auto; }
+.tree { direction:ltr; text-align:left; background:var(--card); border:1px solid var(--line); border-radius:11px; padding:15px 19px; overflow:auto;
+  font:14px/1.9 "Cascadia Code",Consolas,monospace; }
+.tree details { margin:3px 0; }.tree summary { cursor:pointer; white-space:nowrap; }
+.tree .children { margin-left:13px; padding-left:15px; border-left:1px dashed var(--line); }
+.tree .key { font-weight:700; color:#a15cc2; }.tree .type { font-size:12px; color:var(--muted); margin-left:5px; }
+.tree .line { padding:1px 0; overflow-wrap:anywhere; }.tree .value { margin-left:9px; }
+.tree .string { color:var(--green); }.tree .number { color:#3782d1; }.tree .boolean { color:var(--amber); }.tree .null { color:var(--muted); }
+.credit-alerts-private { background:var(--card); border:1px solid var(--line); border-right:4px solid var(--amber); border-radius:12px; padding:17px 19px 22px; margin:24px 0; }
+.credit-alerts-private h2 { margin:0 0 5px; }
+.credit-alerts-private h3 { font-size:16px; margin:21px 0 9px; }
+.credit-alerts-private h3 small { font-size:13px; font-weight:400; color:var(--muted); }
+.credit-alerts-private p { color:var(--muted); margin:4px 0 12px; }
+.credit-alerts-private .risk-total { color:var(--ink); }
+.credit-alerts-private .table-wrap { margin-bottom:12px; }
+.credit-alerts-private table { min-width:710px; }
+.credit-alerts-private td { white-space:normal; overflow-wrap:anywhere; }
+#raw { display:none; }
+@media(max-width:650px) {
+  .viewer { padding:0 11px 38px; }.detail-topbar { height:66px; }
+  .detail-actions button { padding:6px 9px; }.detail-actions button span { display:none; }
+  .hero { padding:20px; }.hero h1 { font-size:20px; }.card .value { font-size:18px; }
+  .toolbar { top:66px; }
+}
+@media print {
+  :root { color-scheme:light; }.detail-topbar,.toolbar { display:none!important; }
+  body { background:#fff; }.viewer { padding:0; }.hero { print-color-adjust:exact; }
+  .tree details { display:block; }
+}
+
+th, td, td[dir="ltr"] { text-align:right; padding:7px 10px; }
+.card .value, .card .label { text-align:center; }

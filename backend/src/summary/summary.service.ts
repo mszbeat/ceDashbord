@@ -2,14 +2,18 @@ import { Injectable } from '@nestjs/common';
 import { DatabaseService } from '../db/database.service';
 import { EvaluatorService } from '../evaluator/evaluator.service';
 import { BANKS, BankKey, config } from '../config';
-import { defaultRange, normalizeDay, toApiDate } from '../utils/date';
+import { defaultRange, normalizeDay } from '../utils/date';
 
+/* همهٔ شمارشها/چارکها/درصدها دقیقاً با newStats()/bump() قدیمی ساخته میشوند؛
+   SQL فقط برای فهرست، صفحهبندی و روزها استفاده میشود (تصمیم legacy_bump). */
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { SERVICE_FA, SERVICE_KINDS } = (() => {
-  const common = require('../evaluator/legacy/src/common');
-  const analyze = require('../evaluator/legacy/src/analyze');
-  return { SERVICE_FA: common.SERVICE_FA, SERVICE_KINDS: analyze.SERVICE_KINDS };
-})();
+const { newStats, bump } = require('../evaluator/legacy/src/analyze');
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { record, compareReviewRows, nf, SERVICE_FA } = require('../evaluator/legacy/src/common');
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { quantile } = require('../legacy-report/render');
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { buildReport } = require('../legacy-report/report-builder');
 
 type Range = { from: string; to: string };
 
@@ -31,17 +35,59 @@ function num(value: any): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+function asObject(value: any): Record<string, any> {
+  if (!value) return {};
+  if (typeof value === 'string') {
+    try { return JSON.parse(value) || {}; } catch { return {}; }
+  }
+  return typeof value === 'object' && !Array.isArray(value) ? value : {};
+}
+
 function redactSensitive(value: any, key = ''): any {
   if (value === null || typeof value !== 'object') return value;
-  const sensitive = /national.?code|sourceip/i.test(key);
-  if (sensitive) return undefined;
+  if (/sourceip/i.test(key)) return undefined;
   if (Array.isArray(value)) return value.map((item) => redactSensitive(item, key));
   const out: Record<string, any> = {};
   for (const [childKey, childValue] of Object.entries(value)) {
-    if (/national.?code|sourceip/i.test(childKey)) continue;
+    if (/sourceip/i.test(childKey)) continue;
     out[childKey] = redactSensitive(childValue, childKey);
   }
   return out;
+}
+
+function stampOfRow(row: any) {
+  const stored = asObject(asObject(row.display_extras).stamp);
+  const day = String(row.day || '');
+  if (stored && typeof stored.key === 'string' && stored.key) {
+    return {
+      key: stored.key,
+      display: String(stored.display ?? day.replace(/-/g, '/')),
+      rowDisplay: String(stored.rowDisplay ?? day.replace(/-/g, '/')),
+    };
+  }
+  const display = day.replace(/-/g, '/');
+  return { key: `${day.replace(/\D/g, '').padEnd(17, '0')}`, display, rowDisplay: `${display} —:—` };
+}
+
+function baseOfRow(row: any, stamp: any): Record<string, any> {
+  const stored = asObject(asObject(row.display_extras).base);
+  if (stored && Object.keys(stored).length) {
+    return {
+      ...stored,
+      uniqueKey: stored.uniqueKey ?? row.unique_key ?? '—',
+      requestId: stored.requestId ?? row.request_id,
+    };
+  }
+  const ability = num(row.suggested_amount);
+  return {
+    uniqueKey: row.unique_key ?? '—',
+    requestId: row.request_id,
+    'تاریخ و ساعت': stamp.rowDisplay,
+    'وضعیت': row.is_success ? 'موفق' : 'ناموفق',
+    model_name: row.model_name ?? '—',
+    PD: row.pd == null ? '—' : String(row.pd),
+    'توان بازپرداخت (ریال)': ability == null ? '—' : nf(ability),
+  };
 }
 
 @Injectable()
@@ -54,191 +100,335 @@ export class SummaryService {
 
   specs(bankInput: string) {
     bankTable(bankInput);
-    return this.evaluator.specs();
+    return this.evaluator.specs(bankInput);
+  }
+
+  private emptyData(cap: number) {
+    return {
+      groups: (() => {
+        const groups = record();
+        groups.ALL = newStats();
+        groups.success = newStats();
+        groups.fail = newStats();
+        return groups;
+      })(),
+      details: record(),
+      flags: record(),
+      lists: record(),
+      serviceRows: record(),
+      categoryRows: record(),
+      timeReview: { total: 0, byStatus: { success: 0, fail: 0 }, rows: [] as any[] },
+      creditAlerts: { total: 0, overdue: 0, cheque: 0, both: 0, overdueRows: [] as any[], chequeRows: [] as any[] },
+      ranges: { first: null as any, last: null as any },
+      evaluatorErrors: record(),
+      runtimeErrors: [] as any[],
+      processedFiles: 0,
+      processedSamples: 0,
+      __cap: cap,
+    };
+  }
+
+  private consumeRow(row: any, state: any) {
+    const { bank, selectedServices, cap, messageText } = state;
+    const data = state.data;
+    const status: 'success' | 'fail' = row.is_success ? 'success' : 'fail';
+    const order = state.sequence++;
+    const stamp = stampOfRow(row);
+    const extras = asObject(row.display_extras);
+    const base = baseOfRow(row, stamp);
+    state.badReports += Number(extras.badReports ?? 0);
+
+    if (!data.ranges.first || String(stamp.key) < String(data.ranges.first.key)) data.ranges.first = stamp;
+    if (!data.ranges.last || String(stamp.key) > String(data.ranges.last.key)) data.ranges.last = stamp;
+
+    const restoreCategory = (id: string, value: any) => {
+      if (id === 'messageSuccess' || id === 'messageFail') {
+        const key = String(value);
+        return messageText.get(key) || 'سایر پیامها';
+      }
+      return String(value);
+    };
+    const catsInput = asObject(row.cats);
+    const categories: Record<string, string> = {};
+    for (const [id, value] of Object.entries(catsInput)) {
+      if (!bank.catById[id]) continue;
+      categories[id] = restoreCategory(id, value);
+    }
+    const metricsInput = asObject(row.metrics);
+    const metrics: Record<string, number | null> = {};
+    for (const [id, value] of Object.entries(metricsInput)) {
+      const n = num(value);
+      metrics[id] = n === null ? null : n;
+    }
+    const countersInput = asObject(row.counters);
+    const counters: Record<string, number> = {};
+    for (const [id, value] of Object.entries(countersInput)) counters[id] = num(value) ?? 0;
+    const flags = asObject(row.flags);
+    const paths = asObject(row.paths);
+    const servicesInput = asObject(row.services);
+    const services: Record<string, any> = {};
+    for (const key of selectedServices) {
+      services[key] = servicesInput[key] && typeof servicesInput[key] === 'object'
+        ? servicesInput[key] : { kind: 'missingService' };
+    }
+    const risk = asObject(row.credit_alerts);
+    const hasOverdue = !!risk.overdue?.bool;
+    const hasCheque = !!risk.cheque?.bool;
+    const result: any = {
+      flags,
+      categories,
+      counters,
+      metrics,
+      pathKinds: paths,
+      services,
+      rotbe: row.rotbe ?? null,
+      creditAlerts: { overdue: hasOverdue ? {} : null, cheque: hasCheque ? {} : null },
+    };
+
+    bump(data.groups.ALL, bank, result, status, selectedServices, false);
+    bump(data.groups[status], bank, result, status, selectedServices, false);
+    const dayKey = `day:${row.day}`;
+    data.groups[dayKey] ||= newStats();
+    bump(data.groups[dayKey], bank, result, status, selectedServices, true);
+
+    const retainRanked = (rows: any[], rank: any, sequence: number, makeRow: () => any) => {
+      if (rows.length >= cap
+        && compareReviewRows({ __rank: rank, __order: sequence }, rows[rows.length - 1]) >= 0) return;
+      rows.push(makeRow());
+      rows.sort(compareReviewRows);
+      if (rows.length > cap) rows.pop();
+    };
+    const withSid = (source: Record<string, any>) => ({
+      ...source,
+      __sid: row.request_id,
+      __st: status,
+      __order: order,
+    });
+
+    if (hasOverdue || hasCheque) {
+      data.creditAlerts.total++;
+      if (hasOverdue && hasCheque) data.creditAlerts.both++;
+      const riskBase = withSid({ ...base });
+      const alertRows = asObject(extras.creditAlertRows);
+      if (hasOverdue) {
+        data.creditAlerts.overdue++;
+        if (data.creditAlerts.overdueRows.length < cap) data.creditAlerts.overdueRows.push({
+          ...riskBase, ...asObject(alertRows.overdue),
+        });
+      }
+      if (hasCheque) {
+        data.creditAlerts.cheque++;
+        if (data.creditAlerts.chequeRows.length < cap) data.creditAlerts.chequeRows.push({
+          ...riskBase, ...asObject(alertRows.cheque),
+        });
+      }
+    }
+
+    const totalTime = num(row.total_time_s);
+    if (totalTime !== null && totalTime > 4) {
+      data.timeReview.total++;
+      data.timeReview.byStatus[status]++;
+      retainRanked(data.timeReview.rows, totalTime, order, () => ({
+        ...withSid(base), __rank: totalTime, 'زمان اجرای مدل (ثانیه)': nf(totalTime),
+      }));
+    }
+
+    for (const spec of bank.categories) {
+      const value = categories[spec.id];
+      if (!(spec.inspectAll || spec.inspectValues?.includes(value))
+        || spec.excludeValues?.includes(value) || spec.inspectExcept?.includes(value)
+        || (spec.onlyStatus && spec.onlyStatus !== status)) continue;
+      const entryMap = data.categoryRows[spec.id] ||= record();
+      const entry = entryMap[value] ||= {
+        total: 0, byStatus: { success: { total: 0, rows: [] }, fail: { total: 0, rows: [] } },
+      };
+      entry.total++;
+      const bucket = entry.byStatus[status];
+      bucket.total++;
+      if (bucket.rows.length < cap) {
+        const extra = asObject(asObject(extras.catRows)[spec.id]);
+        bucket.rows.push(withSid({ ...base, ...extra }));
+      }
+    }
+
+    for (const spec of bank.flags) {
+      if (!result.flags[spec.id] || spec.inspect === false) continue;
+      const entry = data.flags[spec.id] ||= {
+        total: 0, byStatus: { success: { total: 0, rows: [] }, fail: { total: 0, rows: [] } },
+      };
+      entry.total++;
+      const bucket = entry.byStatus[status];
+      bucket.total++;
+      const extra = asObject(asObject(extras.flagRows)[spec.id]);
+      const makeRow = () => spec.sortValue
+        ? { ...withSid({ ...base, ...extra }), __rank: asObject(extras.ranks)[spec.id] ?? null }
+        : withSid({ ...base, ...extra });
+      if (spec.sortValue) {
+        retainRanked(bucket.rows, asObject(extras.ranks)[spec.id] ?? null, order, makeRow);
+      } else if (bucket.rows.length < cap) bucket.rows.push(makeRow());
+    }
+
+    bank.lists.forEach((spec: any, index: number) => {
+      const matches = Array.isArray(extras.listMatches) ? !!extras.listMatches[index] : false;
+      if (!matches) return;
+      const entry = data.lists[index] ||= { total: 0, rows: [] };
+      const listRows = asObject(extras.listRows);
+      const extra = asObject(listRows[String(index)] ?? listRows[index]);
+      entry.rows.push(withSid({ ...base, ...extra }));
+      entry.total++;
+    });
+
+    const serviceStates = asObject(extras.serviceStates);
+    for (const key of selectedServices) {
+      const kind = services[key]?.kind ?? 'missingService';
+      if (['ok', 'failed', 'other'].includes(kind)) continue;
+      const entry = data.serviceRows[key] ||= {
+        total: 0, byStatus: { success: { total: 0, rows: [] }, fail: { total: 0, rows: [] } },
+      };
+      entry.total++;
+      const bucket = entry.byStatus[status];
+      bucket.total++;
+      if (bucket.rows.length < cap) {
+        const stateInfo = asObject(serviceStates[key]);
+        bucket.rows.push({
+          __sid: row.request_id,
+          __st: status,
+          __order: order,
+          'نوع نقص': stateInfo.reason || 'وضعیت سرویس نامشخص',
+          'مسیر': `ai_input.${key}.status`,
+          uniqueKey: base.uniqueKey ?? '—',
+          requestId: base.requestId ?? row.request_id,
+          'تاریخ و ساعت': stamp.rowDisplay,
+          'وضعیت': status === 'success' ? 'موفق' : 'ناموفق',
+        });
+      }
+    }
+  }
+
+  private async buildDashboard(bankInput: string, from?: string, to?: string, rowsCap = 100) {
+    const { key, table } = bankTable(bankInput);
+    const { from: f, to: t } = rangeOf(from, to);
+    const cap = Math.min(Math.max(Number(rowsCap) || 100, 1), 100);
+    const bank = this.evaluator.getBank(key);
+    const selectedServices = this.evaluator.getSelectedServices(key);
+
+    const [countRes, daysRes, runsRes, dictRes] = await Promise.all([
+      this.db.query(`SELECT COUNT(*)::int AS total FROM ${table} WHERE day BETWEEN $1 AND $2`, [f, t]),
+      this.db.query(`SELECT DISTINCT day FROM ${table} WHERE day BETWEEN $1 AND $2 ORDER BY day`, [f, t]),
+      this.db.query('SELECT * FROM day_runs WHERE bank=$1 AND day BETWEEN $2 AND $3 ORDER BY day DESC', [key, f, t]),
+      this.db.query("SELECT message_key, COALESCE(message_text, label, 'سایر پیامها') AS text FROM message_dict"),
+    ]);
+    const totalSamples = Number(countRes.rows[0]?.total ?? 0);
+    const selectedDays: string[] = daysRes.rows.map((r: any) => String(r.day));
+    const messageText = new Map<string, string>(
+      dictRes.rows.map((r: any) => [String(r.message_key), String(r.text)]),
+    );
+    const data = this.emptyData(cap);
+    data.processedFiles = runsRes.rowCount || 0;
+    data.runtimeErrors = runsRes.rows
+      .filter((r: any) => r.status === 'failed')
+      .map((r: any) => ({ file: String(r.day), error: String(r.error ?? 'خطای اجرا') }));
+
+    const state = { bank, selectedServices, cap, messageText, data, sequence: 0, badReports: 0 };
+    let cursor = ['', '', ''];
+    const pageSize = 1000;
+    for (;;) {
+      const batch = await this.db.query(
+        `SELECT * FROM ${table}
+         WHERE day BETWEEN $1 AND $2
+           AND (day, COALESCE(stamp_key, ''), request_id) > ($3::text, $4::text, $5::text)
+         ORDER BY day, COALESCE(stamp_key, ''), request_id
+         LIMIT $6`,
+        [f, t, cursor[0], cursor[1], cursor[2], pageSize],
+      );
+      const rows = batch.rows as any[];
+      if (!rows.length) break;
+      for (const row of rows) this.consumeRow(row, state);
+      const last = rows[rows.length - 1];
+      cursor = [String(last.day || ''), String(last.stamp_key || ''), String(last.request_id || '')];
+      if (rows.length < pageSize) break;
+    }
+    data.processedSamples = state.sequence;
+
+    const badReports = state.badReports;
+    const renderBank = {
+      ...bank,
+      topics: bank.topics.map((topic: any) => key === 'tavan_mellat' && topic.id === 'deposit' ? {
+        ...topic,
+        extraHtml: () => !badReports ? '' : `<div class="alert"><strong>نیاز به بررسی تاریخ سپرده:</strong> در ${badReports} گزارش، دستکم یک تاریخ ماه سپرده قابل خواندن نبود. سالوماه (مانند <code>140309</code>) یا سالوماهروز (مانند <code>14030930</code>) پذیرفته میشود؛ مقدارهای خام فقط در پنجرهٔ جزئیات همان گزارش، پس از دریافت از API اصلی، در دسترساند.</div>`,
+      } : topic),
+    };
+    const scan = {
+      root: 'database', days: selectedDays, files: [], errors: [], totalSamples, invalidSamples: 0,
+      methodCounts: new Map<string, number>(), selectedMethod: bank.key, bank: renderBank,
+      selectedFiles: [], selectedDays, selectedServices, ignoredRows: [],
+    };
+    const latestRun = runsRes.rows[0];
+    const controls = {
+      action: '/', bank: key, from: f, to: t, rowsCap: cap,
+      banks: this.banks(),
+      status: latestRun?.status ?? '',
+      updatedAt: latestRun?.updated_at ? new Date(latestRun.updated_at).toISOString() : '',
+    };
+    return { scan, data, options: { rowsCap: cap, controls } };
+  }
+
+  async report(bankInput: string, from?: string, to?: string, rowsCap = 100): Promise<string> {
+    const built = await this.buildDashboard(bankInput, from, to, rowsCap);
+    delete (built.data as any).__cap;
+    return buildReport(built.scan, built.data, built.options);
   }
 
   async summary(bankInput: string, from?: string, to?: string) {
-    const { key, table, label } = bankTable(bankInput);
+    const { key, label } = bankTable(bankInput);
     const { from: f, to: t } = rangeOf(from, to);
-    const p = [f, t];
-
-    const [totals, metricsRows, counterRows, flagRows, catRows, serviceRows, pathRows, rotbeRows,
-      messageRows, dailyTotals, dailyFlags, runRows, pdHist, timeHist, amountHist] = await Promise.all([
-      this.db.query(`SELECT COUNT(*)::int AS total,
-          COUNT(*) FILTER (WHERE is_success)::int AS success,
-          COUNT(*) FILTER (WHERE NOT is_success)::int AS fail,
-          COUNT(DISTINCT day)::int AS days,
-          MIN(inserted_at) AS first_inserted, MAX(inserted_at) AS last_inserted
-        FROM ${table} WHERE day BETWEEN $1 AND $2`, p),
-      this.db.query(`SELECT key,
-          COUNT(value::double precision)::int AS count,
-          MIN(value::double precision) AS min,
-          AVG(value::double precision) AS mean,
-          percentile_cont(0.25) WITHIN GROUP (ORDER BY value::double precision) AS p25,
-          percentile_cont(0.50) WITHIN GROUP (ORDER BY value::double precision) AS median,
-          percentile_cont(0.75) WITHIN GROUP (ORDER BY value::double precision) AS p75,
-          percentile_cont(0.95) WITHIN GROUP (ORDER BY value::double precision) AS p95,
-          MAX(value::double precision) AS max
-        FROM ${table}, jsonb_each_text(metrics)
-        WHERE day BETWEEN $1 AND $2 AND value IS NOT NULL
-        GROUP BY key`, p),
-      this.db.query(`SELECT key, SUM(value::numeric)::float8 AS total
-        FROM ${table}, jsonb_each_text(counters)
-        WHERE day BETWEEN $1 AND $2 AND value IS NOT NULL
-        GROUP BY key`, p),
-      this.db.query(`SELECT key, COUNT(*)::int AS count
-        FROM ${table}, jsonb_each_text(flags)
-        WHERE day BETWEEN $1 AND $2 AND value = 'true'
-        GROUP BY key`, p),
-      this.db.query(`SELECT key, value, is_success, COUNT(*)::int AS count
-        FROM ${table}, jsonb_each_text(cats)
-        WHERE day BETWEEN $1 AND $2 AND value IS NOT NULL
-        GROUP BY key, value, is_success`, p),
-      this.db.query(`SELECT key, value, COUNT(*)::int AS count
-        FROM ${table}, jsonb_each_text(services)
-        WHERE day BETWEEN $1 AND $2
-        GROUP BY key, value`, p),
-      this.db.query(`SELECT key, value, COUNT(*)::int AS count
-        FROM ${table}, jsonb_each_text(paths)
-        WHERE day BETWEEN $1 AND $2 AND value IS NOT NULL
-        GROUP BY key, value`, p),
-      this.db.query(`SELECT rotbe, COUNT(*)::int AS count
-        FROM ${table} WHERE day BETWEEN $1 AND $2 AND rotbe IS NOT NULL GROUP BY rotbe`, p),
-      this.db.query('SELECT message_key, label, topic FROM message_dict'),
-      this.db.query(`SELECT day, COUNT(*)::int AS total,
-          COUNT(*) FILTER (WHERE is_success)::int AS success,
-          COUNT(*) FILTER (WHERE NOT is_success)::int AS fail
-        FROM ${table} WHERE day BETWEEN $1 AND $2 GROUP BY day ORDER BY day`, p),
-      this.db.query(`SELECT day, key, COUNT(*) FILTER (WHERE value = 'true')::int AS count
-        FROM ${table}, jsonb_each_text(flags)
-        WHERE day BETWEEN $1 AND $2 GROUP BY day, key ORDER BY day`, p),
-      this.db.query('SELECT * FROM day_runs WHERE bank=$1 AND day BETWEEN $2 AND $3 ORDER BY day DESC', [key, f, t]),
-      this.db.query(`SELECT CASE
-            WHEN pd < 0.1 THEN '۰٫۰۰ تا کمتر از ۰٫۱۰'
-            WHEN pd < 0.2 THEN '۰٫۱۰ تا کمتر از ۰٫۲۰'
-            WHEN pd < 0.3 THEN '۰٫۲۰ تا کمتر از ۰٫۳۰'
-            WHEN pd < 0.4 THEN '۰٫۳۰ تا کمتر از ۰٫۴۰'
-            WHEN pd < 0.5 THEN '۰٫۴۰ تا کمتر از ۰٫۵۰'
-            WHEN pd = 0.5 THEN 'دقیقاً ۰٫۵۰'
-            WHEN pd < 0.6 THEN 'بیشتر از ۰٫۵۰ تا کمتر از ۰٫۶۰'
-            WHEN pd < 0.8 THEN '۰٫۶۰ تا کمتر از ۰٫۸۰'
-            WHEN pd <= 1 THEN '۰٫۸۰ تا ۱٫۰۰'
-            ELSE 'خارج از بازه' END AS bucket, COUNT(*)::int AS count
-          FROM ${table} WHERE day BETWEEN $1 AND $2 AND pd IS NOT NULL
-          GROUP BY 1 ORDER BY MIN(pd)`, p),
-      this.db.query(`SELECT CASE
-            WHEN total_time_s <= 1 THEN 'تا ۱ ثانیه'
-            WHEN total_time_s <= 2 THEN '۱ تا ۲ ثانیه'
-            WHEN total_time_s <= 4 THEN '۲ تا ۴ ثانیه'
-            WHEN total_time_s <= 8 THEN '۴ تا ۸ ثانیه'
-            WHEN total_time_s <= 15 THEN '۸ تا ۱۵ ثانیه'
-            ELSE 'بیش از ۱۵ ثانیه' END AS bucket, COUNT(*)::int AS count
-          FROM ${table} WHERE day BETWEEN $1 AND $2 AND total_time_s IS NOT NULL
-          GROUP BY 1 ORDER BY MIN(total_time_s)`, p),
-      this.db.query(`SELECT CASE
-            WHEN v < 1e7 THEN 'کمتر از ۱۰ میلیون'
-            WHEN v < 5e7 THEN '۱۰ تا ۵۰ میلیون'
-            WHEN v < 1e8 THEN '۵۰ تا ۱۰۰ میلیون'
-            WHEN v < 5e8 THEN '۱۰۰ تا ۵۰۰ میلیون'
-            WHEN v < 1e9 THEN '۵۰۰ میلیون تا ۱ میلیارد'
-            ELSE '۱ میلیارد و بیشتر' END AS bucket, COUNT(*)::int AS count
-          FROM (SELECT (metrics->>'creditBasket')::numeric AS v FROM ${table}
-                WHERE day BETWEEN $1 AND $2 AND metrics->>'creditBasket' IS NOT NULL) x
-          GROUP BY 1 ORDER BY MIN(v)`, p),
-    ]);
-
-    const stats = totals.rows[0] || { total: 0, success: 0, fail: 0, days: 0 };
-    const specs = this.evaluator.specs();
-    const messageLabels = new Map<string, string>(
-      messageRows.rows.map((r: any) => [r.message_key, r.label]),
-    );
-    const labelOfMessage = (value: string) => messageLabels.get(value)
-      ?? (value.startsWith('MSG_UNKNOWN:') ? `پیام طبقهبندی نشده (${value.slice(12)})` : value);
-
-    const metricById = new Map(specs.metrics.map((m) => [m.id, m]));
-    const metrics = Object.fromEntries(metricsRows.rows.map((r: any) => [r.key, {
-      id: r.key,
-      label: metricById.get(r.key)?.label ?? r.key,
-      count: Number(r.count),
-      min: num(r.min), mean: num(r.mean), p25: num(r.p25), median: num(r.median),
-      p75: num(r.p75), p95: num(r.p95), max: num(r.max),
-    }]));
-    const counterById = new Map(specs.counters.map((c) => [c.id, c]));
-    const counters = Object.fromEntries(counterRows.rows.map((r: any) => [r.key, {
-      id: r.key, label: counterById.get(r.key)?.label ?? r.key, total: num(r.total) ?? 0,
-    }]));
-
-    const flagById = new Map(specs.flags.map((s) => [s.id, s]));
-    const flagCounts = new Map(flagRows.rows.map((r: any) => [r.key, Number(r.count)]));
-    const flags = specs.flags.map((s) => ({
-      ...s, count: flagCounts.get(s.id) ?? 0,
-      percent: stats.total ? Number(((flagCounts.get(s.id) ?? 0) * 100 / stats.total).toFixed(2)) : 0,
-    }));
-
-    const catById = new Map(specs.categories.map((s) => [s.id, s]));
-    const catMap = new Map<string, Map<string, number>>();
-    for (const row of catRows.rows as any[]) {
-      const spec = catById.get(row.key);
-      if (!spec) continue;
-      if (spec.onlyStatus && spec.onlyStatus !== (row.is_success ? 'success' : 'fail')) continue;
-      if (spec.excludeValues?.includes(row.value)) continue;
-      const values = catMap.get(row.key) ?? new Map<string, number>();
-      const display = row.key === 'messageSuccess' || row.key === 'messageFail'
-        ? labelOfMessage(row.value) : row.value;
-      values.set(display, (values.get(display) ?? 0) + Number(row.count));
-      catMap.set(row.key, values);
+    const built = await this.buildDashboard(bankInput, f, t, 100);
+    delete (built.data as any).__cap;
+    const all = built.data.groups.ALL;
+    const specs = this.evaluator.specs(key);
+    const metrics: Record<string, any> = {};
+    for (const [id, values] of Object.entries(all.metrics as Record<string, number[]>)) {
+      const sorted = [...(values || [])].sort((a, b) => a - b);
+      const spec = specs.metrics.find((s: any) => s.id === id);
+      metrics[id] = {
+        id,
+        label: spec?.label ?? id,
+        count: sorted.length,
+        min: sorted[0] ?? null,
+        p25: quantile(sorted, 0.25),
+        median: quantile(sorted, 0.5),
+        mean: sorted.length ? sorted.reduce((sum, value) => sum + value, 0) / sorted.length : null,
+        p75: quantile(sorted, 0.75),
+        max: sorted.length ? sorted[sorted.length - 1] : null,
+      };
     }
-    const categories = specs.categories.map((s) => ({
-      ...s,
-      values: [...(catMap.get(s.id) ?? new Map()).entries()]
-        .map(([value, count]) => ({ value, count }))
-        .sort((a, b) => b.count - a.count),
-    }));
-
-    const serviceMap = new Map<string, Record<string, number>>();
-    for (const row of serviceRows.rows as any[]) {
-      const entry = serviceMap.get(row.key) ?? Object.fromEntries(SERVICE_KINDS.map((k: string) => [k, 0]));
-      entry[row.value] = Number(row.count);
-      serviceMap.set(row.key, entry);
-    }
-    const services = [...serviceMap.entries()].map(([key, counts]) => ({
-      key, label: SERVICE_FA[key] ?? key, counts,
-    }));
-
-    const pathCounts = new Map<string, Record<string, number>>();
-    for (const row of pathRows.rows as any[]) {
-      const entry = pathCounts.get(row.key) ?? {};
-      entry[row.value] = Number(row.count);
-      pathCounts.set(row.key, entry);
-    }
-    const paths = specs.paths.map((p) => ({ ...p, kinds: pathCounts.get(p.key) ?? {} }));
-
-    const dailyMap = new Map<string, any>();
-    for (const row of dailyTotals.rows as any[]) {
-      dailyMap.set(row.day, { day: row.day, total: Number(row.total), success: Number(row.success), fail: Number(row.fail), flags: {} });
-    }
-    for (const row of dailyFlags.rows as any[]) {
-      const entry = dailyMap.get(row.day);
-      if (entry) entry.flags[row.key] = Number(row.count);
-    }
-
     return {
       bank: { id: key, label }, from: f, to: t,
       stats: {
-        ...stats,
-        success_rate: stats.total ? Number((stats.success * 100 / stats.total).toFixed(2)) : 0,
+        total: all.total, success: all.byStatus.success, fail: all.byStatus.fail,
+        days: built.scan.selectedDays.length,
+        success_rate: all.total ? Number((all.byStatus.success * 100 / all.total).toFixed(2)) : 0,
       },
-      runs: runRows.rows,
-      metrics, counters, flags, categories, services,
-      dataQuality: { paths, rotbe: rotbeRows.rows },
-      histograms: {
-        pd: pdHist.rows.map((r: any) => ({ label: r.bucket, count: Number(r.count) })),
-        totalTime: timeHist.rows.map((r: any) => ({ label: r.bucket, count: Number(r.count) })),
-        creditBasket: amountHist.rows.map((r: any) => ({ label: r.bucket, count: Number(r.count) })),
-      },
-      daily: [...dailyMap.values()],
+      flags: Object.fromEntries(Object.entries(all.flags).map(([id, count]) => [id, Number(count)])),
+      counters: Object.fromEntries(Object.entries(all.counters).map(([id, count]) => [id, Number(count)])),
+      categories: Object.fromEntries(Object.entries(all.cats).map(([id, values]) => [id,
+        Object.entries(values as Record<string, number>).map(([value, count]) => ({ value, count }))
+          .sort((a, b) => b.count - a.count),
+      ])),
+      services: Object.fromEntries(Object.entries(all.services).map(([id, counts]) => [id, {
+        id, label: SERVICE_FA[id] ?? id, counts,
+      }])),
+      paths: Object.fromEntries(Object.entries(all.paths).map(([id, entry]) => [id, entry])),
+      metrics,
+      daily: built.scan.selectedDays.map((day) => {
+        const stats = built.data.groups[`day:${day}`];
+        return { day, total: stats?.total ?? 0, success: stats?.byStatus.success ?? 0, fail: stats?.byStatus.fail ?? 0,
+          flags: stats?.flags ?? {} };
+      }),
+      runs: await this.runs(),
       specs,
       generatedAt: new Date().toISOString(),
+      source: 'legacy_bump',
     };
   }
 
@@ -258,15 +448,13 @@ export class SummaryService {
     if (!params.type && raw.includes(':')) {
       const [prefix, ...rest] = raw.split(':');
       if (['flag', 'metric', 'cat', 'service'].includes(prefix)) { type = prefix; id = rest.join(':'); }
-    } else if (!params.type && raw) {
-      id = raw;
-    }
+    } else if (!params.type && raw) id = raw;
     if (!id && raw === 'slow') { type = 'slow'; id = 'slow'; }
     if (!id && raw === 'creditAlert') { type = 'creditAlert'; id = 'creditAlert'; }
 
     const add = (value: any) => { sqlParams.push(value); return `$${sqlParams.length}`; };
     let where = '';
-    let order = 'inserted_at DESC NULLS LAST, request_id DESC';
+    let order = 'day, COALESCE(stamp_key, \'\'), request_id';
 
     if (type === 'flag' && id) where += ` AND flags->>${add(id)} = 'true'`;
     else if (type === 'cat' && id) {
@@ -276,19 +464,18 @@ export class SummaryService {
     } else if (type === 'metric' && id) {
       const col = add(id);
       where += ` AND (metrics->>${col})::double precision IS NOT NULL`;
-      order = `(metrics->>${col})::double precision DESC NULLS LAST, request_id DESC`;
+      order = `(metrics->>${col})::double precision DESC NULLS LAST, request_id`;
     } else if (type === 'service' && id) {
       where += ` AND services->>${add(id)} IS NOT NULL AND services->>${add(id)} <> 'ok'`;
     } else if (type === 'slow') {
       where += ' AND total_time_s > 4';
-      order = 'total_time_s DESC NULLS LAST, request_id DESC';
+      order = 'total_time_s DESC NULLS LAST, request_id';
     } else if (type === 'creditAlert') {
-      where += ` AND (COALESCE(credit_alerts->>'overdue','false') = 'true'
-                  OR COALESCE(credit_alerts->>'cheque','false') = 'true')`;
+      where += ` AND (COALESCE(credit_alerts->'overdue'->>'bool','false') = 'true'
+                  OR COALESCE(credit_alerts->'cheque'->>'bool','false') = 'true')`;
     } else if (type === 'all') {
       // بدون فیلتر اضافی
     } else if (id) {
-      // شناسه ناشناخته: ابتدا بهعنوان flag تلاش میشود
       where += ` AND flags->>${add(id)} = 'true'`;
       type = 'flag';
     }
@@ -298,11 +485,10 @@ export class SummaryService {
     }
     const limitParam = add(limit);
     const offsetParam = add(offset);
-
     const result = await this.db.query(
       `SELECT COUNT(*) OVER() AS total_count,
-        request_id, day, inserted_at, is_success, model_name, status_code, error_code, message_key,
-        total_time_s, pd, suggested_amount, amount_kind, score_req, flags, cats, credit_alerts
+        request_id, unique_key, day, inserted_at, stamp_key, is_success, model_name, status_code, error_code,
+        message_key, total_time_s, pd, suggested_amount, amount_kind, score_req, flags, cats, credit_alerts
        FROM ${table}
        WHERE day BETWEEN $1 AND $2 ${where}
        ORDER BY ${order}
@@ -311,13 +497,12 @@ export class SummaryService {
     );
     const rows = result.rows.map((r: any) => ({
       ...r,
+      sid: r.request_id,
       total_count: Number(r.total_count),
-      true_flags: Object.entries(r.flags || {}).filter(([, v]) => v === true).map(([k]) => k),
+      true_flags: Object.entries(asObject(r.flags)).filter(([, v]) => v === true).map(([k]) => k),
     }));
-    return {
-      bank: params.bank, from, to, type, id, value: params.value ?? null,
-      limit, offset, total: rows[0]?.total_count ?? 0, rows,
-    };
+    return { bank: params.bank, from, to, type, id, value: params.value ?? null,
+      limit, offset, total: rows[0]?.total_count ?? 0, rows };
   }
 
   async sample(requestId: string, req: any) {
@@ -341,11 +526,48 @@ export class SummaryService {
       'INSERT INTO sample_access_logs(request_id, ip, user_agent) VALUES($1,$2,$3)',
       [requestId, req?.ip ?? null, String(req?.headers?.['user-agent'] ?? '').slice(0, 500)],
     ).catch(() => undefined);
+
+    if (!raw) return { requestId, found: false, fetchedAt: new Date().toISOString(), meta: {}, sample: null };
+    const normalized = this.evaluator.normalizeSample(raw);
+    const inferredBank = this.evaluator.bankKeyOfSample(normalized);
+    const stored = await this.db.query(
+      `SELECT 'tavan_mellat'::text AS bank, day, is_success, unique_key FROM samples_mellat WHERE request_id=$1
+       UNION ALL SELECT 'tavan_resalat'::text, day, is_success, unique_key FROM samples_resalat WHERE request_id=$1
+       UNION ALL SELECT 'tavan_postbank'::text, day, is_success, unique_key FROM samples_postbank WHERE request_id=$1
+       LIMIT 1`, [requestId],
+    ).catch(() => ({ rows: [] as any[] }));
+    const row = stored.rows[0];
+    const bankKey = String(row?.bank || inferredBank);
+    const status = row ? (row.is_success ? 'success' : 'fail') : (this.evaluator.isReportSuccess(normalized) ? 'success' : 'fail');
+    const legacy = this.evaluator.analyzeLegacy(normalized, status === 'success', bankKey);
+    const bank = this.evaluator.getBank(bankKey);
+    const get = require('../evaluator/legacy/banks/_helpers').get;
+    const uniqueKey = row?.unique_key ?? get(normalized, 'input.uniqueKey') ?? '—';
+    const national = get(normalized, 'input.data.nationalCode');
+    let safeSample = normalized;
+    try { if (bank.sanitizeSample) safeSample = bank.sanitizeSample(normalized); } catch { safeSample = normalized; }
+    let viewer;
+    try { if (bank.viewer) viewer = bank.viewer(legacy.collected, normalized); } catch { viewer = undefined; }
+    const meta: Record<string, any> = {
+      bank: bank.label,
+      method: bank.id,
+      methodKey: bank.key,
+      day: row?.day ?? '',
+      status,
+      uniqueKey,
+      requestId,
+      flags: bank.flags.filter((spec: any) => legacy.flags[spec.id]).map((spec: any) => spec.label),
+      ...(bank.key === 'tavan_resalat' || bank.key === 'tavan_postbank'
+        ? { nationalCode: String(national ?? '').trim() || 'ثبت نشده' } : {}),
+      ...(viewer ? { viewer } : {}),
+      ...(legacy.creditAlerts?.overdue || legacy.creditAlerts?.cheque ? { creditAlerts: legacy.creditAlerts } : {}),
+    };
     return {
       requestId,
-      found: !!raw,
+      found: true,
       fetchedAt: new Date().toISOString(),
-      sample: raw ? redactSensitive(raw) : null,
+      meta,
+      sample: redactSensitive(safeSample),
       note: 'جزئیات فقط در لحظه از API اصلی گرفته میشود و در دیتابیس جانبی ذخیره نمیشود.',
     };
   }

@@ -11,7 +11,9 @@
     "migrate": "node src/db/migrate.js",
     "ingest": "node -r ts-node/register src/ingestion/run-ingest.ts",
     "ingest:mellat": "node -r ts-node/register src/ingestion/run-ingest.ts --bank=tavan_mellat",
-    "test": "node -r ts-node/register src/evaluator/evaluator.test.ts"
+    "test": "node -r ts-node/register src/evaluator/evaluator.test.ts",
+    "test:parity": "node scripts/parity-smoke.js",
+    "preview:pglite": "node scripts/pglite-preview.js"
   },
   "dependencies": {
     "@nestjs/common": "^10.3.0",
@@ -23,6 +25,7 @@
     "rxjs": "^7.8.1"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.16",
     "@nestjs/cli": "^10.3.0",
     "@nestjs/testing": "^10.3.0",
     "@types/node": "^20.11.0",

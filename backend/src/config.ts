@@ -22,6 +22,8 @@ export const config = {
 
 export const BANKS = {
   tavan_mellat: { table: 'samples_mellat', label: 'ملت', method: 'tavan_mellat' },
+  tavan_resalat: { table: 'samples_resalat', label: 'رسالت', method: 'tavan_resalat' },
+  tavan_postbank: { table: 'samples_postbank', label: 'پستبانک', method: 'tavan_postbank' },
 } as const;
 
 export type BankKey = keyof typeof BANKS;

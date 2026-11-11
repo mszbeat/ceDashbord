@@ -24,6 +24,18 @@ export class SummaryController {
     return this.svc.specs(bank);
   }
 
+  @Get('report')
+  @Header('Content-Type', 'text/html; charset=utf-8')
+  @Header('Cache-Control', 'no-store, no-cache, must-revalidate')
+  report(
+    @Query('bank') bank = 'tavan_mellat',
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('rowsCap') rowsCap?: string,
+  ) {
+    return this.svc.report(bank, from, to, rowsCap ? Number(rowsCap) : 100);
+  }
+
   @Get('summary')
   summary(
     @Query('bank') bank = 'tavan_mellat',

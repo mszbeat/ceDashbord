@@ -1,17 +1,19 @@
 import { Injectable } from '@nestjs/common';
-import * as crypto from 'node:crypto';
 
-/* قواعد تحلیل بازنویسی نشدهاند؛ مستقیماً از کد legacy استفاده میشود (M1). */
+/* قواعد تحلیل بازنویسی نشدهاند؛ مستقیماً از banks/*.js و src/*.js قدیمی استفاده میشود (M0/M1). */
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { loadBanks } = require('./legacy/src/banks');
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { createEvaluator, publicIdentifiers } = require('./legacy/src/analyze');
+const {
+  createEvaluator, publicIdentifiers, stampOf, baseRow, serviceState, SERVICE_KINDS,
+} = require('./legacy/src/analyze');
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { get, num } = require('./legacy/banks/_helpers');
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { SERVICE_FA } = require('./legacy/src/common');
+const { SERVICE_FA, nf } = require('./legacy/src/common');
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const BuildAiInput = require('./legacy-report/buildAiInput');
+import { messageKeyOf } from '../message-dict';
 
 const SUCCESS_MESSAGES = [
   'You currently have overdue debt.please improve your credit behavior and try again.',
@@ -20,17 +22,12 @@ const SUCCESS_MESSAGES = [
   'You still have bounced check. please improve your credit behavior and try again.',
 ];
 
-const MESSAGE_RULES: Array<[string, RegExp]> = [
-  ['MSG_VALIDATION_SUCCESS', /validation was successful/i],
-  ['MSG_HISTORY_NOT_ENOUGH', /historical data is not enough/i],
-  ['MSG_OVERDUE_DEBT', /overdue debt/i],
-  ['MSG_BOUNCED_CHECK', /bounced check/i],
-];
-
 export interface AnalyzedRow {
   request_id: string;
   day: string;
   inserted_at: string | null;
+  stamp_key: string | null;
+  unique_key: string | null;
   is_success: boolean;
   model_name: string | null;
   status_code: string | null;
@@ -52,27 +49,67 @@ export interface AnalyzedRow {
   paths: Record<string, string | null>;
   services: Record<string, string>;
   credit_alerts: Record<string, any> | null;
+  display_extras: Record<string, any>;
   analysis_version: string;
 }
 
+interface BankRuntime {
+  key: string;
+  bank: any;
+  selectedServices: string[];
+  analyzeOne: (sample: any, folderStatus: 'success' | 'fail') => any;
+  version: string;
+}
+
 const plain = (value: any) => JSON.parse(JSON.stringify(value ?? {}));
+const tryCall = (fn: () => any, name: string, fallback: any = null): any => {
+  try {
+    const value = fn();
+    return value === undefined || value === null ? fallback : value;
+  } catch (error) {
+    console.warn(`[evaluator] ${name}: ${(error as any)?.message ?? error}`);
+    return fallback;
+  }
+};
 
 @Injectable()
 export class EvaluatorService {
-  readonly analysisVersion = 'mellat-1.0.0';
-  private bank: any;
-  private analyzeOne: (sample: any, folderStatus: 'success' | 'fail') => any;
+  private runtimes: Record<string, BankRuntime> = {};
   private builder: any;
 
   constructor() {
     const banks = loadBanks({ minNull: 3 });
-    this.bank = banks['tavan_mellat'];
-    if (!this.bank) throw new Error('بانک ملت (tavan_mellat) لود نشد — M0 را بررسی کن');
-    const services = [...new Set([...this.bank.expectedServices, ...Object.keys(SERVICE_FA)])];
-    this.analyzeOne = createEvaluator(this.bank, services, (name: string, error: any) =>
-      console.warn(`[evaluator] ${name}: ${error?.message ?? error}`),
-    );
     this.builder = new BuildAiInput();
+    for (const [key, bank] of Object.entries(banks) as Array<[string, any]>) {
+      const selectedServices = [...new Set([...bank.expectedServices, ...Object.keys(SERVICE_FA)])].sort();
+      const analyzeOne = createEvaluator(bank, selectedServices, (name: string, error: any) =>
+        console.warn(`[evaluator:${key}] ${name}: ${error?.message ?? error}`),
+      );
+      this.runtimes[key] = {
+        key,
+        bank,
+        selectedServices,
+        analyzeOne,
+        version: `${key.replace('tavan_', '')}-1.0.0`,
+      };
+    }
+    if (!this.runtimes.tavan_mellat) throw new Error('بانک ملت (tavan_mellat) لود نشد — M0 را بررسی کن');
+  }
+
+  keys(): string[] { return Object.keys(this.runtimes); }
+  private runtime(bankKey = 'tavan_mellat'): BankRuntime {
+    const found = this.runtimes[bankKey];
+    if (!found) throw new Error(`بانک پشتیبانیشده نیست: ${bankKey}`);
+    return found;
+  }
+  getBank(bankKey = 'tavan_mellat'): any { return this.runtime(bankKey).bank; }
+  getSelectedServices(bankKey = 'tavan_mellat'): string[] { return [...this.runtime(bankKey).selectedServices]; }
+  versionOf(bankKey = 'tavan_mellat'): string { return this.runtime(bankKey).version; }
+  getServiceKinds() { return [...SERVICE_KINDS]; }
+
+  bankKeyOfSample(sample: any): string {
+    const method = String(get(sample, 'input.method') ?? '').trim().toLowerCase();
+    return this.runtimes[method] ? method : 'tavan_mellat';
   }
 
   /** همان نرمالسازی report/src/services/reportProcess.js + buildAiInput.js */
@@ -96,37 +133,107 @@ export class EvaluatorService {
     return SUCCESS_MESSAGES.includes(get(sample, 'output.message.en'));
   }
 
-  private messageKeyOf(text: string): string {
-    for (const [key, pattern] of MESSAGE_RULES) if (pattern.test(text)) return key;
-    return `MSG_UNKNOWN:${crypto.createHash('sha256').update(text).digest('hex').slice(0, 12)}`;
+  /** خروجی خام ارزیاب قدیمی (برای جزئیات نمونه / viewer) */
+  analyzeLegacy(sample: any, isSuccess: boolean, bankKey = 'tavan_mellat'): any {
+    return this.runtime(bankKey).analyzeOne(sample, isSuccess ? 'success' : 'fail');
   }
 
-  private creditAlertsOf(result: any): Record<string, any> | null {
+  private creditAlertsOf(result: any): { value: Record<string, any> | null; rows: Record<string, any> } {
     const risk = result.creditAlerts;
-    if (!risk?.overdue && !risk?.cheque) return null;
+    const overdue = risk?.overdue ?? null;
+    const cheque = risk?.cheque ?? null;
+    if (!overdue && !cheque) return { value: null, rows: {} };
+    const pack = (item: any) => item ? {
+      bool: true,
+      totalAmount: item.totalAmount ?? null,
+      totalIssue: item.totalIssue ?? null,
+      currency: item.currency ?? null,
+      count: Array.isArray(item.items) ? item.items.length : 0,
+    } : null;
+    const display = (item: any, amountTitle: string) => item ? {
+      [amountTitle]: item.totalAmount === null || item.totalAmount === undefined
+        ? (item.totalIssue ?? 'قابل محاسبه نیست')
+        : nf(Math.round(item.totalAmount)),
+      'واحد': item.currency ?? 'واحد ثبت نشده',
+    } : {};
     return {
-      overdue: !!risk.overdue,
-      cheque: !!risk.cheque,
-      overdue_total: risk.overdue?.totalAmount ?? null,
-      overdue_currency: risk.overdue?.currency ?? null,
-      cheque_total: risk.cheque?.totalAmount ?? null,
-      cheque_currency: risk.cheque?.currency ?? null,
-      // نام شعبه / نام بانک / ردیفهای خام عمداً ذخیره نمیشود.
+      value: { overdue: pack(overdue), cheque: pack(cheque) },
+      rows: {
+        overdue: display(overdue, 'جمع بدهی معوق'),
+        cheque: display(cheque, 'جمع مبلغ چک‌های برگشتی'),
+      },
     };
   }
 
-  evaluate(sample: any, isSuccess: boolean, day: string): AnalyzedRow {
-    const result = this.analyzeOne(sample, isSuccess ? 'success' : 'fail');
-    const ids = publicIdentifiers(this.bank, sample);
+  private buildDisplayExtras(bank: any, selectedServices: string[], sample: any, result: any,
+                             day: string, isSuccess: boolean): any {
+    const status = isSuccess ? 'success' : 'fail';
+    const file = { status, day };
+    const stamp = stampOf(sample, day);
+    const baseFull = baseRow(bank, sample, file, undefined, stamp);
+    const base: Record<string, any> = Object.fromEntries(
+      Object.entries(baseFull).filter(([key]) => key !== '__sid'),
+    );
+
+    const serviceStates: Record<string, any> = {};
+    for (const key of selectedServices) serviceStates[key] = serviceState(sample, key);
+
+    const flagRows: Record<string, any> = {};
+    const ranks: Record<string, any> = {};
+    for (const spec of bank.flags) {
+      if (typeof spec.row === 'function') flagRows[spec.id] = tryCall(() => spec.row(result.collected, sample, result), `flags.${spec.id}.row`, {});
+      if (typeof spec.sortValue === 'function') ranks[spec.id] = tryCall(() => spec.sortValue(result.collected, sample), `flags.${spec.id}.sortValue`, null);
+    }
+
+    const catRows: Record<string, any> = {};
+    for (const spec of bank.categories) {
+      if (typeof spec.row === 'function') catRows[spec.id] = tryCall(() => spec.row(result.collected, sample, result), `categories.${spec.id}.row`, {});
+    }
+
+    const listRows: Record<string, any> = {};
+    const listMatches: boolean[] = [];
+    bank.lists.forEach((spec: any, index: number) => {
+      listMatches[index] = !!tryCall(() => spec.when(result.flags, result), `lists.${index}.when`, false);
+      listRows[String(index)] = typeof spec.row === 'function'
+        ? tryCall(() => spec.row(result.collected, sample, result.flags, result.categories), `lists.${index}.row`, {})
+        : {};
+    });
+
+    const credit = this.creditAlertsOf(result);
+    return {
+      extras: {
+        base,
+        stamp,
+        serviceStates,
+        flagRows,
+        ranks,
+        catRows,
+        listRows,
+        listMatches,
+        creditAlertRows: credit.rows,
+        badReports: 0,
+      },
+      creditAlerts: credit.value,
+    };
+  }
+
+  evaluate(sample: any, isSuccess: boolean, day: string, bankKey = 'tavan_mellat'): AnalyzedRow {
+    const runtime = this.runtime(bankKey);
+    const { bank, selectedServices } = runtime;
+    const diagBefore = Number(bank.diag?.badReports ?? 0);
+    const result = runtime.analyzeOne(sample, isSuccess ? 'success' : 'fail');
+    const badReports = Number(bank.diag?.badReports ?? 0) - diagBefore;
+    const ids = publicIdentifiers(bank, sample);
     const requestId = ids.requestId && ids.requestId !== '—' ? String(ids.requestId) : String(sample.requestId ?? '');
     if (!requestId) throw new Error('نمونه بدون requestId است');
+    const uniqueKey = ids.uniqueKey && ids.uniqueKey !== '—' ? String(ids.uniqueKey) : null;
 
     const cats: Record<string, string> = {};
     for (const [id, value] of Object.entries(result.categories)) {
       // اصل PRD: متن آزاد پیام ذخیره نشود؛ فقط کلید پایدار پیام.
       cats[id] = id === 'messageSuccess' || id === 'messageFail'
-        ? this.messageKeyOf(String(value))
-        : String(value).slice(0, 200);
+        ? messageKeyOf(String(value))
+        : String(value);
     }
 
     const services: Record<string, string> = {};
@@ -134,7 +241,11 @@ export class EvaluatorService {
       services[key] = (state as any)?.kind ?? 'missingService';
     }
 
-    const ability = num(get(sample, 'output.Credit_Basket')); // ملت: توان بازپرداخت (ریال)
+    const { extras, creditAlerts } = this.buildDisplayExtras(bank, selectedServices, sample, result, day, isSuccess);
+    extras.badReports = badReports;
+    const abilityPath = bank.key === 'tavan_mellat'
+      ? 'output.Credit_Basket' : 'output.suggested_tavan_bazpardakht';
+    const ability = num(get(sample, abilityPath));
     const statusCode = String(result.categories.statusCode ?? '');
     const errorCode = String(result.categories.errorCode ?? '');
     const modelName = String(result.categories.modelName ?? '');
@@ -143,6 +254,8 @@ export class EvaluatorService {
       request_id: requestId,
       day,
       inserted_at: sample.insertDate_full != null ? String(sample.insertDate_full) : null,
+      stamp_key: extras.stamp?.key ?? null,
+      unique_key: uniqueKey,
       is_success: isSuccess,
       model_name: modelName && modelName !== 'نام مدل ثبت نشده است' ? modelName : null,
       status_code: statusCode && statusCode !== 'ثبت نشده' ? statusCode : null,
@@ -151,9 +264,9 @@ export class EvaluatorService {
       total_time_s: result.metrics.totalTime ?? null,
       pd: result.metrics.pd ?? null,
       suggested_amount: ability != null ? String(Math.round(ability)) : null,
-      amount_kind: 'repayment_capacity',
+      amount_kind: bank.key === 'tavan_postbank' ? 'suggested_loan' : 'repayment_capacity',
       score_req: result.metrics.scoreReq ?? null,
-      credit_basket: null, // در ملت Tavan_Baz_Pardakht سبد ردهای است، نه یک عدد واحد
+      credit_basket: null,
       avg36: result.metrics.avg36 ?? null,
       ln_avg_installments: result.metrics.lnAvgInstallments ?? null,
       rotbe: result.rotbe ?? null,
@@ -163,12 +276,14 @@ export class EvaluatorService {
       metrics: plain(result.metrics),
       paths: plain(result.pathKinds),
       services,
-      credit_alerts: this.creditAlertsOf(result),
-      analysis_version: this.analysisVersion,
+      credit_alerts: creditAlerts,
+      display_extras: extras,
+      analysis_version: runtime.version,
     };
   }
 
-  specs() {
+  specs(bankKey = 'tavan_mellat') {
+    const bank = this.getBank(bankKey);
     const map = (items: any[]) => items.map((s) => ({
       id: s.id,
       label: s.label,
@@ -185,14 +300,14 @@ export class EvaluatorService {
       summaryDecimals: s.summaryDecimals ?? null,
     }));
     return {
-      bank: { id: this.bank.id, label: this.bank.label, key: this.bank.key, overviewNote: this.bank.overviewNote },
-      topics: [...this.bank.topics].map((t: any) => ({ id: t.id, label: t.label, desc: t.desc, icon: t.icon })),
-      flags: map(this.bank.flags),
-      categories: map(this.bank.categories),
-      counters: map(this.bank.counters),
-      metrics: map(this.bank.metrics),
-      paths: this.bank.paths.map((p: any) => ({ key: p.key, label: p.label })),
-      expectedServices: [...this.bank.expectedServices],
+      bank: { id: bank.id, label: bank.label, key: bank.key, overviewNote: bank.overviewNote },
+      topics: [...bank.topics].map((t: any) => ({ id: t.id, label: t.label, desc: t.desc, icon: t.icon })),
+      flags: map(bank.flags),
+      categories: map(bank.categories),
+      counters: map(bank.counters),
+      metrics: map(bank.metrics),
+      paths: bank.paths.map((p: any) => ({ key: p.key, label: p.label })),
+      expectedServices: [...bank.expectedServices],
     };
   }
 }

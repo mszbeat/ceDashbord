@@ -66,7 +66,7 @@ module.exports = function createMellat({ minNull = 3 } = {}) {
   };
   const rotbeNull = (c) => isRotbeNullData(get(c, 'rotbebandiStandard.data'), minNull);
   return {
-    id: 'tavan_mellat', label: 'ملت', rootLabel: 'input.data', expectedServices: ['iran'],
+    id: 'tavan_mellat', label: 'ملت', rootLabel: 'input.data', expectedServices: ['iran'], diag,
     collected: (sample) => get(sample, 'input.data'),
     creditSources: { facilities: (c) => get(c, 'samatFacilities.TashilatItem'), cheques: (c) => get(c, 'samatCheque.chequeList') },
     // فقط معنای نمایشی اصلاح می‌شود: کلیدها برای سازگاری با داده‌های وابسته دست‌نخورده‌اند.
@@ -84,7 +84,7 @@ module.exports = function createMellat({ minNull = 3 } = {}) {
         details: 'وجود سابقه از آرایهٔ input.data.historicalLoans خوانده می‌شود: آرایهٔ غیرخالی دارای سابقه و آرایهٔ صریحاً خالی بدون سابقه است. کلید غایب یا نامعتبر در هیچ‌کدام شمرده نمی‌شود. تعداد وام‌های ثبت‌شده برابر طول آرایهٔ سالم است؛ آرایهٔ خالی صفر و آرایهٔ غایب یا دارای ردیف نامعتبر از آمار عددی خارج است. میانگین اقساط قراردادی هر گزارش فقط از installmentCount صحیح و نامنفی وام‌های همان گزارش به دست می‌آید؛ طول installments یا approvedDuration جایگزین نیست. مقدار صفرِ ثبت‌شده معتبر است، ولی null صفر فرض نمی‌شود. گزارش بدون تعداد اقساط معتبر از میانگین حذف می‌شود. آمار جدول روی مقدار هر گزارش است، نه تک‌تک وام‌ها. این شاخص‌ها به معنای تعداد وام فعال یا اقساط باقی‌مانده نیستند. به علت نبود روز تأخیر معتبر، آمار تأخیر ملت همچنان نمایش داده نمی‌شود و کد status تفسیر نمی‌شود.' },
       { id: 'deposit', icon: '▥', label: 'سپرده‌ها', desc: 'پوشش ماهانه، کیفیت تاریخ‌ها و میانگین سپردهٔ ۳۶ ماهه',
         details: `کلید قطعی <code>yeaR_MONTH</code> تاریخ شمسی هشت‌رقمی مانند <code>14030930</code> را نگه می‌دارد و مبلغ فقط از <code>avR_AMOUNT</code> خوانده می‌شود؛ برای آمار ماهانه فقط سال و ماه آن به کار می‌رود. میانگین ${N_MONTH} ماهه از ماه‌های یکتا (با حفظ نخستین تکرار)، به ترتیب جدید به قدیم، محاسبه می‌شود. کمبود تعداد ماه‌های موجود تا ${N_MONTH} با صفر تکمیل می‌شود؛ این متد پنجرهٔ تقویمی پیوسته نمی‌سازد. تاریخ یا مبلغ نامعتبر، منفی یا نامعلوم در هر ردیف باعث کنارگذاشتن گزارش از میانگین می‌شود، نه تبدیل مبلغ به صفر. منبع قطعی آرایهٔ <code>input.data.depositAverage</code> است؛ نبود پیام سرویس، میانگین را صفر نمی‌کند.`,
-        extraHtml: () => !diag.badReports ? '' : `<div class="alert"><strong>نیاز به بررسی تاریخ سپرده:</strong> در ${diag.badReports} گزارش، دست‌کم یک تاریخ ماه سپرده قابل خواندن نبود. سال‌وماه (مانند <code>140309</code>) یا سال‌وماه‌وروز (مانند <code>14030930</code>) پذیرفته می‌شود؛ مقدارهای خام فقط در جزئیات خصوصی در دسترس‌اند.</div>` },
+        extraHtml: () => !diag.badReports ? '' : `<div class="alert"><strong>نیاز به بررسی تاریخ سپرده:</strong> در ${diag.badReports} گزارش، دست‌کم یک تاریخ ماه سپرده قابل خواندن نبود. سال‌وماه (مانند <code>140309</code>) یا سال‌وماه‌وروز (مانند <code>14030930</code>) پذیرفته می‌شود؛ مقدارهای خام فقط در پنجرهٔ جزئیات همان گزارش، پس از دریافت از API اصلی، در دسترس‌اند.</div>` },
     ],
     paths: ['samatFacilities.TashilatItem',
       { key: 'samatChequeList', label: 'فهرست چک‌های برگشتی', displayPath: 'input.data.samatCheque.chequeList', get: (c) => get(c, 'samatCheque.chequeList') },
