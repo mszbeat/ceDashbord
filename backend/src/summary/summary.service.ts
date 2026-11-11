@@ -572,6 +572,83 @@ export class SummaryService {
     };
   }
 
+  /** صفحهٔ خطای خوانا بهجای پاس دادن JSON خام 500 به مرورگر. */
+  errorHtml(error: any): string {
+    const escape = (value: any) => String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    const message = escape(String(error?.message ?? error).slice(0, 1200));
+    const databaseUrl = process.env.DATABASE_URL ? 'تنظیم شده' : 'تنظیم نشده';
+    return `<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>داشبورد زنده در دسترس نیست</title><style>
+      body{margin:0;background:#f3f6f8;color:#1a2935;font:14px/1.9 Tahoma,"Segoe UI",sans-serif;padding:40px}
+      main{max-width:820px;margin:auto;background:#fff;border:1px solid #dfe7e9;border-radius:16px;padding:28px 32px;box-shadow:0 14px 36px rgba(20,52,64,.06)}
+      h1{color:#af711e;font-size:22px;margin:0 0 12px}p{color:#627484}code,pre{direction:ltr;text-align:left;background:#f7f9fa;border:1px solid #ebeff0;border-radius:8px;padding:8px 12px;white-space:pre-wrap;word-break:break-word}
+      ul{line-height:2}a{color:#087b72;font-weight:700}.badge{display:inline-block;background:#fff5e3;color:#af711e;border-radius:8px;padding:2px 10px;font-size:12px}
+    </style></head><body><main><span class="badge">HTTP 503</span><h1>صفحهٔ زنده ساخته نشد</h1>
+      <p>بکاند در دسترس است، ولی هنگام خواندن دیتابیس جانبی یا ساخت گزارش خطا داد. متن فنی:</p>
+      <pre>${message}</pre>
+      <p><b>وضعیت متغیرها:</b> <code>DATABASE_URL</code>=${escape(databaseUrl)} · بکاند روی پورت <code>${escape(config.backendPort)}</code> · API اصلی <code dir="ltr">${escape(config.apiBaseUrl)}</code></p>
+      <p>چکلیست:</p><ul>
+        <li><code>cp backend/.env.example backend/.env</code> و تنظیم <code>DATABASE_URL</code> واقعی</li>
+        <li><code>./migrate.sh</code> برای ساخت <code>day_runs</code> و <code>samples_*</code></li>
+        <li><code>./ingest.sh --bank=tavan_resalat --mode=nightly</code> یا همان بانک انتخابی</li>
+        <li><code>./start.sh</code> و بررسی <code>BACKEND_URL</code> در <code>frontend/.env.local</code></li>
+      </ul>
+      <p><a href="/api/diagnostics">گزارش تشخیصی دیتابیس</a> · <a href="/">تلاش دوباره</a></p>
+    </main></body></html>`;
+  }
+
+  /** وضعیت اتصال و جداول، بدون افشای رمز عبور یا توکن. */
+  async diagnostics() {
+    const tables = ['day_runs', 'samples_mellat', 'samples_resalat', 'samples_postbank',
+      'message_dict', 'sample_access_logs'];
+    const result: Record<string, any> = {
+      ok: false,
+      generatedAt: new Date().toISOString(),
+      databaseUrlConfigured: !!process.env.DATABASE_URL,
+      apiBaseUrlConfigured: !!process.env.CE_API_BASE_URL,
+      apiTokenConfigured: !!config.apiToken,
+      backendPort: config.backendPort,
+      banks: Object.keys(BANKS),
+      databaseConnected: false,
+      tables: {},
+      counts: {},
+      hints: [],
+    };
+    try {
+      const probe = await this.db.query('SELECT 1 AS ok');
+      result.databaseConnected = Number(probe.rows[0]?.ok) === 1;
+    } catch (error) {
+      result.databaseError = String((error as any)?.message ?? error).slice(0, 500);
+      result.hints.push('اتصال PostgreSQL برقرار نشد؛ DATABASE_URL، دسترسی شبکهای و روشن بودن سرویس را بررسی کن.');
+    }
+    for (const table of tables) {
+      try {
+        const found = await this.db.query(
+          "SELECT COUNT(*)::int AS count FROM information_schema.tables WHERE table_schema='public' AND table_name=$1",
+          [table],
+        );
+        result.tables[table] = Number(found.rows[0]?.count) > 0;
+        if (result.tables[table] && !table.startsWith('samples_')) {
+          const count = await this.db.query(`SELECT COUNT(*)::int AS count FROM ${table}`);
+          result.counts[table] = Number(count.rows[0]?.count ?? 0);
+        }
+      } catch (error) {
+        result.tables[table] = false;
+      }
+    }
+    for (const table of tables.filter((x) => x.startsWith('samples_'))) {
+      if (!result.tables[table]) continue;
+      try {
+        const count = await this.db.query(`SELECT COUNT(*)::int AS count FROM ${table}`);
+        result.counts[table] = Number(count.rows[0]?.count ?? 0);
+      } catch { /* جدول وجود دارد ولی قابل خواندن نیست */ }
+    }
+    if (Object.values(result.tables).some((exists) => !exists)) result.hints.push('برخی جداول ساخته نشدهاند؛ ./migrate.sh را اجرا کن.');
+    if (Object.values(result.counts).every((count) => Number(count) === 0)) result.hints.push('جداول خالیاند؛ Ingestion اجرا نشده است.');
+    result.ok = result.databaseConnected && Object.values(result.tables).every(Boolean);
+    return result;
+  }
+
   async runs() {
     const result = await this.db.query('SELECT * FROM day_runs ORDER BY day DESC, bank LIMIT 200');
     return result.rows;

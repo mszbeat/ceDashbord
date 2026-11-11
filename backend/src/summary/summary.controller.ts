@@ -1,4 +1,4 @@
-import { Controller, Get, Header, Param, Query, Req } from '@nestjs/common';
+import { Controller, Get, Header, Param, Query, Req, Res } from '@nestjs/common';
 import { SummaryService } from './summary.service';
 
 /**
@@ -25,15 +25,26 @@ export class SummaryController {
   }
 
   @Get('report')
-  @Header('Content-Type', 'text/html; charset=utf-8')
-  @Header('Cache-Control', 'no-store, no-cache, must-revalidate')
-  report(
+  async report(
     @Query('bank') bank = 'tavan_mellat',
     @Query('from') from?: string,
     @Query('to') to?: string,
     @Query('rowsCap') rowsCap?: string,
+    @Res() res?: any,
   ) {
-    return this.svc.report(bank, from, to, rowsCap ? Number(rowsCap) : 100);
+    res?.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+    try {
+      const html = await this.svc.report(bank, from, to, rowsCap ? Number(rowsCap) : 100);
+      res?.status(200).set('Content-Type', 'text/html; charset=utf-8').send(html);
+    } catch (error) {
+      res?.status(503).set('Content-Type', 'text/html; charset=utf-8').send(this.svc.errorHtml(error));
+    }
+  }
+
+  @Get('diagnostics')
+  @Header('Cache-Control', 'no-store, no-cache, must-revalidate')
+  diagnostics() {
+    return this.svc.diagnostics();
   }
 
   @Get('summary')

@@ -192,6 +192,7 @@ BACKEND_PORT=3000
 | متد | مسیر | توضیح |
 |---|---|---|
 | GET | `/api/health` | سلامت سرویس |
+| GET | `/api/diagnostics` | وضعیت اتصال PostgreSQL، جداول، تعداد ردیفها و تنظیم env، بدون افشای رمز/توکن |
 | GET | `/api/banks` | بانکهای فعال |
 | GET | `/api/specs?bank=tavan_resalat` | تعریف شاخصها، دستهها، متریکها، موضوعات همان بانک |
 | GET | `/api/report?bank=&from=&to=&rowsCap=100` | **صفحهٔ HTML زنده** با همان `buildHtml` قدیمی |
@@ -288,5 +289,6 @@ npm run preview:pglite
 | `relation "samples_resalat" does not exist` | `./migrate.sh` اجرا نشده |
 | `دریافت صفحه ... ناموفق بود` | `CE_GATEWAY_TOKEN` / دسترسی شبکهای به API اصلی |
 | فرانتاند صفحه نشان نمیدهد | بکاند بالا نیست یا `BACKEND_URL` در `frontend/.env.local` اشتباه است |
+| `{"statusCode":500,...}` در مرورگر | نسخهٔ قدیمی frontend خطای خام بکاند را نشان میداد؛ بعد از آخرین کامیت صفحهٔ خطای فارسی و لینک `/api/diagnostics` میآید. اصل مشکل معمولاً `DATABASE_URL` تنظیم نشده یا `./migrate.sh` اجرا نشده است |
 | `partial` همیشه میماند | طبیعی است؛ حالت میانروز است. شبانه `complete` میشود |
 | `needs_review` | مغایرت `source_total` با پردازش یا وجود نمونه پرشده؛ `day_runs.error` و لاگ Ingestion را ببین |
