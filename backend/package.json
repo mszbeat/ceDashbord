@@ -14,7 +14,9 @@
     "test": "node -r ts-node/register src/evaluator/evaluator.test.ts",
     "test:parity": "node scripts/parity-smoke.js",
     "preview:pglite": "node scripts/pglite-preview.js",
-    "test:numeric-parity": "node scripts/numeric-parity.js"
+    "test:numeric-parity": "node scripts/numeric-parity.js",
+    "test:ab-parity": "node scripts/ab-parity.js --self-test",
+    "import:legacy": "node scripts/import-legacy-reports.js"
   },
   "dependencies": {
     "@nestjs/common": "^10.3.0",

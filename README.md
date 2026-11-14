@@ -281,6 +281,25 @@ npm run preview:pglite
 
 ---
 
+## ممیزی کامل اختلاف اعداد
+
+گزارش کامل «صفر تا صد» مقایسهٔ دو خط لولهٔ تحلیل (هش تکتک فایلها، شش فایل
+تغییریافته، فرمولها، تست A/B و تحلیل الگوی اختلاف اسکرینشاتها) در
+[`docs/analysis-parity-audit.md`](docs/analysis-parity-audit.md) است.
+
+ابزارهای قطعی:
+
+```bash
+cd backend
+npm run test:ab-parity                                  # تست اتوماتیک روی ۱۲۰ نمونه
+node scripts/ab-parity.js /path/to/reports             # مقایسهٔ همان پوشهٔ reports/ از هر دو مسیر
+node scripts/import-legacy-reports.js /path/to/reports # وارد کردن همان اسنپشاپ به PostgreSQL
+```
+
+`ab-parity` هر دو خروجی را با **یک رندرر** میسازد و جداول تجمیعی را سلولبهسلول
+مقایسه میکند؛ نتیجهٔ موفق `identical: true` یعنی اختلاف اعداد دو اجرای واقعی
+از **اسنپشاپ متفاوت API** آمده، نه از کد تحلیل.
+
 ## بررسی تطبیق عددی قدیم / جدید
 
 اسکریپت `backend/scripts/numeric-parity.js` همان نمونهها را یکبار از مسیر قدیمی
