@@ -3,7 +3,7 @@
  * وارد کردن دقیق همان فایلهای reports/ نسخهٔ قدیمی به دیتابیس زنده،
  * تا دو خروجی از «یک اسنپشاپ» ساخته شوند و مقایسه معنیدار باشد.
  *
- *   node scripts/import-legacy-reports.js /path/to/reports [bank] [--dry-run]
+ *   node scripts/import-legacy-reports.js /path/to/reports [bank] [--dry-run] [--rebuild]
  *
  * متغیر DATABASE_URL از backend/.env خوانده میشود. نمونها از قبل توسط
  * reportProcess.js نرمال شدهاند؛ این اسکریپت فقط همانها را ارزیابی و UPSERT میکند.
@@ -32,12 +32,14 @@ const JSON_COLUMNS = new Set(['flags', 'cats', 'counters', 'metrics', 'paths', '
 
 (async () => {
   const args = process.argv.slice(2);
+  const positional = args.filter((a) => !a.startsWith('--'));
   const dryRun = args.includes('--dry-run');
-  const root = path.resolve(args.find((a) => !a.startsWith('--')) || './reports');
+  const rebuild = args.includes('--rebuild') || args.includes('--rebuild=true');
+  const root = path.resolve(positional[0] || './reports');
   if (!fs.existsSync(root)) throw new Error(`پوشهٔ reports پیدا نشد: ${root}`);
   const scanned = scan(root, loadBanks({ minNull: 3 }));
   if (!scanned.bank) throw new Error('هیچ بانکی شناسایی نشد');
-  const bankKey = TABLES[args[1]] ? args[1] : scanned.bank.key;
+  const bankKey = TABLES[positional[1]] ? positional[1] : scanned.bank.key;
   const table = TABLES[bankKey];
   if (!table) throw new Error(`بانک ناشناخته: ${bankKey}`);
 
@@ -56,13 +58,20 @@ const JSON_COLUMNS = new Set(['flags', 'cats', 'counters', 'metrics', 'paths', '
   }
   console.log(JSON.stringify({
     reportsRoot: root, bank: bankKey, days: scanned.selectedDays,
-    files: scanned.selectedFiles.length, samples: rows.length, dryRun,
+    files: scanned.selectedFiles.length, samples: rows.length, dryRun, rebuild,
   }, null, 2));
   if (dryRun || !rows.length) return;
 
   const client = new Client({ connectionString: process.env.DATABASE_URL });
   await client.connect();
   try {
+    if (rebuild) {
+      // حذف و ورود در یک تراکنش: خرابی نیمهراه دادههای قبلی را خراب نمیکند.
+      await client.query('BEGIN');
+      const removed = await client.query(`DELETE FROM ${table} WHERE day = ANY($1::text[])`, [scanned.selectedDays]);
+      await client.query(`DELETE FROM day_runs WHERE bank=$1 AND day = ANY($2::text[])`, [bankKey, scanned.selectedDays]);
+      console.log(`  🧹 --rebuild: ${removed.rowCount} ردیف قدیمی حذف شد (${scanned.selectedDays.join(', ')})`);
+    }
     const chunkSize = 100;
     for (let start = 0; start < rows.length; start += chunkSize) {
       const chunk = rows.slice(start, start + chunkSize);
@@ -97,7 +106,11 @@ const JSON_COLUMNS = new Set(['flags', 'cats', 'counters', 'metrics', 'paths', '
       [bankKey, day, rows.length, rows.filter((r) => r.is_success).length,
         rows.filter((r) => !r.is_success).length, evaluator.versionOf(bankKey)],
     );
+    if (rebuild) await client.query('COMMIT');
     console.log('✅ اسنپشاپ reports/ وارد دیتابیس شد؛ داشبورد زنده را برای همان روز باز کن.');
+  } catch (error) {
+    if (rebuild) await client.query('ROLLBACK').catch(() => undefined);
+    throw error;
   } finally {
     await client.end();
   }

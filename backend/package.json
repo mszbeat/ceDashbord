@@ -16,7 +16,8 @@
     "preview:pglite": "node scripts/pglite-preview.js",
     "test:numeric-parity": "node scripts/numeric-parity.js",
     "test:ab-parity": "node scripts/ab-parity.js --self-test",
-    "import:legacy": "node scripts/import-legacy-reports.js"
+    "import:legacy": "node scripts/import-legacy-reports.js",
+    "test:rebuild": "node scripts/rebuild-test.js"
   },
   "dependencies": {
     "@nestjs/common": "^10.3.0",

@@ -133,7 +133,15 @@ node scripts/ab-parity.js /path/to/reports
 
 # ۳) سلامت نسخهها را ببینید
 curl http://localhost:3001/api/diagnostics   # bankDiagnostics.*.analysisVersions
+
+# ۴) اختیاری: آن روز را از صفر بسازید تا ردیفهای منسوخ/نسخهقدیمی پاک شوند
+./ingest.sh --bank=tavan_mellat --day=1405-08-19 --rebuild
 ```
+
+> `--rebuild` پیش از ورود، تمام ردیفهای `(bank, day)` و `day_runs` آن روز را حذف
+> میکند و در یک تراکنش دوباره میسازد؛ `--day` اجباری است، پاسخ خالی API اجرا را
+> پیش از حذف لغو میکند، و خرابی وسط کار `ROLLBACK` میشود. جزئیات در `README.md`
+> بخش «`--rebuild` چیست و کی لازم است؟» و تست `npm run test:rebuild`.
 
 اگر `ab-parity` روی پوشهٔ واقعی شما `identical: true` داد، اختلاف اسکرینشاتها
 قطعاً از اسنپشاپ است. اگر `aggregateTableDiffs` غیرخالی داد، همان خروجی را

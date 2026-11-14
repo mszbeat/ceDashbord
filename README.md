@@ -166,9 +166,58 @@ BACKEND_PORT=3000
 ./ingest.sh --day=1405-08-18 --mode=nightly
 ./ingest.sh --bank=tavan_resalat --days=7
 ./ingest.sh --bank=tavan_postbank --mode=nightly
+./ingest.sh --bank=tavan_mellat --day=1405-08-19 --rebuild   # پاک کردن کامل و ساخت دوبارهٔ همان روز
+./ingest.sh --days=7 --rebuild                               # بازسازی کامل ۷ روز
+./ingest.sh --help                                           # راهنمای همهٔ گزینهها
 ```
 
-رفتار:
+### `--rebuild` چیست و کی لازم است؟
+
+بدون آن، ingest فقط `UPSERT` میکند: ردیفهایی که در پاسخ جدید API **نباشند**،
+همچنان در دیتابیس میمانند (مثلاً ردیفهای تحلیلشده با نسخهٔ قدیمی کد، یا
+تکراریهایی که API دیگر برنمیگرداند). همین میتواند باعث شود آمار یک روز با
+`report.html` قدیمی چند واحد فرق کند.
+
+با `--rebuild`، پیش از ورود، **تمام** ردیفهای آن `(bank, day)` و ردیف
+`day_runs`اش حذف میشوند و روز از صفر ساخته میشود:
+
+```bash
+# مستقیم از ریشه
+./ingest.sh --bank=tavan_mellat --day=1405-08-19 --rebuild
+
+# یا از پوشهٔ backend
+cd backend
+npm run ingest -- --bank=tavan_mellat --day=1405-08-19 --rebuild
+
+# همان فایلهای reports/ قدیمی را (بدون خواندن دوبارهٔ API) از صفر وارد کن
+node scripts/import-legacy-reports.js /path/to/reports tavan_mellat --rebuild
+
+# یا از طریق API بکاند
+curl -X POST http://localhost:3000/api/runs \
+  -H 'content-type: application/json' \
+  -d '{"bank":"tavan_mellat","day":"1405-08-19","mode":"nightly","rebuild":true}'
+```
+
+محافظها:
+
+- **`--day` یا `--days` اجباری است**؛ `--rebuild` بدون روز صریح رد میشود تا
+  دیروز بهطور ناخواسته پاک نشود. (API هم `day` صریح میخواهد.)
+- پیش از هر حذف، `page=1&limit=1` چک میشود؛ اگر API هیچ رکوردی برنگرداند،
+  اجرا **لغو** میشود و چیزی پاک نمیشود.
+- حذف و ورود مجدد **در یک تراکنش** است. اگر API وسط کار قطع شود،
+  `ROLLBACK` میشود و ردیفها و `day_runs` قدیمی دقیقاً سالم میمانند؛ خطا در
+  خروجی CLI چاپ میشود.
+- `message_dict` و `sample_access_logs` دستنخورده میمانند (پیامهای قالبی و
+  لاگ دسترسی تاریخچهایاند، وابسته به یک روز نیستند).
+- خروجی موفق شامل `"rebuild": true, "deleted": N` است.
+
+تست اتوماتیک رفتار بالا (شامل ROLLBACK و لغو پیش از حذف):
+
+```bash
+cd backend && npm run test:rebuild
+```
+
+رفتار معمولی (بدون rebuild):
 
 1. قفل `pg_advisory_lock` روی `(bank, day)`.
 2. `source_total` از `page=1&limit=1`.
@@ -341,8 +390,14 @@ npm run test:numeric-parity
 ```
 
 اگر `analysisVersions` بیش از یک نسخه داشت یا `rowsWithoutTime > 0`، بعد از
-`git pull` دوباره `./ingest.sh --bank=... --mode=nightly` را اجرا کنید تا همهٔ
-شاخصها با یک نسخه و یک اسنپشاپ ساخته شوند.
+`git pull` آن روز را **از صفر** بسازید:
+
+```bash
+./ingest.sh --bank=tavan_mellat --day=1405-08-19 --rebuild
+```
+
+`--rebuild` برخلاف ingest معمولی، ردیفهایی را که دیگر در پاسخ API نیستند هم
+حذف میکند؛ بنابراین همهٔ شاخصها با یک نسخه و یک اسنپشاپ ساخته میشوند.
 
 ## عیبیابی کوتاه
 

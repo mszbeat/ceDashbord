@@ -12,6 +12,11 @@ const UPSERT_COLUMNS = [
   'credit_alerts', 'display_extras', 'analysis_version',
 ] as const;
 
+/** گزینههای اجرای یک روز. rebuild: پاک کردن کامل ردیفهای آن روز پیش از ورود مجدد. */
+export interface RunDayOptions {
+  rebuild?: boolean;
+}
+
 @Injectable()
 export class IngestionService {
   constructor(private db: DatabaseService, private evaluator: EvaluatorService) {}
@@ -48,7 +53,7 @@ export class IngestionService {
     return Number.isFinite(total) ? total : 0;
   }
 
-  private async upsertBatch(table: string, rows: AnalyzedRow[]) {
+  private async upsertBatch(client: any, table: string, rows: AnalyzedRow[]) {
     if (!rows.length) return;
     const values: string[] = [];
     const params: any[] = [];
@@ -65,7 +70,7 @@ export class IngestionService {
       .map((c) => `${c}=EXCLUDED.${c}`).join(', ');
     const sql = `INSERT INTO ${table} (${UPSERT_COLUMNS.join(',')}) VALUES ${values.join(',')}
       ON CONFLICT (request_id) DO UPDATE SET ${updates}, updated_at=now()`;
-    await this.db.query(sql, params);
+    await client.query(sql, params);
   }
 
   private async startRun(client: any, bankKey: string, day: string, mode: string) {
@@ -93,21 +98,38 @@ export class IngestionService {
     );
   }
 
-  async runDay(bankInput: string, dayInput?: string, mode: 'nightly' | 'intraday' = 'nightly') {
+  async runDay(bankInput: string, dayInput?: string, mode: 'nightly' | 'intraday' = 'nightly', options: RunDayOptions = {}) {
     const bankKey = bankInput as BankKey;
     const bank = BANKS[bankKey];
     if (!bank) throw new Error(`بانک پشتیبانیشده نیست: ${bankInput} (بانکهای پشتیبانیشده: ملت، رسالت، پستبانک)`);
+    const rebuild = options.rebuild === true;
+    if (rebuild && !dayInput) throw new Error('--rebuild نیاز به --day مشخص دارد (برای جلوگیری از پاک شدن ناخواستهٔ دیروز).');
     const day = normalizeDay(dayInput ?? (mode === 'nightly' ? tehranYesterday() : tehranToday()));
     const client = await this.db.getClient();
     const lockKey = `ce-ingest:${bankKey}:${day}`;
     let checkpoint = 0, sourceTotal = 0, success = 0, fail = 0, skipped = 0, processed = 0;
+    let inTransaction = false, deleted = 0;
     const messageTemplates = new Map<string, string>();
     const writtenTemplates = new Set<string>();
 
     try {
       await client.query('SELECT pg_advisory_lock(hashtext($1))', [lockKey]);
+      // پیشبینی خرابی API پیش از پاک کردن: اگر منبع پاسخ نداد، چیزی حذف نشود.
+      const preflight = await this.sourceTotal(day);
+      if (rebuild && !preflight) {
+        throw new Error(`--rebuild لغو شد: API برای ${day} هیچ رکوردی برنگرداند؛ دادههای موجود دستنخورده ماندند.`);
+      }
+      if (rebuild) {
+        // حذف و ورود مجدد در یک تراکنش: یا همه چیز جایگزین میشود، یا هیچچیز.
+        await client.query('BEGIN');
+        inTransaction = true;
+        const removed: any = await client.query(`DELETE FROM ${bank.table} WHERE day=$1`, [day]);
+        deleted = removed.rowCount ?? 0;
+        await client.query('DELETE FROM day_runs WHERE bank=$1 AND day=$2', [bankKey, day]);
+        console.warn(`[ingest] --rebuild: ${deleted} ردیف قدیمی ${bankKey}/${day} حذف شد؛ تراکنش تا پایان ورود باز است.`);
+      }
       checkpoint = await this.startRun(client, bankKey, day, mode);
-      sourceTotal = await this.sourceTotal(day);
+      sourceTotal = preflight;
       await this.updateRun(client, bankKey, day, { source_total: sourceTotal });
 
       while (checkpoint < sourceTotal) {
@@ -137,11 +159,11 @@ export class IngestionService {
             console.warn(`[ingest] پرش نمونه: ${(error as any)?.message ?? error}`);
           }
         }
-        await this.upsertBatch(bank.table, rows);
+        await this.upsertBatch(client, bank.table, rows);
         // متن دقیق پیامهای قالبی قدیمی (fa + en) فقط یکبار در message_dict نوشته میشود؛
         // متن آزاد هر نمونه هرگز در ردیفها ذخیره نمیشود (PRD §12).
         const pending = [...messageTemplates.entries()].filter(([key]) => !writtenTemplates.has(key));
-        if (pending.length) await this.db.query(
+        if (pending.length) await client.query(
           `INSERT INTO message_dict(message_key, label, topic, message_text)
            SELECT k, k, 'other', t FROM unnest($1::text[], $2::text[]) AS x(k, t)
            ON CONFLICT (message_key) DO UPDATE SET message_text=EXCLUDED.message_text`,
@@ -149,7 +171,7 @@ export class IngestionService {
         );
         for (const [key] of pending) writtenTemplates.add(key);
         const unknownKeys = [...new Set(rows.map((row) => row.message_key).filter((key) => key && key.startsWith('MSG_UNKNOWN:')))];
-        if (unknownKeys.length) await this.db.query(
+        if (unknownKeys.length) await client.query(
           `INSERT INTO message_dict(message_key, label, topic, message_text)
            SELECT key, 'سایر پیامها', 'other', 'سایر پیامها' FROM unnest($1::text[]) AS key
            ON CONFLICT (message_key) DO NOTHING`, [unknownKeys],
@@ -166,15 +188,21 @@ export class IngestionService {
         status, finished_at: new Date(), source_total: sourceTotal, checkpoint,
         ingested_count: processed, success_count: success, fail_count: fail, skipped_count: skipped,
       });
-      return { bank: bankKey, day, mode, status, source_total: sourceTotal, processed, success, fail, skipped, checkpoint };
+      if (inTransaction) { await client.query('COMMIT'); inTransaction = false; }
+      return { bank: bankKey, day, mode, status, source_total: sourceTotal, processed, success, fail, skipped, checkpoint,
+        rebuild, deleted };
     } catch (error) {
       const message = String((error as any)?.message ?? error);
-      await this.updateRun(client, bankKey, day, {
+      // در حالت rebuild تراکنش برگردانده میشود تا هم ردیفها و هم day_runs قدیمی سالم بمانند؛
+      // خطا از طریق CLI گزارش میشود، پس وضعیت لاگ قبلی دستکاری نمیشود.
+      if (inTransaction) { await client.query('ROLLBACK').catch(() => undefined); inTransaction = false; }
+      if (!rebuild) await this.updateRun(client, bankKey, day, {
         status: 'failed', error: message.slice(0, 1000), finished_at: new Date(), checkpoint,
         ingested_count: processed, success_count: success, fail_count: fail, skipped_count: skipped,
       }).catch(() => undefined);
-      throw error;
+      throw new Error(rebuild ? `${message} (--rebuild: تراکنش برگردانده شد، دادههای ${day} دستنخورده ماندند)` : message);
     } finally {
+      if (inTransaction) await client.query('ROLLBACK').catch(() => undefined);
       await client.query('SELECT pg_advisory_unlock(hashtext($1))', [lockKey]).catch(() => undefined);
       client.release();
     }
