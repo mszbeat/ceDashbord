@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { DatabaseService } from '../db/database.service';
 import { EvaluatorService } from '../evaluator/evaluator.service';
 import { BANKS, BankKey, config } from '../config';
-import { defaultRange, normalizeDay } from '../utils/date';
+import { defaultRange, jalaliStampDigitsOf, normalizeDay } from '../utils/date';
 
 /* همهٔ شمارشها/چارکها/درصدها دقیقاً با newStats()/bump() قدیمی ساخته میشوند؛
    SQL فقط برای فهرست، صفحهبندی و روزها استفاده میشود (تصمیم legacy_bump). */
@@ -55,20 +55,18 @@ function redactSensitive(value: any, key = ''): any {
   return out;
 }
 
-const asciiDigits = (value: any) => String(value ?? '')
-  .replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 0x06f0))
-  .replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660));
-
 /**
- * نمایش «اولین/آخرین درخواست» دقیقاً مثل نسخهٔ قدیمی: تاریخ + ساعت + ثانیه.
+ * نمایش «اولین/آخرین درخواست» دقیقاً مثل نسخهٔ قدیمی: تاریخ + ساعت + ثانیهٔ شمسی.
  * نسخهٔ قدیمی stampOf(sample, day) را مستقیم صدا میزد؛ اینجا اگر ردیفهای قدیمی
- * دیتابیس فقط تاریخ ذخیره کردهباشند، از inserted_at / stamp_key بازسازی میشود.
+ * دیتابیس فقط تاریخ ذخیره کردهباشند یا تاریخ میلادی خام در inserted_at بوده باشد،
+ * با jalaliStampDigitsOf به شمسی معتبر تبدیل و بازسازی میشود.
  */
 function stampOfRow(row: any) {
   const stored = asObject(asObject(row.display_extras).stamp);
   const day = String(row.day || '');
   const displayDate = day.replace(/-/g, '/');
-  if (stored && typeof stored.key === 'string' && stored.key && String(stored.display ?? '').includes(':')) {
+  if (stored && typeof stored.key === 'string' && /^1[34]\d{2}/.test(stored.key)
+    && String(stored.display ?? '').includes(':')) {
     return {
       key: stored.key,
       display: String(stored.display),
@@ -76,18 +74,23 @@ function stampOfRow(row: any) {
     };
   }
   for (const candidate of [row.inserted_at, row.stamp_key, stored?.key]) {
-    const digits = asciiDigits(candidate).replace(/\D/g, '');
-    if (digits.length < 12) continue;
-    const rebuilt = stampOf({ insertDate_full: digits.slice(0, 17) }, day);
+    const digits = jalaliStampDigitsOf(candidate);
+    if (!digits) continue;
+    const rebuilt = stampOf({ insertDate_full: digits }, day);
     if (String(rebuilt.display).includes(':')) {
-      return { key: String(row.stamp_key || rebuilt.key), display: rebuilt.display, rowDisplay: rebuilt.rowDisplay };
+      const validRowKey = typeof row.stamp_key === 'string' && /^1[34]\d{2}/.test(row.stamp_key)
+        ? row.stamp_key : rebuilt.key;
+      return { key: String(validRowKey), display: rebuilt.display, rowDisplay: rebuilt.rowDisplay };
     }
   }
-  const display = typeof stored?.display === 'string' && stored.display ? stored.display : displayDate;
+  const validStoredDisplay = typeof stored?.display === 'string' && /^1[34]\d{2}/.test(stored.display)
+    ? stored.display : displayDate;
+  const validStoredKey = typeof stored?.key === 'string' && /^1[34]\d{2}/.test(stored.key)
+    ? stored.key : `${day.replace(/\D/g, '').padEnd(17, '0')}`;
   return {
-    key: String(stored?.key || `${day.replace(/\D/g, '').padEnd(17, '0')}`),
-    display,
-    rowDisplay: String(stored?.rowDisplay ?? `${display} —:—`),
+    key: String(validStoredKey),
+    display: validStoredDisplay,
+    rowDisplay: `${validStoredDisplay} —:—`,
   };
 }
 
@@ -566,13 +569,14 @@ export class SummaryService {
     ).catch(() => undefined);
 
     if (!raw) return { requestId, found: false, fetchedAt: new Date().toISOString(), meta: {}, sample: null };
-    const normalized = this.evaluator.normalizeSample(raw);
+    const normalized = this.evaluator.normalizeSample(raw, { fromApi: true });
     const inferredBank = this.evaluator.bankKeyOfSample(normalized);
     const stored = await this.db.query(
-      `SELECT 'tavan_mellat'::text AS bank, day, is_success, unique_key FROM samples_mellat WHERE request_id=$1
-       UNION ALL SELECT 'tavan_resalat'::text, day, is_success, unique_key FROM samples_resalat WHERE request_id=$1
-       UNION ALL SELECT 'tavan_postbank'::text, day, is_success, unique_key FROM samples_postbank WHERE request_id=$1
-       LIMIT 1`, [requestId],
+      `SELECT * FROM (
+         SELECT 'tavan_mellat'::text AS bank, day, is_success, unique_key FROM samples_mellat WHERE request_id=$1
+         UNION ALL SELECT 'tavan_resalat'::text, day, is_success, unique_key FROM samples_resalat WHERE request_id=$1
+         UNION ALL SELECT 'tavan_postbank'::text, day, is_success, unique_key FROM samples_postbank WHERE request_id=$1
+       ) matched ORDER BY day DESC LIMIT 1`, [requestId],
     ).catch(() => ({ rows: [] as any[] }));
     const row = stored.rows[0];
     const bankKey = String(row?.bank || inferredBank);

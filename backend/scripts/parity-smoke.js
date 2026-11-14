@@ -25,6 +25,7 @@ const dict = [
   ['MSG_OVERDUE_DEBT', 'شما در حال حاضر بدهی معوق دارید. لطفا رفتار اعتباری خود را بهبود بخشید و دوباره امتحان کنید.\nYou currently have overdue debt.please improve your credit behavior and try again.'],
   ['MSG_BOUNCED_CHECK', 'شما همچنان چک برگشتی دارید. لطفا رفتار اعتباری خود را بهبود بخشید و دوباره امتحان کنید.\nYou still have bounced check. please improve your credit behavior and try again.'],
   ['MSG_DUPLICATE_UNIQUE_KEY', 'شناسه یکتا تکراری است!\nduplicate UniqueKey!'],
+  ['MSG_NO_MESSAGE', 'پیامی ثبت نشده است'],
   ['MSG_UNKNOWN', 'سایر پیامها'],
 ].map(([message_key, text]) => ({ message_key, text }));
 

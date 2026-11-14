@@ -55,10 +55,18 @@ export class IngestionService {
 
   private async upsertBatch(client: any, table: string, rows: AnalyzedRow[]) {
     if (!rows.length) return;
+    // حذف تکراریهای همزمان داخل یک بچ بر اساس (day, request_id) تا PostgreSQL خطای
+    // "ON CONFLICT DO UPDATE command cannot affect row a second time" ندهد.
+    const dedupedMap = new Map<string, AnalyzedRow>();
+    for (const row of rows) {
+      dedupedMap.set(`${row.day}\0${row.request_id}`, row);
+    }
+    const uniqueRows = [...dedupedMap.values()];
+
     const values: string[] = [];
     const params: any[] = [];
     const jsonColumns = new Set(['flags', 'cats', 'counters', 'metrics', 'paths', 'services', 'credit_alerts', 'display_extras']);
-    rows.forEach((row, index) => {
+    uniqueRows.forEach((row, index) => {
       const base = index * UPSERT_COLUMNS.length;
       values.push(`(${UPSERT_COLUMNS.map((_, i) => `$${base + i + 1}`).join(',')})`);
       for (const column of UPSERT_COLUMNS) {
@@ -66,10 +74,10 @@ export class IngestionService {
         params.push(jsonColumns.has(column) && value !== null && value !== undefined ? JSON.stringify(value) : value);
       }
     });
-    const updates = UPSERT_COLUMNS.filter((c) => c !== 'request_id')
+    const updates = UPSERT_COLUMNS.filter((c) => c !== 'request_id' && c !== 'day')
       .map((c) => `${c}=EXCLUDED.${c}`).join(', ');
     const sql = `INSERT INTO ${table} (${UPSERT_COLUMNS.join(',')}) VALUES ${values.join(',')}
-      ON CONFLICT (request_id) DO UPDATE SET ${updates}, updated_at=now()`;
+      ON CONFLICT (day, request_id) DO UPDATE SET ${updates}, updated_at=now()`;
     await client.query(sql, params);
   }
 
@@ -128,61 +136,117 @@ export class IngestionService {
         await client.query('DELETE FROM day_runs WHERE bank=$1 AND day=$2', [bankKey, day]);
         console.warn(`[ingest] --rebuild: ${deleted} ردیف قدیمی ${bankKey}/${day} حذف شد؛ تراکنش تا پایان ورود باز است.`);
       }
+      const initialTotal = preflight;
       checkpoint = await this.startRun(client, bankKey, day, mode);
       sourceTotal = preflight;
       await this.updateRun(client, bankKey, day, { source_total: sourceTotal });
+
+      const seenStatus = new Map<string, boolean>();
+      let reachedEndOfPages = sourceTotal === 0;
+
+      const ingestSlice = async (slice: any[], countProcessed = true) => {
+        const rows: AnalyzedRow[] = [];
+        for (const raw of slice) {
+          if (countProcessed) processed++;
+          try {
+            const sample = this.evaluator.normalizeSample(raw, { fromApi: true });
+            const method = String(sample?.input?.method ?? '').trim().toLowerCase();
+            if (method !== bank.method) {
+              if (countProcessed) skipped++;
+              continue;
+            }
+            const isSuccess = this.evaluator.isReportSuccess(sample);
+            const template = this.evaluator.messageTemplateOf(sample, isSuccess);
+            if (template) messageTemplates.set(template.key, template.text);
+            const row = this.evaluator.evaluate(sample, isSuccess, day, bankKey);
+            if (!row.request_id) {
+              if (countProcessed) skipped++;
+              continue;
+            }
+            rows.push(row);
+            const prev = seenStatus.get(row.request_id);
+            if (prev === undefined) {
+              seenStatus.set(row.request_id, isSuccess);
+              if (isSuccess) success++; else fail++;
+            } else if (prev !== isSuccess) {
+              seenStatus.set(row.request_id, isSuccess);
+              if (isSuccess) { success++; fail--; } else { fail++; success--; }
+            }
+          } catch (error) {
+            if (countProcessed) skipped++;
+            console.warn(`[ingest] پرش نمونه: ${(error as any)?.message ?? error}`);
+          }
+        }
+        await this.upsertBatch(client, bank.table, rows);
+        const pending = [...messageTemplates.entries()].filter(([key]) => !writtenTemplates.has(key));
+        if (pending.length) {
+          await client.query(
+            `INSERT INTO message_dict(message_key, label, topic, message_text)
+             SELECT k, k, 'other', t FROM unnest($1::text[], $2::text[]) AS x(k, t)
+             ON CONFLICT (message_key) DO UPDATE SET message_text=EXCLUDED.message_text`,
+            [pending.map(([key]) => key), pending.map(([, text]) => text)],
+          );
+          for (const [key] of pending) writtenTemplates.add(key);
+        }
+      };
 
       while (checkpoint < sourceTotal) {
         const page = Math.floor(checkpoint / config.pageSize) + 1;
         const skip = checkpoint % config.pageSize;
         const data = await this.fetchPage(page, config.pageSize, day);
+        const liveRaw = data?.count ?? data?.totalCount ?? data?.total;
+        const liveTotal = Number(liveRaw);
+        if (Number.isFinite(liveTotal) && liveTotal > sourceTotal) {
+          sourceTotal = liveTotal;
+        }
         const reports: any[] = Array.isArray(data?.reportResults) ? data.reportResults
           : Array.isArray(data?.reports) ? data.reports : Array.isArray(data) ? data : [];
-        if (!reports.length) break;
-        const slice = reports.slice(skip);
-        const rows: AnalyzedRow[] = [];
-        for (const raw of slice) {
-          processed++;
-          try {
-            const sample = this.evaluator.normalizeSample(raw);
-            const method = String(sample?.input?.method ?? '').toLowerCase();
-            if (method !== bank.method) { skipped++; continue; }
-            const isSuccess = this.evaluator.isReportSuccess(sample);
-            const template = this.evaluator.messageTemplateOf(sample, isSuccess);
-            if (template) messageTemplates.set(template.key, template.text);
-            const row = this.evaluator.evaluate(sample, isSuccess, day, bankKey);
-            if (!row.request_id) { skipped++; continue; }
-            rows.push(row);
-            if (isSuccess) success++; else fail++;
-          } catch (error) {
-            skipped++;
-            console.warn(`[ingest] پرش نمونه: ${(error as any)?.message ?? error}`);
-          }
+        if (!reports.length) {
+          reachedEndOfPages = true;
+          break;
         }
-        await this.upsertBatch(client, bank.table, rows);
-        // متن دقیق پیامهای قالبی قدیمی (fa + en) فقط یکبار در message_dict نوشته میشود؛
-        // متن آزاد هر نمونه هرگز در ردیفها ذخیره نمیشود (PRD §12).
-        const pending = [...messageTemplates.entries()].filter(([key]) => !writtenTemplates.has(key));
-        if (pending.length) await client.query(
-          `INSERT INTO message_dict(message_key, label, topic, message_text)
-           SELECT k, k, 'other', t FROM unnest($1::text[], $2::text[]) AS x(k, t)
-           ON CONFLICT (message_key) DO UPDATE SET message_text=EXCLUDED.message_text`,
-          [pending.map(([key]) => key), pending.map(([, text]) => text)],
-        );
-        for (const [key] of pending) writtenTemplates.add(key);
-        const unknownKeys = [...new Set(rows.map((row) => row.message_key).filter((key) => key && key.startsWith('MSG_UNKNOWN:')))];
-        if (unknownKeys.length) await client.query(
-          `INSERT INTO message_dict(message_key, label, topic, message_text)
-           SELECT key, 'سایر پیامها', 'other', 'سایر پیامها' FROM unnest($1::text[]) AS key
-           ON CONFLICT (message_key) DO NOTHING`, [unknownKeys],
-        );
+        const slice = reports.slice(skip);
+        if (!slice.length) {
+          reachedEndOfPages = true;
+          break;
+        }
+
+        await ingestSlice(slice, true);
         checkpoint += slice.length;
         await this.updateRun(client, bankKey, day, {
-          checkpoint, ingested_count: processed, success_count: success, fail_count: fail, skipped_count: skipped,
+          source_total: sourceTotal, checkpoint, ingested_count: processed,
+          success_count: success, fail_count: fail, skipped_count: skipped,
         });
+
+        // اگر صفحه کمتر از pageSize رکورد برگرداند، به انتهای واقعی دادههای API رسیدهایم
+        // (جلوگیری از حلقهٔ بینهایت وقتی sourceTotal اولیه بزرگتر از تعداد واقعی رکوردها بوده).
+        if (reports.length < config.pageSize) {
+          reachedEndOfPages = true;
+          break;
+        }
       }
 
-      const complete = mode === 'nightly' && checkpoint >= sourceTotal && skipped === 0;
+      // در حالت زنده، اگر حین پیمایش صفحات رکوردهای جدیدی اضافه شده و ترتیب API نزولی باشد،
+      // صفحات ابتدایی را به اندازهٔ رشد sourceTotal بازخوانی میکنیم تا رکوردهای تازه جا نمانند.
+      if (sourceTotal > initialTotal && initialTotal > 0) {
+        const headPages = Math.min(
+          Math.ceil((sourceTotal - initialTotal) / config.pageSize) + 1,
+          Math.ceil(sourceTotal / config.pageSize),
+        );
+        for (let headPage = 1; headPage <= headPages; headPage++) {
+          const headData = await this.fetchPage(headPage, config.pageSize, day);
+          const headReports: any[] = Array.isArray(headData?.reportResults) ? headData.reportResults
+            : Array.isArray(headData?.reports) ? headData.reports : Array.isArray(headData) ? headData : [];
+          if (!headReports.length) break;
+          await ingestSlice(headReports, false);
+          if (headReports.length < config.pageSize) break;
+        }
+        processed = Math.max(processed, success + fail + skipped);
+      }
+
+      const complete = mode === 'nightly'
+        && (checkpoint >= sourceTotal || (reachedEndOfPages && checkpoint > 0))
+        && skipped === 0;
       const status = mode === 'intraday' ? 'partial' : complete ? 'complete' : 'needs_review';
       await this.updateRun(client, bankKey, day, {
         status, finished_at: new Date(), source_total: sourceTotal, checkpoint,

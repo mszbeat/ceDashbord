@@ -72,22 +72,25 @@ const JSON_COLUMNS = new Set(['flags', 'cats', 'counters', 'metrics', 'paths', '
       await client.query(`DELETE FROM day_runs WHERE bank=$1 AND day = ANY($2::text[])`, [bankKey, scanned.selectedDays]);
       console.log(`  🧹 --rebuild: ${removed.rowCount} ردیف قدیمی حذف شد (${scanned.selectedDays.join(', ')})`);
     }
+    const dedupedMap = new Map();
+    for (const row of rows) dedupedMap.set(`${row.day}\0${row.request_id}`, row);
+    const uniqueRows = [...dedupedMap.values()];
     const chunkSize = 100;
-    for (let start = 0; start < rows.length; start += chunkSize) {
-      const chunk = rows.slice(start, start + chunkSize);
+    for (let start = 0; start < uniqueRows.length; start += chunkSize) {
+      const chunk = uniqueRows.slice(start, start + chunkSize);
       const values = [], params = [];
       chunk.forEach((row, index) => {
         const offset = index * UPSERT_COLUMNS.length;
         values.push(`(${UPSERT_COLUMNS.map((_, i) => `$${offset + i + 1}`).join(',')})`);
         for (const c of UPSERT_COLUMNS) params.push(JSON_COLUMNS.has(c) && row[c] != null ? JSON.stringify(row[c]) : row[c]);
       });
-      const updates = UPSERT_COLUMNS.filter((c) => c !== 'request_id')
+      const updates = UPSERT_COLUMNS.filter((c) => c !== 'request_id' && c !== 'day')
         .map((c) => `${c}=EXCLUDED.${c}`).join(', ');
       await client.query(
         `INSERT INTO ${table} (${UPSERT_COLUMNS.join(',')}) VALUES ${values.join(',')}
-         ON CONFLICT (request_id) DO UPDATE SET ${updates}, updated_at=now()`, params,
+         ON CONFLICT (day, request_id) DO UPDATE SET ${updates}, updated_at=now()`, params,
       );
-      console.log(`  ⬆ ${Math.min(start + chunkSize, rows.length)}/${rows.length}`);
+      console.log(`  ⬆ ${Math.min(start + chunkSize, uniqueRows.length)}/${uniqueRows.length}`);
     }
     if (templates.size) await client.query(
       `INSERT INTO message_dict(message_key, label, topic, message_text)

@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS day_runs (
 );
 
 CREATE TABLE IF NOT EXISTS samples_mellat (
-  request_id TEXT PRIMARY KEY,
+  request_id TEXT NOT NULL,
   day TEXT NOT NULL,
   inserted_at TEXT,
   stamp_key TEXT,
@@ -52,7 +52,8 @@ CREATE TABLE IF NOT EXISTS samples_mellat (
   display_extras JSONB NOT NULL DEFAULT '{}'::jsonb,
   analysis_version TEXT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (day, request_id)
 );
 
 -- ستونهای نسخه «تطابق دقیق» (برای دیتابیسهای از قبل ساختهشده)
@@ -60,6 +61,7 @@ ALTER TABLE samples_mellat ADD COLUMN IF NOT EXISTS stamp_key TEXT;
 ALTER TABLE samples_mellat ADD COLUMN IF NOT EXISTS unique_key TEXT;
 ALTER TABLE samples_mellat ADD COLUMN IF NOT EXISTS display_extras JSONB NOT NULL DEFAULT '{}'::jsonb;
 
+CREATE INDEX IF NOT EXISTS idx_samples_mellat_request_id ON samples_mellat(request_id);
 CREATE INDEX IF NOT EXISTS idx_samples_mellat_day ON samples_mellat(day);
 CREATE INDEX IF NOT EXISTS idx_samples_mellat_day_success ON samples_mellat(day, is_success);
 CREATE INDEX IF NOT EXISTS idx_samples_mellat_stamp ON samples_mellat(day, stamp_key, request_id);
@@ -83,6 +85,34 @@ ALTER TABLE samples_postbank ADD COLUMN IF NOT EXISTS stamp_key TEXT;
 ALTER TABLE samples_postbank ADD COLUMN IF NOT EXISTS unique_key TEXT;
 ALTER TABLE samples_postbank ADD COLUMN IF NOT EXISTS display_extras JSONB NOT NULL DEFAULT '{}'::jsonb;
 
+-- ارتقای دیتابیسهای قدیمی که کلید اصلی را فقط روی (request_id) ساخته بودند به (day, request_id)
+-- تا تکرار یک request_id در روز دیگر آمار روزهای قبلی را جابهجا نکند.
+DO $$
+DECLARE
+  tbl TEXT;
+  pk_name TEXT;
+  pk_cols TEXT;
+BEGIN
+  FOREACH tbl IN ARRAY ARRAY['samples_mellat', 'samples_resalat', 'samples_postbank'] LOOP
+    SELECT c.conname,
+           (SELECT string_agg(a.attname, ',' ORDER BY x.ord)
+              FROM unnest(c.conkey) WITH ORDINALITY AS x(attnum, ord)
+              JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = x.attnum)
+      INTO pk_name, pk_cols
+      FROM pg_constraint c
+      JOIN pg_class t ON t.oid = c.conrelid
+      JOIN pg_namespace n ON n.oid = t.relnamespace
+     WHERE n.nspname = 'public' AND t.relname = tbl AND c.contype = 'p';
+    IF pk_cols IS DISTINCT FROM 'day,request_id' THEN
+      IF pk_name IS NOT NULL THEN
+        EXECUTE format('ALTER TABLE %I DROP CONSTRAINT %I', tbl, pk_name);
+      END IF;
+      EXECUTE format('ALTER TABLE %I ADD PRIMARY KEY (day, request_id)', tbl);
+    END IF;
+  END LOOP;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_samples_resalat_request_id ON samples_resalat(request_id);
 CREATE INDEX IF NOT EXISTS idx_samples_resalat_day ON samples_resalat(day);
 CREATE INDEX IF NOT EXISTS idx_samples_resalat_day_success ON samples_resalat(day, is_success);
 CREATE INDEX IF NOT EXISTS idx_samples_resalat_stamp ON samples_resalat(day, stamp_key, request_id);
@@ -91,6 +121,7 @@ CREATE INDEX IF NOT EXISTS idx_samples_resalat_flags ON samples_resalat USING GI
 CREATE INDEX IF NOT EXISTS idx_samples_resalat_cats ON samples_resalat USING GIN(cats);
 CREATE INDEX IF NOT EXISTS idx_samples_resalat_metrics ON samples_resalat USING GIN(metrics);
 
+CREATE INDEX IF NOT EXISTS idx_samples_postbank_request_id ON samples_postbank(request_id);
 CREATE INDEX IF NOT EXISTS idx_samples_postbank_day ON samples_postbank(day);
 CREATE INDEX IF NOT EXISTS idx_samples_postbank_day_success ON samples_postbank(day, is_success);
 CREATE INDEX IF NOT EXISTS idx_samples_postbank_stamp ON samples_postbank(day, stamp_key, request_id);
@@ -112,6 +143,7 @@ INSERT INTO message_dict(message_key, label, topic, message_text) VALUES
   ('MSG_OVERDUE_DEBT', 'بدهی معوق', 'success', E'شما در حال حاضر بدهی معوق دارید. لطفا رفتار اعتباری خود را بهبود بخشید و دوباره امتحان کنید.\nYou currently have overdue debt.please improve your credit behavior and try again.'),
   ('MSG_BOUNCED_CHECK', 'چک برگشتی', 'success', E'شما همچنان چک برگشتی دارید. لطفا رفتار اعتباری خود را بهبود بخشید و دوباره امتحان کنید.\nYou still have bounced check. please improve your credit behavior and try again.'),
   ('MSG_DUPLICATE_UNIQUE_KEY', 'شناسه یکتا تکراری', 'fail', E'شناسه یکتا تکراری است!\nduplicate UniqueKey!'),
+  ('MSG_NO_MESSAGE', 'پیامی ثبت نشده است', 'other', 'پیامی ثبت نشده است'),
   ('MSG_UNKNOWN', 'سایر پیامها', 'other', 'سایر پیامها')
 ON CONFLICT (message_key) DO UPDATE SET label=EXCLUDED.label, topic=EXCLUDED.topic, message_text=EXCLUDED.message_text;
 

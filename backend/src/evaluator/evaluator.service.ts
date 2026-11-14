@@ -10,10 +10,11 @@ const {
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { get, num } = require('./legacy/banks/_helpers');
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { SERVICE_FA, nf } = require('./legacy/src/common');
+const { SERVICE_FA, nf, messageOf } = require('./legacy/src/common');
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const BuildAiInput = require('./legacy-report/buildAiInput');
-import { messageKeyOf } from '../message-dict';
+import { messageKeyOf, sanitizeMessageTemplate } from '../message-dict';
+import { jalaliStampDigitsOf } from '../utils/date';
 
 const SUCCESS_MESSAGES = [
   'You currently have overdue debt.please improve your credit behavior and try again.',
@@ -72,33 +73,43 @@ const tryCall = (fn: () => any, name: string, fallback: any = null): any => {
   }
 };
 
-/** ارقام فارسی/عربی را به لاتین برمیگرداند (همان asciiDigits قدیمی). */
-const asciiDigits = (value: any) => String(value ?? '')
-  .replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 0x06f0))
-  .replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660));
-
 /**
- * insertDate_full قدیمی فقط ۱۲ تا ۱۷ رقم میپذیرفت. API زنده گاهی ۱۷+ رقم
- * (میکروثانیه) یا ارقام فارسی میفرستد؛ اینجا فقط همان ۱۴ رقم تاریخ/ساعت
- * استخراج میشود تا stampOf قدیمی بدون تغییر، ساعت را هم بسازد.
+ * استخراج رشتهٔ تاریخ/ساعت شمسی معتبر از کاندیداهای نمونه؛
+ * ابتدا دقیقاً همان insertDate_full ریشهٔ نسخهٔ قدیمی بررسی میشود، و اگر تاریخ میلادی ISO
+ * در فیلدهای جایگزین باشد در ناحیهٔ زمانی تهران به شمسی تبدیل میشود (نه اینکه سال 2026 شمسی فرض شود).
  */
-function stampValueOf(value: any): string | null {
-  const digits = asciiDigits(value).replace(/\D/g, '');
-  if (digits.length < 12) return null;
-  return digits.slice(0, 17);
-}
-
-/** محلهای محتمل زمان ثبت در نمونهٔ خام API (قدیمی فقط ریشه را میخواند). */
-function extractInsertDate(sample: any): string | null {
+function extractStampDigits(sample: any): string | null {
   const candidates = [
-    sample?.insertDate_full, sample?.insertDate, sample?.insertDateTime,
-    get(sample, 'output.insertDate_full'), get(sample, 'input.insertDate_full'),
-    get(sample, 'data.insertDate_full'), sample?.insertDate_yearMonthDay,
+    sample?.insertDate_full,
+    get(sample, 'output.insertDate_full'),
+    get(sample, 'input.insertDate_full'),
+    get(sample, 'data.insertDate_full'),
+    sample?.insertDate,
+    sample?.insertDateTime,
   ];
   for (const candidate of candidates) {
-    if (candidate !== null && candidate !== undefined && String(candidate).trim()) return String(candidate).trim();
+    const digits = jalaliStampDigitsOf(candidate);
+    if (digits) return digits;
   }
   return null;
+}
+
+function extractInsertDate(sample: any): string | null {
+  const stampDigits = extractStampDigits(sample);
+  if (stampDigits) return stampDigits;
+  const fallback = sample?.insertDate_full ?? sample?.insertDate_yearMonthDay ?? sample?.insertDate ?? null;
+  return fallback !== null && fallback !== undefined && String(fallback).trim() ? String(fallback).trim() : null;
+}
+
+function isFinalizedAiInput(aiInput: any): boolean {
+  if (!aiInput || typeof aiInput !== 'object' || Array.isArray(aiInput)) return false;
+  if (!aiInput.current_loan || typeof aiInput.current_loan !== 'object' || Array.isArray(aiInput.current_loan)) {
+    return false;
+  }
+  return ['iran', 'EstelamAsliRows', 'chequeList', 'historical_loans', 'averageDeposit'].every(
+    (key) => aiInput[key] && typeof aiInput[key] === 'object' && !Array.isArray(aiInput[key])
+      && typeof aiInput[key].status === 'string',
+  );
 }
 
 /** همان selectedServices پویای scan.js: فقط کلیدهایی که واقعاً در ai_input هستند. */
@@ -156,17 +167,17 @@ export class EvaluatorService {
   }
 
   /** همان نرمالسازی report/src/services/reportProcess.js + buildAiInput.js */
-  normalizeSample(raw: any): any {
+  normalizeSample(raw: any, options: { fromApi?: boolean } = {}): any {
     const sample = structuredClone(raw);
-    if (sample.output?.ai_output) {
-      sample.ai_output = sample.output.ai_output;
-      sample.output = sample.output.legacyOutput;
-    }
     if (sample.input?.ai_input) {
       sample.ai_input = sample.input.ai_input;
       sample.input = sample.input.bankInput;
-    } else if (!sample.ai_input) {
+    } else if (options.fromApi || !isFinalizedAiInput(sample.ai_input)) {
       sample.ai_input = this.builder.buildFromReport(sample);
+    }
+    if (sample.output?.ai_output) {
+      sample.ai_output = sample.output.ai_output;
+      sample.output = sample.output.legacyOutput;
     }
     return sample;
   }
@@ -212,10 +223,8 @@ export class EvaluatorService {
                              day: string, isSuccess: boolean): any {
     const status = isSuccess ? 'success' : 'fail';
     const file = { status, day };
-    const rawStamp = extractInsertDate(sample);
-    // نسخهٔ قدیمی مستقیماً stampOf(sample, day) صدا میزد؛ اگر ریشهٔ نمونه
-    // insertDate_full نداشته باشد، اینجا از inserted_at/مسیرهای جایگزین ساخته میشود.
-    const stamp = stampOf({ insertDate_full: stampValueOf(rawStamp) ?? '' }, day);
+    const stampDigits = extractStampDigits(sample);
+    const stamp = stampOf({ insertDate_full: stampDigits ?? '' }, day);
     const baseFull = baseRow(bank, sample, file, undefined, stamp);
     const base: Record<string, any> = Object.fromEntries(
       Object.entries(baseFull).filter(([key]) => key !== '__sid'),
@@ -269,14 +278,12 @@ export class EvaluatorService {
    * در خود ردیف نمونه هیچ متن آزادی نگهداری نمیشود (PRD §12)؛ فقط در ingestion
    * یکبار روی جدول واژگان پیام نوشته میشود.
    */
-  messageTemplateOf(sample: any, isSuccess: boolean): { key: string; text: string } | null {
-    const fa = get(sample, 'output.message.fa') ?? get(sample, 'output.data.message.fa');
-    const en = get(sample, 'output.message.en') ?? get(sample, 'output.data.message.en');
-    const text = [fa, en].filter((x) => x != null && String(x).trim()).map(String).join('\n');
-    // messageOf قدیمی دقیقاً همین متن fa+en را میسازد؛ نیازی به اجرای دوبارهٔ ارزیاب نیست.
-    const key = messageKeyOf(text);
-    if (!text || key === 'MSG_UNKNOWN' || key.startsWith('MSG_UNKNOWN:')) return null;
-    return { key, text };
+  messageTemplateOf(sample: any, _isSuccess?: boolean): { key: string; text: string } | null {
+    const rawText = messageOf(sample);
+    const sanitized = sanitizeMessageTemplate(rawText);
+    const key = messageKeyOf(sanitized);
+    if (!sanitized || key === 'MSG_UNKNOWN') return null;
+    return { key, text: sanitized };
   }
 
   evaluate(sample: any, isSuccess: boolean, day: string, bankKey = 'tavan_mellat'): AnalyzedRow {
