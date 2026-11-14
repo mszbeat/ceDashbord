@@ -72,6 +72,49 @@ const tryCall = (fn: () => any, name: string, fallback: any = null): any => {
   }
 };
 
+/** ارقام فارسی/عربی را به لاتین برمیگرداند (همان asciiDigits قدیمی). */
+const asciiDigits = (value: any) => String(value ?? '')
+  .replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 0x06f0))
+  .replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660));
+
+/**
+ * insertDate_full قدیمی فقط ۱۲ تا ۱۷ رقم میپذیرفت. API زنده گاهی ۱۷+ رقم
+ * (میکروثانیه) یا ارقام فارسی میفرستد؛ اینجا فقط همان ۱۴ رقم تاریخ/ساعت
+ * استخراج میشود تا stampOf قدیمی بدون تغییر، ساعت را هم بسازد.
+ */
+function stampValueOf(value: any): string | null {
+  const digits = asciiDigits(value).replace(/\D/g, '');
+  if (digits.length < 12) return null;
+  return digits.slice(0, 17);
+}
+
+/** محلهای محتمل زمان ثبت در نمونهٔ خام API (قدیمی فقط ریشه را میخواند). */
+function extractInsertDate(sample: any): string | null {
+  const candidates = [
+    sample?.insertDate_full, sample?.insertDate, sample?.insertDateTime,
+    get(sample, 'output.insertDate_full'), get(sample, 'input.insertDate_full'),
+    get(sample, 'data.insertDate_full'), sample?.insertDate_yearMonthDay,
+  ];
+  for (const candidate of candidates) {
+    if (candidate !== null && candidate !== undefined && String(candidate).trim()) return String(candidate).trim();
+  }
+  return null;
+}
+
+/** همان selectedServices پویای scan.js: فقط کلیدهایی که واقعاً در ai_input هستند. */
+function serviceKeysOf(sample: any, expected: string[]): string[] {
+  const input = sample?.ai_input;
+  const keys = new Set<string>(expected);
+  if (input && typeof input === 'object' && !Array.isArray(input)) {
+    for (const [key, value] of Object.entries(input)) {
+      if (Object.prototype.hasOwnProperty.call(SERVICE_FA, key)) keys.add(key);
+      else if (value && typeof value === 'object' && !Array.isArray(value)
+        && Object.prototype.hasOwnProperty.call(value, 'status')) keys.add(key);
+    }
+  }
+  return [...keys].sort();
+}
+
 @Injectable()
 export class EvaluatorService {
   private runtimes: Record<string, BankRuntime> = {};
@@ -169,7 +212,10 @@ export class EvaluatorService {
                              day: string, isSuccess: boolean): any {
     const status = isSuccess ? 'success' : 'fail';
     const file = { status, day };
-    const stamp = stampOf(sample, day);
+    const rawStamp = extractInsertDate(sample);
+    // نسخهٔ قدیمی مستقیماً stampOf(sample, day) صدا میزد؛ اگر ریشهٔ نمونه
+    // insertDate_full نداشته باشد، اینجا از inserted_at/مسیرهای جایگزین ساخته میشود.
+    const stamp = stampOf({ insertDate_full: stampValueOf(rawStamp) ?? '' }, day);
     const baseFull = baseRow(bank, sample, file, undefined, stamp);
     const base: Record<string, any> = Object.fromEntries(
       Object.entries(baseFull).filter(([key]) => key !== '__sid'),
@@ -204,6 +250,7 @@ export class EvaluatorService {
       extras: {
         base,
         stamp,
+        serviceKeys: serviceKeysOf(sample, bank.expectedServices),
         serviceStates,
         flagRows,
         ranks,
@@ -215,6 +262,21 @@ export class EvaluatorService {
       },
       creditAlerts: credit.value,
     };
+  }
+
+  /**
+   * متن دقیق پیام قالبی قدیمی (fa + en) برای ذخیره در message_dict.
+   * در خود ردیف نمونه هیچ متن آزادی نگهداری نمیشود (PRD §12)؛ فقط در ingestion
+   * یکبار روی جدول واژگان پیام نوشته میشود.
+   */
+  messageTemplateOf(sample: any, isSuccess: boolean): { key: string; text: string } | null {
+    const fa = get(sample, 'output.message.fa') ?? get(sample, 'output.data.message.fa');
+    const en = get(sample, 'output.message.en') ?? get(sample, 'output.data.message.en');
+    const text = [fa, en].filter((x) => x != null && String(x).trim()).map(String).join('\n');
+    // messageOf قدیمی دقیقاً همین متن fa+en را میسازد؛ نیازی به اجرای دوبارهٔ ارزیاب نیست.
+    const key = messageKeyOf(text);
+    if (!text || key === 'MSG_UNKNOWN' || key.startsWith('MSG_UNKNOWN:')) return null;
+    return { key, text };
   }
 
   evaluate(sample: any, isSuccess: boolean, day: string, bankKey = 'tavan_mellat'): AnalyzedRow {
@@ -253,7 +315,7 @@ export class EvaluatorService {
     return {
       request_id: requestId,
       day,
-      inserted_at: sample.insertDate_full != null ? String(sample.insertDate_full) : null,
+      inserted_at: extractInsertDate(sample),
       stamp_key: extras.stamp?.key ?? null,
       unique_key: uniqueKey,
       is_success: isSuccess,

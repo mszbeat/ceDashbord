@@ -101,6 +101,8 @@ export class IngestionService {
     const client = await this.db.getClient();
     const lockKey = `ce-ingest:${bankKey}:${day}`;
     let checkpoint = 0, sourceTotal = 0, success = 0, fail = 0, skipped = 0, processed = 0;
+    const messageTemplates = new Map<string, string>();
+    const writtenTemplates = new Set<string>();
 
     try {
       await client.query('SELECT pg_advisory_lock(hashtext($1))', [lockKey]);
@@ -124,6 +126,8 @@ export class IngestionService {
             const method = String(sample?.input?.method ?? '').toLowerCase();
             if (method !== bank.method) { skipped++; continue; }
             const isSuccess = this.evaluator.isReportSuccess(sample);
+            const template = this.evaluator.messageTemplateOf(sample, isSuccess);
+            if (template) messageTemplates.set(template.key, template.text);
             const row = this.evaluator.evaluate(sample, isSuccess, day, bankKey);
             if (!row.request_id) { skipped++; continue; }
             rows.push(row);
@@ -134,6 +138,16 @@ export class IngestionService {
           }
         }
         await this.upsertBatch(bank.table, rows);
+        // متن دقیق پیامهای قالبی قدیمی (fa + en) فقط یکبار در message_dict نوشته میشود؛
+        // متن آزاد هر نمونه هرگز در ردیفها ذخیره نمیشود (PRD §12).
+        const pending = [...messageTemplates.entries()].filter(([key]) => !writtenTemplates.has(key));
+        if (pending.length) await this.db.query(
+          `INSERT INTO message_dict(message_key, label, topic, message_text)
+           SELECT k, k, 'other', t FROM unnest($1::text[], $2::text[]) AS x(k, t)
+           ON CONFLICT (message_key) DO UPDATE SET message_text=EXCLUDED.message_text`,
+          [pending.map(([key]) => key), pending.map(([, text]) => text)],
+        );
+        for (const [key] of pending) writtenTemplates.add(key);
         const unknownKeys = [...new Set(rows.map((row) => row.message_key).filter((key) => key && key.startsWith('MSG_UNKNOWN:')))];
         if (unknownKeys.length) await this.db.query(
           `INSERT INTO message_dict(message_key, label, topic, message_text)

@@ -7,7 +7,7 @@ import { defaultRange, normalizeDay } from '../utils/date';
 /* همهٔ شمارشها/چارکها/درصدها دقیقاً با newStats()/bump() قدیمی ساخته میشوند؛
    SQL فقط برای فهرست، صفحهبندی و روزها استفاده میشود (تصمیم legacy_bump). */
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { newStats, bump } = require('../evaluator/legacy/src/analyze');
+const { newStats, bump, stampOf } = require('../evaluator/legacy/src/analyze');
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { record, compareReviewRows, nf, SERVICE_FA } = require('../evaluator/legacy/src/common');
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -55,18 +55,40 @@ function redactSensitive(value: any, key = ''): any {
   return out;
 }
 
+const asciiDigits = (value: any) => String(value ?? '')
+  .replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 0x06f0))
+  .replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660));
+
+/**
+ * نمایش «اولین/آخرین درخواست» دقیقاً مثل نسخهٔ قدیمی: تاریخ + ساعت + ثانیه.
+ * نسخهٔ قدیمی stampOf(sample, day) را مستقیم صدا میزد؛ اینجا اگر ردیفهای قدیمی
+ * دیتابیس فقط تاریخ ذخیره کردهباشند، از inserted_at / stamp_key بازسازی میشود.
+ */
 function stampOfRow(row: any) {
   const stored = asObject(asObject(row.display_extras).stamp);
   const day = String(row.day || '');
-  if (stored && typeof stored.key === 'string' && stored.key) {
+  const displayDate = day.replace(/-/g, '/');
+  if (stored && typeof stored.key === 'string' && stored.key && String(stored.display ?? '').includes(':')) {
     return {
       key: stored.key,
-      display: String(stored.display ?? day.replace(/-/g, '/')),
-      rowDisplay: String(stored.rowDisplay ?? day.replace(/-/g, '/')),
+      display: String(stored.display),
+      rowDisplay: String(stored.rowDisplay ?? stored.display),
     };
   }
-  const display = day.replace(/-/g, '/');
-  return { key: `${day.replace(/\D/g, '').padEnd(17, '0')}`, display, rowDisplay: `${display} —:—` };
+  for (const candidate of [row.inserted_at, row.stamp_key, stored?.key]) {
+    const digits = asciiDigits(candidate).replace(/\D/g, '');
+    if (digits.length < 12) continue;
+    const rebuilt = stampOf({ insertDate_full: digits.slice(0, 17) }, day);
+    if (String(rebuilt.display).includes(':')) {
+      return { key: String(row.stamp_key || rebuilt.key), display: rebuilt.display, rowDisplay: rebuilt.rowDisplay };
+    }
+  }
+  const display = typeof stored?.display === 'string' && stored.display ? stored.display : displayDate;
+  return {
+    key: String(stored?.key || `${day.replace(/\D/g, '').padEnd(17, '0')}`),
+    display,
+    rowDisplay: String(stored?.rowDisplay ?? `${display} —:—`),
+  };
 }
 
 function baseOfRow(row: any, stamp: any): Record<string, any> {
@@ -168,8 +190,11 @@ export class SummaryService {
     const servicesInput = asObject(row.services);
     const services: Record<string, any> = {};
     for (const key of selectedServices) {
-      services[key] = servicesInput[key] && typeof servicesInput[key] === 'object'
-        ? servicesInput[key] : { kind: 'missingService' };
+      // ستون services در دیتابیس «رشتهٔ kind» ذخیره میکند (ردیفهای قدیمی)،
+      // ولی display_extras.serviceStates شیء کامل {kind,reason,value} دارد.
+      const raw = servicesInput[key];
+      services[key] = typeof raw === 'string' ? { kind: raw }
+        : raw && typeof raw === 'object' ? raw : { kind: 'missingService' };
     }
     const risk = asObject(row.credit_alerts);
     const hasOverdue = !!risk.overdue?.bool;
@@ -310,7 +335,20 @@ export class SummaryService {
     const { from: f, to: t } = rangeOf(from, to);
     const cap = Math.min(Math.max(Number(rowsCap) || 100, 1), 100);
     const bank = this.evaluator.getBank(key);
-    const selectedServices = this.evaluator.getSelectedServices(key);
+    // scan.js قدیمی selectedServices را از روی ai_input نمونهها میساخت، نه لیست ثابت.
+    // ردیفهای قدیمی بدون serviceKeys با همان روش جایگزین (services) پوشش داده میشوند.
+    const serviceKeysRes = await this.db.query(
+      `SELECT display_extras, services FROM ${table} WHERE day BETWEEN $1 AND $2`, [f, t],
+    ).catch(() => ({ rows: [] as any[] }));
+    const presentKeys = new Set<string>(bank.expectedServices ?? []);
+    for (const r of serviceKeysRes.rows as any[]) {
+      const keys = asObject(r.display_extras).serviceKeys;
+      if (Array.isArray(keys)) for (const k of keys) if (k) presentKeys.add(String(k));
+      else for (const [k, kind] of Object.entries(asObject(r.services))) {
+        if (kind !== 'missingService' && kind !== undefined) presentKeys.add(k);
+      }
+    }
+    const selectedServices = [...presentKeys].sort();
 
     const [countRes, daysRes, runsRes, dictRes] = await Promise.all([
       this.db.query(`SELECT COUNT(*)::int AS total FROM ${table} WHERE day BETWEEN $1 AND $2`, [f, t]),
@@ -642,6 +680,33 @@ export class SummaryService {
         const count = await this.db.query(`SELECT COUNT(*)::int AS count FROM ${table}`);
         result.counts[table] = Number(count.rows[0]?.count ?? 0);
       } catch { /* جدول وجود دارد ولی قابل خواندن نیست */ }
+    }
+    // سلامت داده برای تشخیص «اعداد قدیمی»: نسخهٔ تحلیل و پوشش زمان ثبت.
+    result.bankDiagnostics = {};
+    for (const [bankKey, bank] of Object.entries(BANKS) as Array<[string, any]>) {
+      if (!result.tables[bank.table]) continue;
+      try {
+        const versions = await this.db.query(
+          `SELECT COALESCE(analysis_version,'(none)') AS version, COUNT(*)::int AS count FROM ${bank.table} GROUP BY 1 ORDER BY 2 DESC`,
+        );
+        const timed = await this.db.query(
+          `SELECT COUNT(*)::int AS count FROM ${bank.table}
+           WHERE (display_extras->'stamp'->>'display') LIKE '%:%'
+              OR LENGTH(COALESCE(inserted_at,'')) >= 12
+              OR LENGTH(COALESCE(stamp_key,'')) >= 12`,
+        );
+        const total = Number(result.counts[bank.table] ?? 0);
+        const withTime = Number(timed.rows[0]?.count ?? 0);
+        result.bankDiagnostics[bankKey] = {
+          rows: total,
+          rowsWithTime: withTime,
+          rowsWithoutTime: Math.max(0, total - withTime),
+          analysisVersions: versions.rows.map((r: any) => ({ version: String(r.version), count: Number(r.count) })),
+        };
+        if (total > 0 && withTime < total) result.hints.push(`${bank.label}: ${total - withTime} ردیف زمان ثبت ندارند؛ نمایش اولین/آخرین درخواست ممکن است فقط تاریخ باشد. پس از pull دوباره ingest کن.`);
+        const distinct = versions.rows.length;
+        if (distinct > 1) result.hints.push(`${bank.label}: ردیفها با ${distinct} نسخهٔ متفاوت تحلیل ذخیره شدهاند؛ اعداد ممکن است قدیمی باشند. دوباره ingest کن.`);
+      } catch { /* جدول قابل خواندن نیست */ }
     }
     if (Object.values(result.tables).some((exists) => !exists)) result.hints.push('برخی جداول ساخته نشدهاند؛ ./migrate.sh را اجرا کن.');
     if (Object.values(result.counts).every((count) => Number(count) === 0)) result.hints.push('جداول خالیاند؛ Ingestion اجرا نشده است.');
