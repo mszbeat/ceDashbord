@@ -6,6 +6,14 @@ exports.health = function () {
   };
 };
 
+exports.me = function () {
+  return {
+    header: {},
+    params: {},
+    queryString: {},
+  };
+};
+
 exports.banks = function () {
   return {
     header: {},
@@ -18,9 +26,7 @@ exports.specs = function () {
   return {
     header: {},
     params: {},
-    queryString: {
-      bank: {},
-    },
+    queryString: {},
   };
 };
 
@@ -28,12 +34,7 @@ exports.report = function () {
   return {
     header: {},
     params: {},
-    queryString: {
-      bank: {},
-      from: {},
-      to: {},
-      rowsCap: {},
-    },
+    queryString: {},
   };
 };
 
@@ -49,11 +50,7 @@ exports.summary = function () {
   return {
     header: {},
     params: {},
-    queryString: {
-      bank: {},
-      from: {},
-      to: {},
-    },
+    queryString: {},
   };
 };
 
@@ -61,27 +58,6 @@ exports.list = function () {
   return {
     header: {},
     params: {},
-    queryString: {
-      bank: {},
-      from: {},
-      to: {},
-      indicator: {},
-      type: {},
-      id: {},
-      value: {},
-      status: {},
-      limit: {},
-      offset: {},
-    },
-  };
-};
-
-exports.sample = function () {
-  return {
-    header: {},
-    params: {
-      requestId: {},
-    },
     queryString: {},
   };
 };

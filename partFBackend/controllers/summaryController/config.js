@@ -6,6 +6,10 @@ module.exports = {
       needProtocolRef: true,
       params: [],
     },
+    me: {
+      needProtocolRef: true,
+      params: [],
+    },
     banks: {
       needProtocolRef: true,
       params: [],
@@ -27,10 +31,6 @@ module.exports = {
       params: [],
     },
     list: {
-      needProtocolRef: true,
-      params: [],
-    },
-    sample: {
       needProtocolRef: true,
       params: [],
     },

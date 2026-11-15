@@ -8,16 +8,20 @@ registerFrameworkGlobals({
   BaseController,
 });
 
-class IngestionController extends BaseController {
-  @Route('/api/runs')
-  @HTTP('POST')
-  run(protocolRef) {
-    return helpers.run(protocolRef);
+/**
+ * سطح دسترسی ۲ — نقشهای creditEvaluation و admin:
+ * مجاز به درخواست زدن و مشاهدهٔ اطلاعات کامل یک گزارش (کاربر عادی مسدود میشود).
+ */
+class CreditEvaluationController extends BaseController {
+  @Route('/api/sample/:requestId')
+  @HTTP('GET')
+  sample(protocolRef) {
+    return helpers.sample(protocolRef);
   }
 }
 
 module.exports = {
-  controller: IngestionController,
+  controller: CreditEvaluationController,
   introduceToLoader: BaseController.exportedProperties(
     require('./schema'),
     require('./config')

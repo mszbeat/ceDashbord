@@ -1,6 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -11,30 +12,33 @@ const EXPECTED_CONTROLLERS = [
     dir: 'summaryController',
     configFile: 'summaryController.config.js',
     packageName: 'summary-controller',
+    expectedRoles: ['*'],
     routes: [
       { method: 'GET', route: '/api/health', handler: 'health' },
+      { method: 'GET', route: '/api/auth/me', handler: 'me' },
       { method: 'GET', route: '/api/banks', handler: 'banks' },
       { method: 'GET', route: '/api/specs', handler: 'specs' },
       { method: 'GET', route: '/api/report', handler: 'report' },
       { method: 'GET', route: '/api/diagnostics', handler: 'diagnostics' },
       { method: 'GET', route: '/api/summary', handler: 'summary' },
       { method: 'GET', route: '/api/list', handler: 'list' },
-      { method: 'GET', route: '/api/sample/:requestId', handler: 'sample' },
       { method: 'GET', route: '/api/runs', handler: 'runs' },
     ],
   },
   {
-    dir: 'ingestionController',
-    configFile: 'ingestionController.config.js',
-    packageName: 'ingestion-controller',
+    dir: 'creditEvaluationController',
+    configFile: 'creditEvaluationController.config.js',
+    packageName: 'credit-evaluation-controller',
+    expectedRoles: ['creditEvaluation', 'admin'],
     routes: [
-      { method: 'POST', route: '/api/runs', handler: 'run' },
+      { method: 'GET', route: '/api/sample/:requestId', handler: 'sample' },
     ],
   },
   {
     dir: 'adminController',
     configFile: 'adminController.config.js',
     packageName: 'admin-controller',
+    expectedRoles: ['admin'],
     routes: [
       { method: 'GET', route: '/api/admin/overview', handler: 'getOverview' },
       { method: 'GET', route: '/api/admin/cron', handler: 'getCron' },
@@ -44,6 +48,8 @@ const EXPECTED_CONTROLLERS = [
       { method: 'POST', route: '/api/admin/runs/start', handler: 'startRun' },
       { method: 'GET', route: '/api/admin/jobs', handler: 'listJobs' },
       { method: 'GET', route: '/api/admin/jobs/:id', handler: 'getJob' },
+      { method: 'POST', route: '/api/admin/runs', handler: 'runAdminDay' },
+      { method: 'POST', route: '/api/runs', handler: 'run' },
     ],
   },
 ];
@@ -58,7 +64,13 @@ function parseDecoratedRoutes(mainSource) {
   return found;
 }
 
-test('all partFramework controller-packages have valid metadata, schemas, configs, decorators, and helpers', () => {
+test('all 3 access-separated partFramework controller-packages have valid metadata, schemas, role configs, decorators, and helpers', () => {
+  assert.equal(
+    fs.existsSync(path.join(ROOT, 'controllers', 'ingestionController')),
+    false,
+    'Old ingestionController must be merged into adminController',
+  );
+
   let totalRoutes = 0;
 
   for (const spec of EXPECTED_CONTROLLERS) {
@@ -66,6 +78,9 @@ test('all partFramework controller-packages have valid metadata, schemas, config
     const extConfigPath = path.join(ROOT, 'configs', spec.configFile);
     assert.equal(fs.existsSync(ctrlDir), true, `Missing controller dir: ${spec.dir}`);
     assert.equal(fs.existsSync(extConfigPath), true, `Missing external config: ${spec.configFile}`);
+
+    const extConfig = require(extConfigPath);
+    assert.deepEqual(extConfig.allowedRoles, spec.expectedRoles, `Role mismatch in ${spec.configFile}`);
 
     const pkg = JSON.parse(fs.readFileSync(path.join(ctrlDir, 'package.json'), 'utf8'));
     assert.equal(pkg.name, spec.packageName);
@@ -106,7 +121,77 @@ test('all partFramework controller-packages have valid metadata, schemas, config
     }
   }
 
-  assert.equal(totalRoutes, 18, 'Expected all 18 backend API routes across controllers');
+  assert.equal(totalRoutes, 20, 'Expected all 20 backend API routes across the 3 role-separated controllers');
+});
+
+test('role-guard resolves roles from partSessionManager, user object, JWT, trusted headers, and enforces 403 matrix', async () => {
+  const {
+    ROLES,
+    resolveAuthContext,
+    requireRoles,
+    setAuthResolver,
+  } = require(path.join(ROOT, 'services', 'auth', 'role-guard'));
+
+  delete process.env.AUTH_DEV_DEFAULT_ROLE;
+  process.env.AUTH_TRUST_ROLE_HEADERS = 'false';
+
+  // ۱. کاربر عادی بدون نشست/توکن -> فقط نقش user
+  const anonCtx = await resolveAuthContext({ request: { headers: {} } });
+  assert.deepEqual(anonCtx.roles, [ROLES.USER]);
+  assert.equal(anonCtx.permissions.canViewDashboard, true);
+  assert.equal(anonCtx.permissions.canViewReportDetails, false);
+  assert.equal(anonCtx.permissions.canAccessAdmin, false);
+
+  await assert.rejects(
+    () => requireRoles({ request: { headers: {} } }, [ROLES.CREDIT_EVALUATION, ROLES.ADMIN]),
+    (err) => err.statusCode === 403 && err.response?.code === 'FORBIDDEN_ROLE',
+  );
+
+  // ۲. نشست partSessionManager با callback سنتی session.get(['roles', ...], cb)
+  const sessionProtocolRef = {
+    session: {
+      get(_keys, cb) {
+        cb(null, { samadUsername: 'ce.expert', roles: ['creditEvaluation'] });
+      },
+    },
+    request: { headers: {} },
+  };
+  const ceCtx = await resolveAuthContext(sessionProtocolRef);
+  assert.equal(ceCtx.username, 'ce.expert');
+  assert.deepEqual(ceCtx.roles, [ROLES.CREDIT_EVALUATION]);
+  assert.equal(ceCtx.permissions.canViewReportDetails, true);
+  assert.equal(ceCtx.permissions.canAccessAdmin, false);
+
+  // نقش creditEvaluation به sample دسترسی دارد ولی به admin دسترسی ندارد
+  await requireRoles(sessionProtocolRef, [ROLES.CREDIT_EVALUATION, ROLES.ADMIN]);
+  await assert.rejects(
+    () => requireRoles(sessionProtocolRef, [ROLES.ADMIN]),
+    (err) => err.statusCode === 403,
+  );
+
+  // ۳. توکن Bearer JWT امضاشده با HS256 برای نقش admin
+  process.env.AUTH_JWT_SECRET = 'unit-test-secret';
+  const hdr = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
+  const pld = Buffer.from(
+    JSON.stringify({ username: 'root.admin', roles: ['admin'], exp: Math.floor(Date.now() / 1000) + 300 }),
+  ).toString('base64url');
+  const sig = crypto.createHmac('sha256', 'unit-test-secret').update(`${hdr}.${pld}`).digest('base64url');
+  const jwtProtocolRef = {
+    request: { headers: { authorization: `Bearer ${hdr}.${pld}.${sig}` } },
+  };
+  const adminCtx = await resolveAuthContext(jwtProtocolRef);
+  assert.deepEqual(adminCtx.roles, [ROLES.ADMIN]);
+  assert.equal(adminCtx.permissions.canViewReportDetails, true);
+  assert.equal(adminCtx.permissions.canAccessAdmin, true);
+  await requireRoles(jwtProtocolRef, [ROLES.CREDIT_EVALUATION, ROLES.ADMIN]);
+  await requireRoles(jwtProtocolRef, [ROLES.ADMIN]);
+  delete process.env.AUTH_JWT_SECRET;
+
+  // ۴. قلاب سفارشی setAuthResolver
+  setAuthResolver(async () => ({ username: 'samad.user', roles: ['credit_evaluation'] }));
+  const hookCtx = await resolveAuthContext({ request: { headers: {} } });
+  assert.deepEqual(hookCtx.roles, [ROLES.CREDIT_EVALUATION]);
+  setAuthResolver(null);
 });
 
 test('project-config loads cleanly across dev, prod, and test modes and binds port 3000 by default', () => {
@@ -129,8 +214,10 @@ test('http-adapter extracts query, params, JSON body, HTML response, and HTTP er
     sendHtml,
     runJsonHandler,
     BadRequestError,
+    ForbiddenError,
     NotFoundError,
     ConflictError,
+    registerFrameworkGlobals,
   } = require(path.join(ROOT, 'services', 'http-adapter'));
 
   const mockHeaders = {};
@@ -163,6 +250,13 @@ test('http-adapter extracts query, params, JSON body, HTML response, and HTTP er
   const badObj = typeof badRaw === 'string' ? JSON.parse(badRaw) : badRaw;
   assert.equal(badObj.message, 'ورودی نامعتبر');
 
+  const forbiddenRaw = await runJsonHandler(protocolRef, async () => {
+    throw new ForbiddenError('عدم مجوز');
+  });
+  assert.equal(protocolRef.response.statusCode, 403);
+  const forbiddenObj = typeof forbiddenRaw === 'string' ? JSON.parse(forbiddenRaw) : forbiddenRaw;
+  assert.equal(forbiddenObj.statusCode, 403);
+
   const notFoundRaw = await runJsonHandler(protocolRef, async () => {
     throw new NotFoundError('پیدا نشد');
   });
@@ -182,8 +276,6 @@ test('http-adapter extracts query, params, JSON body, HTML response, and HTTP er
   assert.match(mockHeaders['content-type'], /text\/html/);
   assert.equal(htmlOut, '<!doctype html><html><body>OK</body></html>');
 
-  // تست زمانی که HttpResult توسط لودر partFramework تزریق میشود
-  const { registerFrameworkGlobals } = require(path.join(ROOT, 'services', 'http-adapter'));
   class MockHttpResult {
     constructor(data, statusCode, headers, contentType) {
       this.data = data;
@@ -265,7 +357,6 @@ test('all controller main.js classes transpile and instantiate cleanly under dec
     }
   }
 
-  // تست ترتیب بوتشدن Program.js با شبیهسازی هستهٔ partFramework
   const events = [];
   const originalLoad = Module._load;
   const container = require(path.join(ROOT, 'services', 'container'));

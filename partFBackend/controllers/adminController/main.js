@@ -8,6 +8,11 @@ registerFrameworkGlobals({
   BaseController,
 });
 
+/**
+ * سطح دسترسی ۳ — فقط نقش admin:
+ * دسترسی کامل به پنل مدیریت، تنظیمات و اجرای کران شبانه و اجرای دریافت گزارشها (Ingestion).
+ * کاربران عادی و نقش creditEvaluation از ورود به این مسیرها منع میشوند (403 Forbidden).
+ */
 class AdminController extends BaseController {
   @Route('/api/admin/overview')
   @HTTP('GET')
@@ -55,6 +60,18 @@ class AdminController extends BaseController {
   @HTTP('GET')
   getJob(protocolRef) {
     return helpers.getJob(protocolRef);
+  }
+
+  @Route('/api/admin/runs')
+  @HTTP('POST')
+  runAdminDay(protocolRef) {
+    return helpers.runAdminDay(protocolRef);
+  }
+
+  @Route('/api/runs')
+  @HTTP('POST')
+  run(protocolRef) {
+    return helpers.run(protocolRef);
   }
 }
 

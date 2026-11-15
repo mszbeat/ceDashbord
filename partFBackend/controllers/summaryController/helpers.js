@@ -1,9 +1,8 @@
 'use strict';
 const { getServices } = require('../../services/container');
+const { resolveAuthContext } = require('../../services/auth/role-guard');
 const {
   getQuery,
-  getParams,
-  getClientMeta,
   sendHtml,
   runJsonHandler,
 } = require('../../services/http-adapter');
@@ -15,6 +14,22 @@ exports.health = function () {
     framework: 'partFramework',
     time: new Date().toISOString(),
   };
+};
+
+exports.me = function (protocolRef) {
+  return runJsonHandler(
+    protocolRef,
+    async () => {
+      const auth = await resolveAuthContext(protocolRef);
+      return {
+        authenticated: auth.authenticated,
+        username: auth.username,
+        roles: auth.roles,
+        permissions: auth.permissions,
+      };
+    },
+    { noStore: true },
+  );
 };
 
 exports.banks = function (protocolRef) {
@@ -35,7 +50,11 @@ exports.report = async function (protocolRef) {
   const to = q.to || undefined;
   const rowsCap = q.rowsCap ? Number(q.rowsCap) : 100;
   try {
-    const html = await getServices().summary.report(bank, from, to, rowsCap);
+    const auth = await resolveAuthContext(protocolRef);
+    const html = await getServices().summary.report(bank, from, to, rowsCap, {
+      canAccessAdmin: auth.permissions.canAccessAdmin,
+      canViewReportDetails: auth.permissions.canViewReportDetails,
+    });
     return sendHtml(protocolRef, html, 200);
   } catch (error) {
     const html = getServices().summary.errorHtml(error);
@@ -70,18 +89,6 @@ exports.list = function (protocolRef) {
       offset: q.offset ? Number(q.offset) : undefined,
     });
   });
-};
-
-exports.sample = function (protocolRef) {
-  return runJsonHandler(
-    protocolRef,
-    () => {
-      const params = getParams(protocolRef, /\/api\/sample\/([^/?#]+)/, 'requestId');
-      const clientMeta = getClientMeta(protocolRef);
-      return getServices().summary.sample(String(params.requestId || ''), clientMeta);
-    },
-    { noStore: true },
-  );
 };
 
 exports.runs = function (protocolRef) {

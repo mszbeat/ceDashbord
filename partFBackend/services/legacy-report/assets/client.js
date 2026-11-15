@@ -119,13 +119,28 @@
   async function loadSample(requestId) {
     const url = `/api/sample/${encodeURIComponent(requestId)}`;
     const response = await fetch(url, { cache: 'no-store', headers: { accept: 'application/json' } });
-    if (!response.ok) throw new Error(`دریافت جزئیات از API اصلی ناموفق بود (HTTP ${response.status}).`);
-    const raw = await response.json();
-    const payload = (raw && typeof raw === 'object' && !Array.isArray(raw) && raw.data && !raw.sample && typeof raw.data === 'object')
+    let raw = null;
+    try {
+      raw = await response.json();
+    } catch {
+      raw = null;
+    }
+    const unwrapped = (raw && typeof raw === 'object' && !Array.isArray(raw) && raw.data && !raw.sample && typeof raw.data === 'object')
       ? raw.data
       : raw;
-    if (!payload || !payload.meta || !payload.sample) throw new Error('پاسخ جزئیات معتبر نیست.');
-    return payload;
+    if (!response.ok) {
+      const serverMsg = unwrapped && typeof unwrapped.message === 'string' ? unwrapped.message : null;
+      const err = new Error(
+        serverMsg ||
+          (response.status === 403 || response.status === 401
+            ? 'شما مجوز مشاهدهٔ جزئیات گزارش را ندارید (نیازمند نقش creditEvaluation یا admin).'
+            : `دریافت جزئیات از API اصلی ناموفق بود (HTTP ${response.status}).`),
+      );
+      err.status = response.status;
+      throw err;
+    }
+    if (!unwrapped || !unwrapped.meta || !unwrapped.sample) throw new Error('پاسخ جزئیات معتبر نیست.');
+    return unwrapped;
   }
   async function openReport(requestId) {
     const win = window.open('', '_blank');
@@ -138,7 +153,33 @@
       const theme = document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
       const html = window.renderSampleViewer(payload, theme);
       win.document.open(); win.document.write(html); win.document.close();
-    } catch (error) { win.document.body.textContent = `مشاهدهٔ جزئیات ممکن نیست: ${error.message}`; }
+    } catch (error) {
+      const isForbidden = error && (error.status === 403 || error.status === 401);
+      win.document.open();
+      win.document.write(`<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><title>${isForbidden ? 'عدم دسترسی به جزئیات گزارش' : 'خطا در نمایش گزارش'}</title><style>
+        body{margin:0;background:#f3f6f8;color:#1a2935;font:14px/1.9 Tahoma,"Segoe UI",sans-serif;padding:44px}
+        main{max-width:640px;margin:auto;background:#fff;border:1px solid #dfe7e9;border-radius:16px;padding:28px 32px;box-shadow:0 14px 36px rgba(20,52,64,.06)}
+        .badge{display:inline-block;background:${isForbidden ? '#fdecec' : '#fff5e3'};color:${isForbidden ? '#b42318' : '#af711e'};border-radius:8px;padding:3px 10px;font-size:12px;font-weight:700}
+        h1{font-size:20px;margin:12px 0 8px;color:#1a2935}p{color:#526575;margin:0}
+      </style></head><body><main><span class="badge">${isForbidden ? 'HTTP 403 · محدودیت سطح دسترسی' : 'خطا'}</span><h1>${isForbidden ? 'عدم مجوز مشاهدهٔ جزئیات گزارش' : 'مشاهدهٔ جزئیات ممکن نیست'}</h1><p id="err-msg"></p></main></body></html>`);
+      win.document.close();
+      const msgEl = win.document.getElementById('err-msg');
+      if (msgEl) msgEl.textContent = error.message || 'خطای نامشخص';
+    }
+  }
+
+  // همگامسازی نمایش دکمهٔ پنل مدیریت با نقش کاربر جاری در سمت مرورگر
+  const adminLink = document.getElementById('ce-admin-link');
+  if (adminLink) {
+    fetch('/api/auth/me', { cache: 'no-store', headers: { accept: 'application/json' } })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((raw) => {
+        const me = raw && raw.data && !raw.permissions ? raw.data : raw;
+        if (me && me.permissions) {
+          adminLink.style.display = me.permissions.canAccessAdmin ? '' : 'none';
+        }
+      })
+      .catch(() => {});
   }
   document.addEventListener('click', (event) => {
     const copy = event.target.closest?.('td.id-cell')?.querySelector('button.copy-id')

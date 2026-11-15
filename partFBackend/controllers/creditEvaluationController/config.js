@@ -1,8 +1,8 @@
 module.exports = {
-  name: 'ingestion-controller',
+  name: 'credit-evaluation-controller',
   path: './',
   handlers: {
-    run: {
+    sample: {
       needProtocolRef: true,
       params: [],
     },

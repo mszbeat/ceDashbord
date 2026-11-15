@@ -29,6 +29,18 @@ class BadRequestError extends HttpError {
   }
 }
 
+class UnauthorizedError extends HttpError {
+  constructor(payload) {
+    super(401, payload);
+  }
+}
+
+class ForbiddenError extends HttpError {
+  constructor(payload) {
+    super(403, payload);
+  }
+}
+
 class NotFoundError extends HttpError {
   constructor(payload) {
     super(404, payload);
@@ -341,6 +353,8 @@ async function runJsonHandler(protocolRef, fn, options = {}) {
 module.exports = {
   HttpError,
   BadRequestError,
+  UnauthorizedError,
+  ForbiddenError,
   NotFoundError,
   ConflictError,
   registerFrameworkGlobals,

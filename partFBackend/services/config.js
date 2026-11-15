@@ -34,6 +34,9 @@ const config = {
   redactNationalCode: (process.env.CE_REDACT_NATIONAL_CODE || 'true') === 'true',
   requestTimeoutMs: Number(process.env.CE_API_TIMEOUT_MS || 20000),
   retryCount: Number(process.env.CE_API_RETRY || 3),
+  authJwtSecret: process.env.AUTH_JWT_SECRET || '',
+  authTrustRoleHeaders: (process.env.AUTH_TRUST_ROLE_HEADERS || 'false') === 'true',
+  authDevDefaultRole: process.env.AUTH_DEV_DEFAULT_ROLE || '',
 };
 
 const BANKS = {

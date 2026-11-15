@@ -1,128 +1,44 @@
 # partFBackend — CE Dashboard Backend (Powered by `partFramework`)
 
-نسخهٔ کامل بکاند داشبورد پایش اعتبارسنجی بانکی، بازطراحی و پیادهسازیشده بر پایهٔ معماری استاندارد `partFramework` (`controller-package`).
-این پوشه **۱۰۰٪ سازگار با فرانتاند Next.js (`frontend/`)** است و بدون نیاز به تغییر حتی یک خط در فرانتاند، جایگزین مستقیم `backend/` روی پورت `3000` میشود.
+نسخهٔ کامل بکاند داشبورد پایش اعتبارسنجی بانکی بر پایهٔ معماری استاندارد `partFramework` (`controller-package`) بههمراه **جداسازی کامل مسیرها و کنترلرها بر اساس ۳ سطح دسترسی (`user` / `creditEvaluation` / `admin`)**.
 
 ---
 
-## ساختار پروژه
+## تفکیک مسیرها و کنترلرها بر اساس سطح دسترسی
 
-```text
-partFBackend/
-├── index.js                              # نقطهٔ ورود اصلی برنامه
-├── Program.js                            # کلاس بوتاسترپ partFramework + راهافتادن سرویسها و زمانبند کران
-├── package.json                          # وابستگیها و اسکریپتهای اجرایی
-├── .env.example                          # نمونه تنظیمات محیطی
-├── start.sh                              # اسکریپت اجرای سریع
-├── project-config/                       # تنظیمات سرور HTTP، لاگر، کش و وابستگیهای فریمورک
-│   ├── index.js
-│   ├── dev/                              # پورت پیشفرض: BACKEND_PORT || 3000
-│   ├── prod/
-│   └── test/
-├── configs/                              # فایلهای کانفیگ متناظر با هر کنترلرپکیج
-│   ├── sampleController.config.js
-│   ├── summaryController.config.js
-│   ├── ingestionController.config.js
-│   └── adminController.config.js
-├── controllers/                          # کنترلرپکیجهای استاندارد partFramework (@Route / @HTTP)
-│   ├── sampleController/                 # کنترلر نمونه فریمورک
-│   ├── summaryController/                # گزارش HTML، آمار تجمیعی، دریلداون، مشخصات و عیبیابی
-│   ├── ingestionController/              # اجرای مستقیم دریافت روزانه (POST /api/runs)
-│   └── adminController/                  # پنل مدیریت، زمانبند خودکار کران تهران و اجرای دستی
-├── services/                             # لایهٔ سرویسها، دیتابیس و موتور ارزیابی (CommonJS خالص)
-│   ├── config.js                         # خواندن متغیرهای محیطی (.env)
-│   ├── container.js                      # مدیریت یکپارچهٔ چرخهٔ حیات سرویسها (DI Container)
-│   ├── http-adapter.js                   # آداپتور استاندارد protocolRef و HttpResult در partFramework
-│   ├── message-dict.js                   # لغتنامهٔ پیامهای سامانه
-│   ├── utils/date.js                     # ابزارهای تاریخ و ساعت به وقت Asia/Tehran
-│   ├── db/                               # اتصال PostgreSQL، مایگریشن و schema.sql
-│   ├── evaluator/                        # موتور ارزیابی همارز با نسخهٔ مرجع بانکی (ملت، رسالت، پستبانک)
-│   ├── legacy-report/                    # قالب HTML/CSS/JS گزارش تحلیلی داشبورد
-│   ├── ingestion/                        # دریافت صفحهبندیشده از گیتوی CE، ارزیابی، UPSERT و Rebuild اتمیک
-│   ├── summary/                          # کوئریهای تجمیعی سریع SQL، کش گزارش و دریلداون نمونهها
-│   └── admin/                            # مدیریت اجرای دستی فیلتردار، بررسی پیش از اجرا و زمانبند کران تهران
-├── scripts/
-│   ├── import-legacy-reports.js          # واردسازی پوشهٔ reports قدیمی به دیتابیس
-│   └── verify-partfbackend.js            # تست یکپارچهٔ دیتابیس، موتور ارزیابی، کران و تمام ۱۸ مسیر API
-├── postman/
-│   ├── sampleController.postman_collection.json
-│   └── ceDashboard.postman_collection.json
-└── tests/
-    ├── sampleController.test.js
-    └── controllers.test.js
-```
+| سطح دسترسی | نقشهای مجاز | کنترلر در `partFBackend/controllers/` | فایل کانفیگ دسترسی | امکانات و مسیرها |
+|---|---|---|---|---|
+| **۱. کاربر عادی** | همگانی (`user` / `visitor` / `creditEvaluation` / `admin`) | `summaryController` | `configs/summaryController.config.js` | مشاهدهٔ صفحهٔ اول داشبورد و تحلیلهای کلی (`GET /api/health`, `/api/auth/me`, `/api/banks`, `/api/specs`, `/api/report`, `/api/diagnostics`, `/api/summary`, `/api/list`, `/api/runs`) — **بدون دسترسی به جزئیات تکی گزارش یا پنل ادمین** |
+| **۲. کارشناس اعتبارسنجی** | فقط `creditEvaluation` و `admin` | `creditEvaluationController` | `configs/creditEvaluationController.config.js` | دریافت و مشاهدهٔ اطلاعات کامل یک گزارش (`GET /api/sample/:requestId`) — **کاربر عادی با خطای `403 Forbidden` مسدود میشود و این نقش اجازهٔ ورود به پنل ادمین را ندارد** |
+| **۳. مدیر سیستم** | فقط `admin` | `adminController` | `configs/adminController.config.js` | دسترسی کامل به همهٔ بخشها شامل پنل مدیریت، زمانبند کران شبانه و اجرای دریافت گزارشها (`GET/PUT/POST /api/admin/*` و `POST /api/runs`) — **کاربران عادی و `creditEvaluation` با خطای `403 Forbidden` مسدود میشوند** |
 
 ---
 
-## نصب و راهاندازی (در شبکهٔ داخلی پارت)
+## نحوهٔ تشخیص نقش کاربر (`services/auth/role-guard.js`)
 
-1. نصب پکیجها (از رجیستری داخلی پارت `https://npm.partcorp.ir/`):
+گارد نقشها (`requireRoles` در `services/auth/role-guard.js`) به ترتیب زیر نقشهای کاربر را استخراج میکند تا اتصال `partAuthenticationInterface` / `partSamadInterface` یا `partSessionManager` بدون تغییر کنترلرها انجام شود:
+
+1. **قلاب سفارشی در `Program.js` (`setAuthResolver`)**: میتوانید مستقیماً خروجی سرویس احراز هویت پارت را به `{ username, roles }` نگاشت کنید.
+2. **اشیاء فریمورک روی `protocolRef`**: فیلدهای `protocolRef.user`، `protocolRef.auth`، `protocolRef.request.user` یا `protocolRef.scope.user`.
+3. **نشست `partSessionManager` (`protocolRef.session`)**: پشتیبانی خودکار از فیلد `session.roles` و متد `session.get(['roles', 'samadUsername'], callback)`.
+4. **توکن `Bearer JWT`** (در صورت تنظیم `AUTH_JWT_SECRET` در `.env`).
+5. **هدرهای گیتوی / تست محلی** (`x-user-role` / `x-user-roles` در صورت `AUTH_TRUST_ROLE_HEADERS=true`، یا متغیر `AUTH_DEV_DEFAULT_ROLE` در `.env`).
+
+---
+
+## نصب و اجرا
 
 ```bash
 cd partFBackend
 npm install
-```
-
-2. ساخت فایل `.env` از روی نمونه و تنظیم `DATABASE_URL` و `CE_GATEWAY_TOKEN`:
-
-```bash
 cp .env.example .env
-```
-
-3. اجرای مایگریشن دیتابیس PostgreSQL:
-
-```bash
 npm run migrate
-```
-
-4. اجرای سرور `partFramework` (بهصورت پیشفرض روی پورت `3000`):
-
-```bash
 npm start
-# یا:
-./start.sh
 ```
 
----
-
-## فهرست مسیرهای API (۱۸ مسیر کامل تحت `/api`)
-
-### ۱. `summaryController`
-- `GET /api/health` — وضعیت سلامت سرویس
-- `GET /api/banks` — فهرست بانکها (`tavan_mellat`, `tavan_resalat`, `tavan_postbank`)
-- `GET /api/specs` — فرادادهٔ دستهها، فلگها، کارتهای آمار و دیکشنری پیامها
-- `GET /api/report` — رندر مستقیم گزارش تحلیلی کامل HTML (`text/html; charset=utf-8`) با تمام نمودارها و مودال دریلداون سرور
-- `GET /api/diagnostics` — عیبیابی پوشش تاریخها، صحت شمارش و نسخهٔ تحلیل
-- `GET /api/summary` — خلاصهٔ تحلیلی بازهٔ زمانی (توزیع وضعیت، مدلها، علل رد، سبد اعتباری، دهکها، نمودار روزانه/ساعتی و...)
-- `GET /api/list` — فهرست صفحهبندیشدهٔ رکوردها با فیلترهای ترکیبی (`cat`, `flag`, `flagVal`, `bucket`, `model`, `code`, `status`, `q`, ...)
-- `GET /api/sample/:requestId` — جزئیات کامل یک رکورد اعتبارسنجی
-- `GET /api/runs` — تاریخچهٔ اجراهای ثبتشده در جدول `day_runs`
-
-### ۲. `ingestionController`
-- `POST /api/runs` — اجرای دریافت یک روز مشخص (`nightly` یا `intraday` بههمراه پشتیبانی از `rebuild` اتمیک و `filters`)
-
-### ۳. `adminController`
-- `GET /api/admin/overview` — خلاصهٔ وضعیت سرور، وضعیت کران شبانه، کارهای اخیر و آمار هر بانک
-- `GET /api/admin/cron` — دریافت تنظیمات زمانبند خودکار کران (به وقت تهران)
-- `PUT /api/admin/cron` — ویرایش تنظیمات کران (فعال/غیرفعال، ساعت، دقیقه، حالت `nightly`/`intraday` و بانکهای هدف)
-- `POST /api/admin/cron/run-now` — اجرای فوری کران شبانه در پسزمینه
-- `POST /api/admin/runs/check` — بررسی وجود دادهٔ قبلی در دیتابیس پیش از اجرای دستی (برای نمایش انتخاب `Rebuild` / `Upsert` / `Cancel`)
-- `POST /api/admin/runs/start` — شروع اجرای دستی پسزمینه (تکروز، بازهٔ تاریخ، یا بدون تاریخ با فیلترهای `status`, `requestId`, `uniqueKey`, `nationalCode`, `maxCount`, `pageSize` — بدون ذخیرهسازی کدملی)
-- `GET /api/admin/jobs` — فهرست کارهای پسزمینهٔ اخیر
-- `GET /api/admin/jobs/:id` — وضعیت لحظهای و پیشرفت یک کار پسزمینه
-
----
-
-## دستورات خط فرمان (CLI) و تستها
+اجرای تستهای واحد، گاردهای سطح دسترسی (هر ۳ نقش `user`، `creditEvaluation` و `admin`) و تست یکپارچهٔ دیتابیس:
 
 ```bash
-# دریافت دستی از خط فرمان
-npm run ingest -- --bank=tavan_mellat --day=2026-04-16 --mode=nightly
-npm run ingest -- --bank=tavan_mellat --from=2026-04-10 --to=2026-04-16 --rebuild
-
-# واردسازی فایلهای reports قدیمی
-npm run import:legacy -- ../samples tavan_mellat
-
-# اجرای تستهای واحد و یکپارچه
+cd partFBackend
 npm test
 ```

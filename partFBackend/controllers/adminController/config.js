@@ -34,5 +34,13 @@ module.exports = {
       needProtocolRef: true,
       params: [],
     },
+    runAdminDay: {
+      needProtocolRef: true,
+      params: [],
+    },
+    run: {
+      needProtocolRef: true,
+      params: [],
+    },
   },
 };

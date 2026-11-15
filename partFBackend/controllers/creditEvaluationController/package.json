@@ -1,0 +1,8 @@
+{
+  "name": "credit-evaluation-controller",
+  "version": "1.0.0",
+  "description": "سطح دسترسی creditEvaluation و admin: دریافت و نمایش اطلاعات کامل یک گزارش اعتبارسنجی",
+  "main": "main.js",
+  "author": "",
+  "license": "ISC"
+}

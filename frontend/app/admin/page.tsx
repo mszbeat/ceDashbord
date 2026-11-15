@@ -166,6 +166,7 @@ export default function AdminPage() {
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [overview, setOverview] = useState<OverviewPayload | null>(null);
   const [loadingOverview, setLoadingOverview] = useState(true);
+  const [accessDeniedMsg, setAccessDeniedMsg] = useState<string | null>(null);
   const [toast, setToast] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
 
   // Manual run form state
@@ -238,6 +239,7 @@ export default function AdminPage() {
       if (!silent) setLoadingOverview(true);
       try {
         const data = await apiFetch<OverviewPayload>('/api/admin/overview');
+        setAccessDeniedMsg(null);
         setOverview(data);
         if (!initializedDatesRef.current && data.serverClock) {
           initializedDatesRef.current = true;
@@ -249,6 +251,12 @@ export default function AdminPage() {
           syncCronFormFromServer(data.cron);
         }
       } catch (err: any) {
+        if (err?.status === 401 || err?.status === 403) {
+          setAccessDeniedMsg(
+            err?.message || 'ورود به پنل مدیریت فقط برای کاربران دارای نقش admin مجاز است.',
+          );
+          return;
+        }
         if (!silent) {
           setToast({ kind: 'error', text: err?.message || 'خطا در دریافت وضعیت پنل مدیریت' });
         }
@@ -270,12 +278,13 @@ export default function AdminPage() {
 
   // رفرش خودکار سریع هنگام اجرای جابها (هر ۲ ثانیه) و معمولی در حالت سکون (هر ۱۵ ثانیه)
   useEffect(() => {
+    if (accessDeniedMsg) return;
     const intervalMs = hasRunningJobs ? 2000 : 15000;
     const id = window.setInterval(() => {
       void fetchOverview(true);
     }, intervalMs);
     return () => window.clearInterval(id);
-  }, [hasRunningJobs, fetchOverview]);
+  }, [hasRunningJobs, fetchOverview, accessDeniedMsg]);
 
   // بستن مودال با کلید Escape
   useEffect(() => {
@@ -431,6 +440,30 @@ export default function AdminPage() {
     setSingleDay(day);
     window.scrollTo({ top: 240, behavior: 'smooth' });
   };
+
+  if (accessDeniedMsg) {
+    return (
+      <div className="adm-root" dir="rtl">
+        <div className="adm-container" style={{ maxWidth: 680, paddingTop: 64 }}>
+          <section className="adm-card" style={{ padding: '32px 36px' }}>
+            <div style={{ marginBottom: 12 }}>
+              <span className="adm-badge err">HTTP ۴۰۳ · عدم دسترسی</span>
+            </div>
+            <h1 style={{ fontSize: 22, margin: '0 0 12px' }}>عدم مجوز ورود به پنل مدیریت</h1>
+            <p style={{ lineHeight: 1.9, margin: '0 0 22px', opacity: 0.88 }}>{accessDeniedMsg}</p>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <a className="adm-btn adm-btn-primary" href="/">
+                ← بازگشت به صفحهٔ اول داشبورد
+              </a>
+              <button type="button" className="adm-btn" onClick={toggleTheme}>
+                {theme === 'light' ? '☾ حالت تیره' : '☀ حالت روشن'}
+              </button>
+            </div>
+          </section>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="adm-root" dir="rtl">

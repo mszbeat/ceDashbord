@@ -67,3 +67,21 @@ exports.getJob = function () {
     queryString: {},
   };
 };
+
+exports.runAdminDay = function () {
+  return {
+    header: {},
+    params: {},
+    queryString: {},
+    body: {},
+  };
+};
+
+exports.run = function () {
+  return {
+    header: {},
+    params: {},
+    queryString: {},
+    body: {},
+  };
+};

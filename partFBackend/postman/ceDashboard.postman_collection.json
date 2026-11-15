@@ -1,7 +1,7 @@
 {
   "info": {
     "_postman_id": "2c8c9e47-9d1a-4b4e-8f57-ce00da54b0fd",
-    "name": "CE Dashboard (partFramework Backend)",
+    "name": "CE Dashboard (partFramework Backend - Role Separated)",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -12,11 +12,15 @@
   ],
   "item": [
     {
-      "name": "Summary & Report",
+      "name": "1. Public / Normal User (summaryController)",
       "item": [
         {
           "name": "GET /api/health",
           "request": { "method": "GET", "url": "{{baseUrl}}/api/health" }
+        },
+        {
+          "name": "GET /api/auth/me",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/auth/me" }
         },
         {
           "name": "GET /api/banks",
@@ -36,74 +40,84 @@
         },
         {
           "name": "GET /api/diagnostics",
-          "request": { "method": "GET", "url": "{{baseUrl}}/api/diagnostics?bank=tavan_mellat" }
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/diagnostics" }
         },
         {
           "name": "GET /api/list",
-          "request": { "method": "GET", "url": "{{baseUrl}}/api/list?bank=tavan_mellat&page=1&size=25" }
-        },
-        {
-          "name": "GET /api/sample/:requestId",
-          "request": { "method": "GET", "url": "{{baseUrl}}/api/sample/REQ-001?bank=tavan_mellat" }
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/list?bank=tavan_mellat&limit=25&offset=0" }
         },
         {
           "name": "GET /api/runs",
-          "request": { "method": "GET", "url": "{{baseUrl}}/api/runs?bank=tavan_mellat" }
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/runs" }
         }
       ]
     },
     {
-      "name": "Ingestion",
+      "name": "2. Role: creditEvaluation | admin (creditEvaluationController)",
       "item": [
         {
-          "name": "POST /api/runs",
+          "name": "GET /api/sample/:requestId",
           "request": {
-            "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"bank\": \"tavan_mellat\",\n  \"day\": \"2026-04-16\",\n  \"mode\": \"nightly\",\n  \"rebuild\": false\n}"
-            },
-            "url": "{{baseUrl}}/api/runs"
+            "method": "GET",
+            "header": [{ "key": "x-user-role", "value": "creditEvaluation" }],
+            "url": "{{baseUrl}}/api/sample/REQ-001"
           }
         }
       ]
     },
     {
-      "name": "Admin & Cron",
+      "name": "3. Role: admin Only (adminController)",
       "item": [
         {
           "name": "GET /api/admin/overview",
-          "request": { "method": "GET", "url": "{{baseUrl}}/api/admin/overview" }
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "x-user-role", "value": "admin" }],
+            "url": "{{baseUrl}}/api/admin/overview"
+          }
         },
         {
           "name": "GET /api/admin/cron",
-          "request": { "method": "GET", "url": "{{baseUrl}}/api/admin/cron" }
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "x-user-role", "value": "admin" }],
+            "url": "{{baseUrl}}/api/admin/cron"
+          }
         },
         {
           "name": "PUT /api/admin/cron",
           "request": {
             "method": "PUT",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-user-role", "value": "admin" }
+            ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"enabled\": true,\n  \"hour\": 3,\n  \"minute\": 0,\n  \"mode\": \"nightly\",\n  \"banks\": [\"tavan_mellat\", \"tavan_resalat\", \"tavan_postbank\"]\n}"
+              "raw": "{\n  \"enabled\": true,\n  \"schedule_mode\": \"daily\",\n  \"hour\": 3,\n  \"minute\": 0,\n  \"banks\": [\"tavan_mellat\", \"tavan_resalat\", \"tavan_postbank\"]\n}"
             },
             "url": "{{baseUrl}}/api/admin/cron"
           }
         },
         {
           "name": "POST /api/admin/cron/run-now",
-          "request": { "method": "POST", "url": "{{baseUrl}}/api/admin/cron/run-now" }
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "x-user-role", "value": "admin" }],
+            "url": "{{baseUrl}}/api/admin/cron/run-now"
+          }
         },
         {
           "name": "POST /api/admin/runs/check",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-user-role", "value": "admin" }
+            ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"bank\": \"tavan_mellat\",\n  \"day\": \"2026-04-16\"\n}"
+              "raw": "{\n  \"banks\": [\"tavan_mellat\"],\n  \"dateScope\": \"single\",\n  \"day\": \"1405-08-23\"\n}"
             },
             "url": "{{baseUrl}}/api/admin/runs/check"
           }
@@ -112,17 +126,39 @@
           "name": "POST /api/admin/runs/start",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-user-role", "value": "admin" }
+            ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"bank\": \"tavan_mellat\",\n  \"day\": \"2026-04-16\",\n  \"mode\": \"nightly\",\n  \"strategy\": \"upsert\",\n  \"filters\": {\n    \"status\": \"all\"\n  }\n}"
+              "raw": "{\n  \"banks\": [\"tavan_mellat\"],\n  \"dateScope\": \"single\",\n  \"day\": \"1405-08-23\",\n  \"mode\": \"nightly\",\n  \"conflictStrategy\": \"upsert\",\n  \"confirmedConflict\": true\n}"
             },
             "url": "{{baseUrl}}/api/admin/runs/start"
           }
         },
         {
+          "name": "POST /api/admin/runs (Direct Day Ingestion)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-user-role", "value": "admin" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"bank\": \"tavan_mellat\",\n  \"day\": \"1405-08-23\",\n  \"mode\": \"nightly\",\n  \"rebuild\": false\n}"
+            },
+            "url": "{{baseUrl}}/api/admin/runs"
+          }
+        },
+        {
           "name": "GET /api/admin/jobs",
-          "request": { "method": "GET", "url": "{{baseUrl}}/api/admin/jobs" }
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "x-user-role", "value": "admin" }],
+            "url": "{{baseUrl}}/api/admin/jobs"
+          }
         }
       ]
     }

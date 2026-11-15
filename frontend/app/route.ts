@@ -52,7 +52,25 @@ export async function GET(request: NextRequest) {
   const headers = { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store, no-cache, must-revalidate' };
 
   try {
-    const response = await fetch(target.toString(), { cache: 'no-store' });
+    const forwardHeaders: Record<string, string> = {};
+    for (const key of [
+      'cookie',
+      'authorization',
+      'x-user-role',
+      'x-user-roles',
+      'x-part-roles',
+      'gateway-user-roles',
+      'x-user-name',
+      'x-samad-username',
+    ]) {
+      const val = request.headers.get(key);
+      if (val) forwardHeaders[key] = val;
+    }
+
+    const response = await fetch(target.toString(), {
+      cache: 'no-store',
+      headers: forwardHeaders,
+    });
     const body = await response.text();
     const contentType = response.headers.get('content-type') || '';
 

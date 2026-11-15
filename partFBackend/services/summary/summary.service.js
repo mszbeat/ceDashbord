@@ -451,9 +451,16 @@ class SummaryService {
     return { scan, data, options: { rowsCap: cap, controls } };
   }
 
-  async report(bankInput, from, to, rowsCap = 100) {
+  async report(bankInput, from, to, rowsCap = 100, accessOptions = {}) {
     const built = await this.buildDashboard(bankInput, from, to, rowsCap);
     delete built.data.__cap;
+    if (accessOptions && typeof accessOptions === 'object') {
+      built.options.controls = {
+        ...built.options.controls,
+        canAccessAdmin: accessOptions.canAccessAdmin,
+        canViewReportDetails: accessOptions.canViewReportDetails,
+      };
+    }
     return buildReport(built.scan, built.data, built.options);
   }
 

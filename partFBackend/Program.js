@@ -1,6 +1,7 @@
 const PartFramework = require('partFramework');
 const { getServices } = require('./services/container');
 const { config } = require('./services/config');
+// const { setAuthResolver } = require('./services/auth/role-guard');
 
 class Program {
   #core;
@@ -18,6 +19,13 @@ class Program {
   #loadManualControllers() {}
 
   async #loadDependencies() {
+    // در صورت اتصال مستقیم به partAuthenticationInterface / partSamadInterface میتوانید نقش کاربر را اینجا ثبت کنید:
+    // setAuthResolver(async (protocolRef) => ({
+    //   username: '...',
+    //   roles: ['creditEvaluation'], // 'user' | 'creditEvaluation' | 'admin'
+    // }));
+    // توجه: اگر نشست partSessionManager روی protocolRef.session یا protocolRef.user ست شود، بهصورت خودکار خوانده میشود.
+
     const services = getServices();
     await services.init();
 

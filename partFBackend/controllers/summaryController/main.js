@@ -8,11 +8,21 @@ registerFrameworkGlobals({
   BaseController,
 });
 
+/**
+ * سطح دسترسی ۱ — کاربر عادی (عمومی / همهٔ کاربران):
+ * مشاهدهٔ صفحهٔ اول داشبورد و تحلیلهای کلی، بدون امکان دریافت اطلاعات تکی گزارش یا ورود به پنل ادمین.
+ */
 class SummaryController extends BaseController {
   @Route('/api/health')
   @HTTP('GET')
   health(protocolRef) {
     return helpers.health(protocolRef);
+  }
+
+  @Route('/api/auth/me')
+  @HTTP('GET')
+  me(protocolRef) {
+    return helpers.me(protocolRef);
   }
 
   @Route('/api/banks')
@@ -49,12 +59,6 @@ class SummaryController extends BaseController {
   @HTTP('GET')
   list(protocolRef) {
     return helpers.list(protocolRef);
-  }
-
-  @Route('/api/sample/:requestId')
-  @HTTP('GET')
-  sample(protocolRef) {
-    return helpers.sample(protocolRef);
   }
 
   @Route('/api/runs')

@@ -1,8 +1,0 @@
-{
-  "name": "ingestion-controller",
-  "version": "1.0.0",
-  "description": "اجرای مستقیم Ingestion تکروز از طریق API",
-  "main": "main.js",
-  "author": "",
-  "license": "ISC"
-}
