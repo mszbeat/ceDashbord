@@ -1,0 +1,4 @@
+exports.sampleFirstMethod = function () {
+  return {
+  };
+};

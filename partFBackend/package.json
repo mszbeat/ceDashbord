@@ -21,6 +21,7 @@
     "dotenv": "^16.4.5",
     "partAuthenticationInterface": "^12.0.0",
     "partFramework": "^10.29.0",
+    "partLogger": "^7.13.6",
     "pg": "^8.11.3"
   }
 }
