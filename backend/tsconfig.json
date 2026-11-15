@@ -11,10 +11,13 @@
     "sourceMap": true,
     "outDir": "./dist",
     "rootDir": "./src",
+    "baseUrl": "./",
     "incremental": true,
+    "tsBuildInfoFile": "./dist/tsconfig.tsbuildinfo",
     "skipLibCheck": true,
     "strictNullChecks": false,
     "forceConsistentCasingInFileNames": false,
     "noImplicitAny": false
-  }
+  },
+  "include": ["src/**/*"]
 }

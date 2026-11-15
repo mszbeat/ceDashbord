@@ -8,6 +8,6 @@ export class PartAuthenticationController {
 
   @Post('register')
   async register(@Body() body: RegisterDto) {
-    this.partAuthenticationService.register(body);
+    return this.partAuthenticationService.register(body);
   }
 }

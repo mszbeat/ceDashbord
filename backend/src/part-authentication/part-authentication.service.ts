@@ -9,7 +9,8 @@ export class PartAuthenticationService {
   }
 
   async register(body: RegisterDto) {
-    const payload
+    const payload = { ...body };
+    return payload;
   }
 
 }

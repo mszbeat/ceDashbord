@@ -4,8 +4,11 @@
   "private": true,
   "description": "CE Dashboard Server - Backend (NestJS) - ملت اول",
   "scripts": {
+    "prebuild": "node -e \"require('fs').rmSync('tsconfig.tsbuildinfo',{force:true})\"",
     "build": "nest build",
+    "prestart": "node -e \"require('fs').rmSync('tsconfig.tsbuildinfo',{force:true})\"",
     "start": "nest start",
+    "prestart:dev": "node -e \"require('fs').rmSync('tsconfig.tsbuildinfo',{force:true})\"",
     "start:dev": "nest start --watch",
     "start:prod": "node dist/main",
     "migrate": "node src/db/migrate.js",
