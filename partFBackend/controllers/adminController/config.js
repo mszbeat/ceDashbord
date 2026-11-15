@@ -3,44 +3,44 @@ module.exports = {
   path: './',
   handlers: {
     getOverview: {
-      needProtocolRef: true,
-      params: [],
+      needProtocolRef: false,
+      params: ['_protocolRef.response'],
     },
     getCron: {
-      needProtocolRef: true,
-      params: [],
+      needProtocolRef: false,
+      params: ['_protocolRef.response'],
     },
     updateCron: {
-      needProtocolRef: true,
-      params: [],
+      needProtocolRef: false,
+      params: ['_protocolRef.request.data', '_protocolRef.response'],
     },
     runCronNow: {
-      needProtocolRef: true,
-      params: [],
+      needProtocolRef: false,
+      params: ['_protocolRef.response'],
     },
     checkExisting: {
-      needProtocolRef: true,
-      params: [],
+      needProtocolRef: false,
+      params: ['_protocolRef.request.data', '_protocolRef.response'],
     },
     startRun: {
-      needProtocolRef: true,
-      params: [],
+      needProtocolRef: false,
+      params: ['_protocolRef.request.data', '_protocolRef.response'],
     },
     listJobs: {
-      needProtocolRef: true,
-      params: [],
+      needProtocolRef: false,
+      params: ['_protocolRef.response'],
     },
     getJob: {
-      needProtocolRef: true,
-      params: [],
+      needProtocolRef: false,
+      params: ['_protocolRef.request', '_protocolRef.response', '_inputData'],
     },
     runAdminDay: {
-      needProtocolRef: true,
-      params: [],
+      needProtocolRef: false,
+      params: ['_protocolRef.request.data', '_protocolRef.response'],
     },
     run: {
-      needProtocolRef: true,
-      params: [],
+      needProtocolRef: false,
+      params: ['_protocolRef.request.data', '_protocolRef.response'],
     },
   },
 };

@@ -6,14 +6,6 @@ exports.health = function () {
   };
 };
 
-exports.me = function () {
-  return {
-    header: {},
-    params: {},
-    queryString: {},
-  };
-};
-
 exports.banks = function () {
   return {
     header: {},

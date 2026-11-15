@@ -3,8 +3,8 @@ module.exports = {
   path: './',
   handlers: {
     sample: {
-      needProtocolRef: true,
-      params: [],
+      needProtocolRef: false,
+      params: ['_protocolRef.request', '_protocolRef.response', '_inputData'],
     },
   },
 };

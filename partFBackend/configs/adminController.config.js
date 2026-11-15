@@ -1,4 +1,1 @@
-module.exports = {
-  accessLevel: 'admin',
-  allowedRoles: ['admin'],
-};
+module.exports = {};

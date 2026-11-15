@@ -1,21 +1,15 @@
 'use strict';
 const { getServices } = require('../../services/container');
-const { ROLES, requireRoles } = require('../../services/auth/role-guard');
-const { getBody, getParams, BadRequestError, runJsonHandler } = require('../../services/http-adapter');
+const {
+  normalizeBody,
+  extractRouteParam,
+  BadRequestError,
+  runJsonHandler,
+} = require('../../services/http-adapter');
 const { tehranToday, tehranYesterday } = require('../../services/utils/date');
-const accessConfig = require('../../configs/adminController.config');
 
-const ALLOWED_ROLES = accessConfig.allowedRoles || [ROLES.ADMIN];
-const ADMIN_DENIED_MSG =
-  'دسترسی غیرمجاز: ورود به پنل مدیریت و اجرای عملیات مدیریتی فقط برای نقش admin مجاز است.';
-
-async function ensureAdmin(protocolRef) {
-  return requireRoles(protocolRef, ALLOWED_ROLES, { message: ADMIN_DENIED_MSG });
-}
-
-async function executeDirectDayRun(protocolRef) {
-  await ensureAdmin(protocolRef);
-  const body = getBody(protocolRef);
+async function executeDirectDayRun(data) {
+  const body = normalizeBody(data);
   const mode = body.mode === 'intraday' ? 'intraday' : 'nightly';
   const rebuild = body.rebuild === true;
   if (rebuild && !body.day) {
@@ -28,86 +22,58 @@ async function executeDirectDayRun(protocolRef) {
   });
 }
 
-exports.getOverview = function (protocolRef) {
-  return runJsonHandler(
-    protocolRef,
-    async () => {
-      await ensureAdmin(protocolRef);
-      return getServices().admin.getOverview();
-    },
-    { noStore: true },
-  );
+exports.getOverview = function (response) {
+  return runJsonHandler(response, () => getServices().admin.getOverview(), { noStore: true });
 };
 
-exports.getCron = function (protocolRef) {
-  return runJsonHandler(
-    protocolRef,
-    async () => {
-      await ensureAdmin(protocolRef);
-      return getServices().admin.getCronConfig();
-    },
-    { noStore: true },
-  );
+exports.getCron = function (response) {
+  return runJsonHandler(response, () => getServices().admin.getCronConfig(), { noStore: true });
 };
 
-exports.updateCron = function (protocolRef) {
-  return runJsonHandler(protocolRef, async () => {
-    await ensureAdmin(protocolRef);
-    const body = getBody(protocolRef);
+exports.updateCron = function (data, response) {
+  return runJsonHandler(response, () => {
+    const body = normalizeBody(data);
     return getServices().admin.updateCronConfig(body);
   });
 };
 
-exports.runCronNow = function (protocolRef) {
-  return runJsonHandler(protocolRef, async () => {
-    await ensureAdmin(protocolRef);
-    return getServices().admin.triggerCronExecution('cron_manual');
-  });
+exports.runCronNow = function (response) {
+  return runJsonHandler(response, () => getServices().admin.triggerCronExecution('cron_manual'));
 };
 
-exports.checkExisting = function (protocolRef) {
-  return runJsonHandler(protocolRef, async () => {
-    await ensureAdmin(protocolRef);
-    const body = getBody(protocolRef);
+exports.checkExisting = function (data, response) {
+  return runJsonHandler(response, () => {
+    const body = normalizeBody(data);
     return getServices().admin.checkExistingData(body);
   });
 };
 
-exports.startRun = function (protocolRef) {
-  return runJsonHandler(protocolRef, async () => {
-    await ensureAdmin(protocolRef);
-    const body = getBody(protocolRef);
+exports.startRun = function (data, response) {
+  return runJsonHandler(response, () => {
+    const body = normalizeBody(data);
     return getServices().admin.startManualRun(body);
   });
 };
 
-exports.listJobs = function (protocolRef) {
+exports.listJobs = function (response) {
+  return runJsonHandler(response, () => getServices().admin.listJobs(20), { noStore: true });
+};
+
+exports.getJob = function (request, response, inputData) {
   return runJsonHandler(
-    protocolRef,
-    async () => {
-      await ensureAdmin(protocolRef);
-      return getServices().admin.listJobs(20);
+    response,
+    () => {
+      const id = extractRouteParam(request, inputData, 'id', /\/api\/admin\/jobs\/([^/?#]+)/);
+      return getServices().admin.getJob(id);
     },
     { noStore: true },
   );
 };
 
-exports.getJob = function (protocolRef) {
-  return runJsonHandler(
-    protocolRef,
-    async () => {
-      await ensureAdmin(protocolRef);
-      const params = getParams(protocolRef, /\/api\/admin\/jobs\/([^/?#]+)/, 'id');
-      return getServices().admin.getJob(String(params.id || ''));
-    },
-    { noStore: true },
-  );
+exports.runAdminDay = function (data, response) {
+  return runJsonHandler(response, () => executeDirectDayRun(data));
 };
 
-exports.runAdminDay = function (protocolRef) {
-  return runJsonHandler(protocolRef, () => executeDirectDayRun(protocolRef));
-};
-
-exports.run = function (protocolRef) {
-  return runJsonHandler(protocolRef, () => executeDirectDayRun(protocolRef));
+exports.run = function (data, response) {
+  return runJsonHandler(response, () => executeDirectDayRun(data));
 };

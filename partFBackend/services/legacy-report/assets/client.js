@@ -167,20 +167,6 @@
       if (msgEl) msgEl.textContent = error.message || 'خطای نامشخص';
     }
   }
-
-  // همگامسازی نمایش دکمهٔ پنل مدیریت با نقش کاربر جاری در سمت مرورگر
-  const adminLink = document.getElementById('ce-admin-link');
-  if (adminLink) {
-    fetch('/api/auth/me', { cache: 'no-store', headers: { accept: 'application/json' } })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((raw) => {
-        const me = raw && raw.data && !raw.permissions ? raw.data : raw;
-        if (me && me.permissions) {
-          adminLink.style.display = me.permissions.canAccessAdmin ? '' : 'none';
-        }
-      })
-      .catch(() => {});
-  }
   document.addEventListener('click', (event) => {
     const copy = event.target.closest?.('td.id-cell')?.querySelector('button.copy-id')
       || event.target.closest?.('button.copy-id');

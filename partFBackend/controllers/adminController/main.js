@@ -9,69 +9,68 @@ registerFrameworkGlobals({
 });
 
 /**
- * سطح دسترسی ۳ — فقط نقش admin:
- * دسترسی کامل به پنل مدیریت، تنظیمات و اجرای کران شبانه و اجرای دریافت گزارشها (Ingestion).
- * کاربران عادی و نقش creditEvaluation از ورود به این مسیرها منع میشوند (403 Forbidden).
+ * سطح دسترسی ۳ — فقط نقش admin (اعمال گارد توسط سمد):
+ * پنل مدیریت، زمانبند خودکار کران شبانه و اجرای دریافت گزارشها (Ingestion).
  */
 class AdminController extends BaseController {
   @Route('/api/admin/overview')
   @HTTP('GET')
-  getOverview(protocolRef) {
-    return helpers.getOverview(protocolRef);
+  getOverview(response) {
+    return helpers.getOverview(response);
   }
 
   @Route('/api/admin/cron')
   @HTTP('GET')
-  getCron(protocolRef) {
-    return helpers.getCron(protocolRef);
+  getCron(response) {
+    return helpers.getCron(response);
   }
 
   @Route('/api/admin/cron')
   @HTTP('PUT')
-  updateCron(protocolRef) {
-    return helpers.updateCron(protocolRef);
+  updateCron(data, response) {
+    return helpers.updateCron(data, response);
   }
 
   @Route('/api/admin/cron/run-now')
   @HTTP('POST')
-  runCronNow(protocolRef) {
-    return helpers.runCronNow(protocolRef);
+  runCronNow(response) {
+    return helpers.runCronNow(response);
   }
 
   @Route('/api/admin/runs/check')
   @HTTP('POST')
-  checkExisting(protocolRef) {
-    return helpers.checkExisting(protocolRef);
+  checkExisting(data, response) {
+    return helpers.checkExisting(data, response);
   }
 
   @Route('/api/admin/runs/start')
   @HTTP('POST')
-  startRun(protocolRef) {
-    return helpers.startRun(protocolRef);
+  startRun(data, response) {
+    return helpers.startRun(data, response);
   }
 
   @Route('/api/admin/jobs')
   @HTTP('GET')
-  listJobs(protocolRef) {
-    return helpers.listJobs(protocolRef);
+  listJobs(response) {
+    return helpers.listJobs(response);
   }
 
   @Route('/api/admin/jobs/:id')
   @HTTP('GET')
-  getJob(protocolRef) {
-    return helpers.getJob(protocolRef);
+  getJob(request, response, inputData) {
+    return helpers.getJob(request, response, inputData);
   }
 
   @Route('/api/admin/runs')
   @HTTP('POST')
-  runAdminDay(protocolRef) {
-    return helpers.runAdminDay(protocolRef);
+  runAdminDay(data, response) {
+    return helpers.runAdminDay(data, response);
   }
 
   @Route('/api/runs')
   @HTTP('POST')
-  run(protocolRef) {
-    return helpers.run(protocolRef);
+  run(data, response) {
+    return helpers.run(data, response);
   }
 }
 

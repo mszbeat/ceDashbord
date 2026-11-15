@@ -3,40 +3,36 @@ module.exports = {
   path: './',
   handlers: {
     health: {
-      needProtocolRef: true,
-      params: [],
-    },
-    me: {
-      needProtocolRef: true,
+      needProtocolRef: false,
       params: [],
     },
     banks: {
-      needProtocolRef: true,
-      params: [],
+      needProtocolRef: false,
+      params: ['_protocolRef.response'],
     },
     specs: {
-      needProtocolRef: true,
-      params: [],
+      needProtocolRef: false,
+      params: ['_protocolRef.request.queryString', '_protocolRef.response'],
     },
     report: {
-      needProtocolRef: true,
-      params: [],
+      needProtocolRef: false,
+      params: ['_protocolRef.request.queryString', '_protocolRef.response'],
     },
     diagnostics: {
-      needProtocolRef: true,
-      params: [],
+      needProtocolRef: false,
+      params: ['_protocolRef.response'],
     },
     summary: {
-      needProtocolRef: true,
-      params: [],
+      needProtocolRef: false,
+      params: ['_protocolRef.request.queryString', '_protocolRef.response'],
     },
     list: {
-      needProtocolRef: true,
-      params: [],
+      needProtocolRef: false,
+      params: ['_protocolRef.request.queryString', '_protocolRef.response'],
     },
     runs: {
-      needProtocolRef: true,
-      params: [],
+      needProtocolRef: false,
+      params: ['_protocolRef.response'],
     },
   },
 };

@@ -1,4 +1,1 @@
-module.exports = {
-  accessLevel: 'creditEvaluation',
-  allowedRoles: ['creditEvaluation', 'admin'],
-};
+module.exports = {};

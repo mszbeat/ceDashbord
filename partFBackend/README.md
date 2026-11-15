@@ -1,28 +1,28 @@
 # partFBackend — CE Dashboard Backend (Powered by `partFramework`)
 
-نسخهٔ کامل بکاند داشبورد پایش اعتبارسنجی بانکی بر پایهٔ معماری استاندارد `partFramework` (`controller-package`) بههمراه **جداسازی کامل مسیرها و کنترلرها بر اساس ۳ سطح دسترسی (`user` / `creditEvaluation` / `admin`)**.
+نسخهٔ کامل بکاند داشبورد پایش اعتبارسنجی بانکی بر پایهٔ معماری استاندارد `partFramework` (`controller-package`) با `needProtocolRef: false` و تزریق مستقیم پارامترها از `config.js` (`params: [...]`)، آماده برای اعمال گاردهای سمد (Samad) روی هر کنترلر یا مسیر.
 
 ---
 
-## تفکیک مسیرها و کنترلرها بر اساس سطح دسترسی
+## تفکیک کنترلرها بر اساس ۳ سطح دسترسی (برای اتصال به سمد)
 
-| سطح دسترسی | نقشهای مجاز | کنترلر در `partFBackend/controllers/` | فایل کانفیگ دسترسی | امکانات و مسیرها |
-|---|---|---|---|---|
-| **۱. کاربر عادی** | همگانی (`user` / `visitor` / `creditEvaluation` / `admin`) | `summaryController` | `configs/summaryController.config.js` | مشاهدهٔ صفحهٔ اول داشبورد و تحلیلهای کلی (`GET /api/health`, `/api/auth/me`, `/api/banks`, `/api/specs`, `/api/report`, `/api/diagnostics`, `/api/summary`, `/api/list`, `/api/runs`) — **بدون دسترسی به جزئیات تکی گزارش یا پنل ادمین** |
-| **۲. کارشناس اعتبارسنجی** | فقط `creditEvaluation` و `admin` | `creditEvaluationController` | `configs/creditEvaluationController.config.js` | دریافت و مشاهدهٔ اطلاعات کامل یک گزارش (`GET /api/sample/:requestId`) — **کاربر عادی با خطای `403 Forbidden` مسدود میشود و این نقش اجازهٔ ورود به پنل ادمین را ندارد** |
-| **۳. مدیر سیستم** | فقط `admin` | `adminController` | `configs/adminController.config.js` | دسترسی کامل به همهٔ بخشها شامل پنل مدیریت، زمانبند کران شبانه و اجرای دریافت گزارشها (`GET/PUT/POST /api/admin/*` و `POST /api/runs`) — **کاربران عادی و `creditEvaluation` با خطای `403 Forbidden` مسدود میشوند** |
+| سطح دسترسی | نقشهای هدف در سمد | کنترلر در `partFBackend/controllers/` | مسیرها |
+|---|---|---|---|
+| **۱. کاربر عادی** | عمومی / کاربر عادی | `summaryController` | `GET /api/health`, `GET /api/banks`, `GET /api/specs`, `GET /api/report`, `GET /api/diagnostics`, `GET /api/summary`, `GET /api/list`, `GET /api/runs` |
+| **۲. مشاهدهٔ جزئیات گزارش** | `creditEvaluation` و `admin` | `creditEvaluationController` | `GET /api/sample/:requestId` |
+| **۳. مدیریت سامانه** | فقط `admin` | `adminController` | `GET /api/admin/overview`, `GET /api/admin/cron`, `PUT /api/admin/cron`, `POST /api/admin/cron/run-now`, `POST /api/admin/runs/check`, `POST /api/admin/runs/start`, `GET /api/admin/jobs`, `GET /api/admin/jobs/:id`, `POST /api/admin/runs`, `POST /api/runs` |
 
 ---
 
-## نحوهٔ تشخیص نقش کاربر (`services/auth/role-guard.js`)
+## ورودیهای تزریقشدهٔ هندلرها (`needProtocolRef: false`)
 
-گارد نقشها (`requireRoles` در `services/auth/role-guard.js`) به ترتیب زیر نقشهای کاربر را استخراج میکند تا اتصال `partAuthenticationInterface` / `partSamadInterface` یا `partSessionManager` بدون تغییر کنترلرها انجام شود:
+در فایلهای `controllers/*/config.js` بهجای ارسال کل `protocolRef` (`needProtocolRef: true`)، در تمام هندلرها `needProtocolRef: false` تنظیم شده و فقط مقادیر مورد نیاز به ترتیب در `params` معرفی شدهاند:
+- `'_protocolRef.request.queryString'` برای پارامترهای Query در مسیرهای `GET`
+- `'_protocolRef.request.data'` برای بدنهٔ درخواست در مسیرهای `POST` و `PUT`
+- `'_protocolRef.request'` و `'_inputData'` برای پارامترهای مسیر (`:requestId` و `:id`) و مشخصات کلاینت
+- `'_protocolRef.response'` برای تنظیم کد وضعیت HTTP و هدرها
 
-1. **قلاب سفارشی در `Program.js` (`setAuthResolver`)**: میتوانید مستقیماً خروجی سرویس احراز هویت پارت را به `{ username, roles }` نگاشت کنید.
-2. **اشیاء فریمورک روی `protocolRef`**: فیلدهای `protocolRef.user`، `protocolRef.auth`، `protocolRef.request.user` یا `protocolRef.scope.user`.
-3. **نشست `partSessionManager` (`protocolRef.session`)**: پشتیبانی خودکار از فیلد `session.roles` و متد `session.get(['roles', 'samadUsername'], callback)`.
-4. **توکن `Bearer JWT`** (در صورت تنظیم `AUTH_JWT_SECRET` در `.env`).
-5. **هدرهای گیتوی / تست محلی** (`x-user-role` / `x-user-roles` در صورت `AUTH_TRUST_ROLE_HEADERS=true`، یا متغیر `AUTH_DEV_DEFAULT_ROLE` در `.env`).
+در زمان اضافه کردن گارد سمد کافی است در `params` هر هندلر در صورت نیاز `'_session'` یا `'_trackingHeaders'` را نیز اضافه کنید.
 
 ---
 
@@ -36,7 +36,7 @@ npm run migrate
 npm start
 ```
 
-اجرای تستهای واحد، گاردهای سطح دسترسی (هر ۳ نقش `user`، `creditEvaluation` و `admin`) و تست یکپارچهٔ دیتابیس:
+اجرای تستهای واحد و یکپارچه:
 
 ```bash
 cd partFBackend

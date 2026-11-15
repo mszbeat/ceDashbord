@@ -1,10 +1,10 @@
 'use strict';
 
 /**
- * لایهٔ تطبیق HTTP برای partFramework:
- * - استخراج یکنواخت queryString، params، body و مشخصات کلاینت از protocolRef
- * - پشتیبانی از HttpResult بومی partFramework (از حوزهٔ کنترلر، ماژولها یا require.cache) برای ارسال مستقیم HTML/هدرها
- * - ارسال خطاهای ساختیافته بدون دوبار JSON.stringify شدن در پوشش { data: ... } فریمورک
+ * لایهٔ تطبیق HTTP برای partFramework (حالت needProtocolRef: false):
+ * - کار مستقیم با پارامترهای تزریقشدهٔ فریمورک (_protocolRef.request.queryString،
+ *   _protocolRef.request.data، _protocolRef.request، _protocolRef.response، _inputData)
+ * - پشتیبانی از HttpResult بومی فریمورک برای پاسخهای HTML و خطاهای HTTP
  */
 
 class HttpError extends Error {
@@ -111,12 +111,9 @@ function resolveHttpResultClass() {
         cachedHttpResultClass = found;
         return cachedHttpResultClass;
       }
-    } catch {
-      // ادامه به ماژول بعدی
-    }
+    } catch {}
   }
 
-  // جستجو در ماژولهای بارگذاریشدهٔ فریمورک در require.cache
   try {
     for (const [cacheKey, modEntry] of Object.entries(require.cache || {})) {
       if (!cacheKey.includes('partFramework') && !cacheKey.includes('partUtilities')) continue;
@@ -131,15 +128,21 @@ function resolveHttpResultClass() {
   return null;
 }
 
-function getQuery(protocolRef) {
-  const direct = protocolRef?.request?.queryString || protocolRef?.request?.query;
+function normalizeQuery(queryStringOrReq) {
+  if (!queryStringOrReq || typeof queryStringOrReq !== 'object') return {};
+  // اگر مستقیماً _protocolRef.request.queryString پاس داده شده باشد
+  if (
+    !('queryString' in queryStringOrReq) &&
+    !('headers' in queryStringOrReq) &&
+    !('url' in queryStringOrReq)
+  ) {
+    return queryStringOrReq;
+  }
+  const direct = queryStringOrReq.queryString || queryStringOrReq.query;
   if (direct && typeof direct === 'object' && Object.keys(direct).length > 0) {
     return direct;
   }
-  const rawUrl =
-    protocolRef?.request?.url ||
-    protocolRef?.request?.originalUrl ||
-    '';
+  const rawUrl = queryStringOrReq.url || queryStringOrReq.originalUrl || '';
   const qIdx = String(rawUrl).indexOf('?');
   if (qIdx >= 0) {
     const rawQs = String(rawUrl).slice(qIdx + 1).split('#')[0];
@@ -148,48 +151,47 @@ function getQuery(protocolRef) {
   return direct || {};
 }
 
-function getParams(protocolRef, fallbackRegex, paramName) {
-  const rawParams =
-    protocolRef?.request?.params ||
-    protocolRef?.request?.urlParams ||
-    protocolRef?.params ||
-    {};
-  if (paramName && rawParams[paramName] !== undefined && rawParams[paramName] !== '') {
-    return rawParams;
-  }
-  if (fallbackRegex && paramName) {
-    const rawUrl =
-      protocolRef?.request?.url ||
-      protocolRef?.request?.originalUrl ||
-      protocolRef?.request?.path ||
-      '';
-    const m = String(rawUrl).match(fallbackRegex);
-    if (m && m[1]) {
-      return { ...rawParams, [paramName]: decodeURIComponent(m[1]) };
-    }
-  }
-  return rawParams;
-}
-
-function getBody(protocolRef) {
-  const raw =
-    protocolRef?.request?.body ??
-    protocolRef?.request?.data ??
-    protocolRef?.body ??
-    {};
-  if (raw === null || raw === undefined || raw === '') return {};
-  if (typeof raw === 'string') {
+function normalizeBody(data) {
+  if (data === null || data === undefined || data === '') return {};
+  if (typeof data === 'string') {
     try {
-      return JSON.parse(raw);
+      return JSON.parse(data);
     } catch {
       return {};
     }
   }
-  return typeof raw === 'object' ? raw : {};
+  if (typeof data === 'object') {
+    // در صورتی که کل request بهجای request.data پاس داده شده باشد
+    if (('data' in data || 'body' in data) && ('url' in data || 'headers' in data)) {
+      return normalizeBody(data.data ?? data.body);
+    }
+    return data;
+  }
+  return {};
 }
 
-function getClientMeta(protocolRef) {
-  const req = protocolRef?.request || {};
+function extractRouteParam(request, inputData, paramName, fallbackRegex) {
+  const candidates = [
+    inputData?.params?.[paramName],
+    inputData?.[paramName],
+    request?.params?.[paramName],
+    request?.urlParams?.[paramName],
+  ];
+  for (const val of candidates) {
+    if (val !== undefined && val !== null && val !== '') {
+      return String(val);
+    }
+  }
+  if (fallbackRegex) {
+    const rawUrl = request?.url || request?.originalUrl || request?.path || '';
+    const m = String(rawUrl).match(fallbackRegex);
+    if (m && m[1]) return decodeURIComponent(m[1]);
+  }
+  return '';
+}
+
+function extractClientMeta(request) {
+  const req = request?.request || request || {};
   const headers = req.headers || req.header || {};
   const forwarded = headers['x-forwarded-for'];
   const ip =
@@ -201,12 +203,14 @@ function getClientMeta(protocolRef) {
   return { ip, headers };
 }
 
-function applyResponseMeta(protocolRef, statusCode, headers) {
+function applyResponseMeta(responseOrProtocolRef, statusCode, headers) {
   const targets = [
-    protocolRef?.response,
-    protocolRef?.response?.res,
-    protocolRef?.res,
-  ].filter(Boolean);
+    responseOrProtocolRef?.response,
+    responseOrProtocolRef?.response?.res,
+    responseOrProtocolRef?.res,
+    responseOrProtocolRef,
+  ].filter((t) => t && typeof t === 'object');
+
   for (const target of targets) {
     try {
       if (typeof target.status === 'function') target.status(statusCode);
@@ -268,8 +272,10 @@ function instantiateHttpResult(HttpResult, body, statusCode, headers, contentTyp
     return new HttpResult(...args);
   }
 
-  // سازنده تکارگومانی یا ترنسپایلشده با arguments
-  if (/\.statusCode\b|\.headers\b|\.contentType\b/.test(src) && /=\s*\w+\.(statusCode|headers|contentType|data|body)/.test(src)) {
+  if (
+    /\.statusCode\b|\.headers\b|\.contentType\b/.test(src) &&
+    /=\s*\w+\.(statusCode|headers|contentType|data|body)/.test(src)
+  ) {
     return new HttpResult({
       statusCode,
       status: statusCode,
@@ -284,10 +290,10 @@ function instantiateHttpResult(HttpResult, body, statusCode, headers, contentTyp
   return new HttpResult(body, statusCode, headers, contentType);
 }
 
-function buildCustomHttpResponse(protocolRef, body, statusCode = 200, headers = {}) {
+function buildCustomHttpResponse(responseTarget, body, statusCode = 200, headers = {}) {
   const contentType =
     headers['Content-Type'] || headers['content-type'] || 'application/json; charset=utf-8';
-  applyResponseMeta(protocolRef, statusCode, headers);
+  applyResponseMeta(responseTarget, statusCode, headers);
 
   const HttpResult = resolveHttpResultClass();
   if (typeof HttpResult === 'function') {
@@ -297,39 +303,37 @@ function buildCustomHttpResponse(protocolRef, body, statusCode = 200, headers = 
           ? JSON.stringify(body)
           : body;
       return instantiateHttpResult(HttpResult, payloadForHttpResult, statusCode, headers, contentType);
-    } catch {
-      // بازگشت امن به مقدار مستقیم در صورت تفاوت امضا
-    }
+    } catch {}
   }
   return body;
 }
 
-function sendHtml(protocolRef, html, statusCode = 200) {
-  return buildCustomHttpResponse(protocolRef, html, statusCode, {
+function sendHtml(responseTarget, html, statusCode = 200) {
+  return buildCustomHttpResponse(responseTarget, html, statusCode, {
     'Content-Type': 'text/html; charset=utf-8',
     'Cache-Control': 'no-store, no-cache, must-revalidate',
   });
 }
 
-function sendNoStoreJson(protocolRef, payload, statusCode = 200) {
-  applyResponseMeta(protocolRef, statusCode, {
+function sendNoStoreJson(responseTarget, payload, statusCode = 200) {
+  applyResponseMeta(responseTarget, statusCode, {
     'Cache-Control': 'no-store, no-cache, must-revalidate',
     Pragma: 'no-cache',
   });
   if (statusCode === 200) return payload;
-  return buildCustomHttpResponse(protocolRef, payload, statusCode, {
+  return buildCustomHttpResponse(responseTarget, payload, statusCode, {
     'Content-Type': 'application/json; charset=utf-8',
     'Cache-Control': 'no-store, no-cache, must-revalidate',
   });
 }
 
-async function runJsonHandler(protocolRef, fn, options = {}) {
+async function runJsonHandler(responseTarget, fn, options = {}) {
   try {
     const result = await fn();
     if (options.noStore) {
-      return sendNoStoreJson(protocolRef, result, 200);
+      return sendNoStoreJson(responseTarget, result, 200);
     }
-    applyResponseMeta(protocolRef, 200, {});
+    applyResponseMeta(responseTarget, 200, {});
     return result;
   } catch (err) {
     const statusCode = err?.statusCode || 500;
@@ -339,7 +343,7 @@ async function runJsonHandler(protocolRef, fn, options = {}) {
         message: String(err?.message ?? err),
       };
     return buildCustomHttpResponse(
-      protocolRef,
+      responseTarget,
       payload,
       statusCode,
       {
@@ -359,10 +363,10 @@ module.exports = {
   ConflictError,
   registerFrameworkGlobals,
   resolveHttpResultClass,
-  getQuery,
-  getParams,
-  getBody,
-  getClientMeta,
+  normalizeQuery,
+  normalizeBody,
+  extractRouteParam,
+  extractClientMeta,
   sendHtml,
   sendNoStoreJson,
   runJsonHandler,

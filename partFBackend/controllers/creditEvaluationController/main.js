@@ -9,14 +9,14 @@ registerFrameworkGlobals({
 });
 
 /**
- * سطح دسترسی ۲ — نقشهای creditEvaluation و admin:
- * مجاز به درخواست زدن و مشاهدهٔ اطلاعات کامل یک گزارش (کاربر عادی مسدود میشود).
+ * سطح دسترسی ۲ — نقشهای creditEvaluation و admin (اعمال گارد توسط سمد):
+ * دریافت و مشاهدهٔ اطلاعات کامل یک گزارش اعتبارسنجی.
  */
 class CreditEvaluationController extends BaseController {
   @Route('/api/sample/:requestId')
   @HTTP('GET')
-  sample(protocolRef) {
-    return helpers.sample(protocolRef);
+  sample(request, response, inputData) {
+    return helpers.sample(request, response, inputData);
   }
 }
 

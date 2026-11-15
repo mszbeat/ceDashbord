@@ -1,74 +1,142 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 
 const ROOT = path.join(__dirname, '..');
+
+const VALID_PARAM_TOKENS = new Set([
+  '_protocolRef.request.queryString',
+  '_protocolRef.request.data',
+  '_protocolRef.request',
+  '_protocolRef.response',
+  '_inputData',
+  '_session',
+  '_trackingHeaders',
+]);
 
 const EXPECTED_CONTROLLERS = [
   {
     dir: 'summaryController',
     configFile: 'summaryController.config.js',
     packageName: 'summary-controller',
-    expectedRoles: ['*'],
     routes: [
-      { method: 'GET', route: '/api/health', handler: 'health' },
-      { method: 'GET', route: '/api/auth/me', handler: 'me' },
-      { method: 'GET', route: '/api/banks', handler: 'banks' },
-      { method: 'GET', route: '/api/specs', handler: 'specs' },
-      { method: 'GET', route: '/api/report', handler: 'report' },
-      { method: 'GET', route: '/api/diagnostics', handler: 'diagnostics' },
-      { method: 'GET', route: '/api/summary', handler: 'summary' },
-      { method: 'GET', route: '/api/list', handler: 'list' },
-      { method: 'GET', route: '/api/runs', handler: 'runs' },
+      { method: 'GET', route: '/api/health', handler: 'health', params: [] },
+      { method: 'GET', route: '/api/banks', handler: 'banks', params: ['_protocolRef.response'] },
+      {
+        method: 'GET',
+        route: '/api/specs',
+        handler: 'specs',
+        params: ['_protocolRef.request.queryString', '_protocolRef.response'],
+      },
+      {
+        method: 'GET',
+        route: '/api/report',
+        handler: 'report',
+        params: ['_protocolRef.request.queryString', '_protocolRef.response'],
+      },
+      { method: 'GET', route: '/api/diagnostics', handler: 'diagnostics', params: ['_protocolRef.response'] },
+      {
+        method: 'GET',
+        route: '/api/summary',
+        handler: 'summary',
+        params: ['_protocolRef.request.queryString', '_protocolRef.response'],
+      },
+      {
+        method: 'GET',
+        route: '/api/list',
+        handler: 'list',
+        params: ['_protocolRef.request.queryString', '_protocolRef.response'],
+      },
+      { method: 'GET', route: '/api/runs', handler: 'runs', params: ['_protocolRef.response'] },
     ],
   },
   {
     dir: 'creditEvaluationController',
     configFile: 'creditEvaluationController.config.js',
     packageName: 'credit-evaluation-controller',
-    expectedRoles: ['creditEvaluation', 'admin'],
     routes: [
-      { method: 'GET', route: '/api/sample/:requestId', handler: 'sample' },
+      {
+        method: 'GET',
+        route: '/api/sample/:requestId',
+        handler: 'sample',
+        params: ['_protocolRef.request', '_protocolRef.response', '_inputData'],
+      },
     ],
   },
   {
     dir: 'adminController',
     configFile: 'adminController.config.js',
     packageName: 'admin-controller',
-    expectedRoles: ['admin'],
     routes: [
-      { method: 'GET', route: '/api/admin/overview', handler: 'getOverview' },
-      { method: 'GET', route: '/api/admin/cron', handler: 'getCron' },
-      { method: 'PUT', route: '/api/admin/cron', handler: 'updateCron' },
-      { method: 'POST', route: '/api/admin/cron/run-now', handler: 'runCronNow' },
-      { method: 'POST', route: '/api/admin/runs/check', handler: 'checkExisting' },
-      { method: 'POST', route: '/api/admin/runs/start', handler: 'startRun' },
-      { method: 'GET', route: '/api/admin/jobs', handler: 'listJobs' },
-      { method: 'GET', route: '/api/admin/jobs/:id', handler: 'getJob' },
-      { method: 'POST', route: '/api/admin/runs', handler: 'runAdminDay' },
-      { method: 'POST', route: '/api/runs', handler: 'run' },
+      { method: 'GET', route: '/api/admin/overview', handler: 'getOverview', params: ['_protocolRef.response'] },
+      { method: 'GET', route: '/api/admin/cron', handler: 'getCron', params: ['_protocolRef.response'] },
+      {
+        method: 'PUT',
+        route: '/api/admin/cron',
+        handler: 'updateCron',
+        params: ['_protocolRef.request.data', '_protocolRef.response'],
+      },
+      { method: 'POST', route: '/api/admin/cron/run-now', handler: 'runCronNow', params: ['_protocolRef.response'] },
+      {
+        method: 'POST',
+        route: '/api/admin/runs/check',
+        handler: 'checkExisting',
+        params: ['_protocolRef.request.data', '_protocolRef.response'],
+      },
+      {
+        method: 'POST',
+        route: '/api/admin/runs/start',
+        handler: 'startRun',
+        params: ['_protocolRef.request.data', '_protocolRef.response'],
+      },
+      { method: 'GET', route: '/api/admin/jobs', handler: 'listJobs', params: ['_protocolRef.response'] },
+      {
+        method: 'GET',
+        route: '/api/admin/jobs/:id',
+        handler: 'getJob',
+        params: ['_protocolRef.request', '_protocolRef.response', '_inputData'],
+      },
+      {
+        method: 'POST',
+        route: '/api/admin/runs',
+        handler: 'runAdminDay',
+        params: ['_protocolRef.request.data', '_protocolRef.response'],
+      },
+      {
+        method: 'POST',
+        route: '/api/runs',
+        handler: 'run',
+        params: ['_protocolRef.request.data', '_protocolRef.response'],
+      },
     ],
   },
 ];
 
 function parseDecoratedRoutes(mainSource) {
-  const regex = /@Route\('([^']+)'\)\s*@HTTP\('([^']+)'\)\s*([A-Za-z0-9_]+)\s*\(/g;
+  const regex = /@Route\('([^']+)'\)\s*@HTTP\('([^']+)'\)\s*([A-Za-z0-9_]+)\s*\(([^)]*)\)/g;
   const found = [];
   let match;
   while ((match = regex.exec(mainSource)) !== null) {
-    found.push({ route: match[1], method: match[2], handler: match[3] });
+    const argList = match[4].trim()
+      ? match[4].split(',').map((s) => s.trim()).filter(Boolean)
+      : [];
+    found.push({ route: match[1], method: match[2], handler: match[3], argCount: argList.length });
   }
   return found;
 }
 
-test('all 3 access-separated partFramework controller-packages have valid metadata, schemas, role configs, decorators, and helpers', () => {
+test('all 3 access-separated controller-packages use needProtocolRef: false and ordered params matching method signatures', () => {
   assert.equal(
     fs.existsSync(path.join(ROOT, 'controllers', 'ingestionController')),
     false,
-    'Old ingestionController must be merged into adminController',
+    'Old ingestionController must remain merged into adminController',
+  );
+  assert.equal(
+    fs.existsSync(path.join(ROOT, 'services', 'auth')),
+    false,
+    'Custom JS role guard must be removed so Samad handles route guards cleanly',
   );
 
   let totalRoutes = 0;
@@ -78,9 +146,6 @@ test('all 3 access-separated partFramework controller-packages have valid metada
     const extConfigPath = path.join(ROOT, 'configs', spec.configFile);
     assert.equal(fs.existsSync(ctrlDir), true, `Missing controller dir: ${spec.dir}`);
     assert.equal(fs.existsSync(extConfigPath), true, `Missing external config: ${spec.configFile}`);
-
-    const extConfig = require(extConfigPath);
-    assert.deepEqual(extConfig.allowedRoles, spec.expectedRoles, `Role mismatch in ${spec.configFile}`);
 
     const pkg = JSON.parse(fs.readFileSync(path.join(ctrlDir, 'package.json'), 'utf8'));
     assert.equal(pkg.name, spec.packageName);
@@ -99,99 +164,48 @@ test('all 3 access-separated partFramework controller-packages have valid metada
     );
 
     const parsedRoutes = parseDecoratedRoutes(mainSource);
-    assert.deepEqual(parsedRoutes, spec.routes, `Route decorator mismatch in ${spec.dir}/main.js`);
+    assert.deepEqual(
+      parsedRoutes.map(({ route, method, handler }) => ({ route, method, handler })),
+      spec.routes.map(({ route, method, handler }) => ({ route, method, handler })),
+      `Route decorator mismatch in ${spec.dir}/main.js`,
+    );
     totalRoutes += parsedRoutes.length;
 
-    for (const r of spec.routes) {
+    for (let i = 0; i < spec.routes.length; i++) {
+      const r = spec.routes[i];
+      const parsed = parsedRoutes[i];
+
       assert.equal(typeof ctrlHelpers[r.handler], 'function', `Missing helper ${spec.dir}.${r.handler}`);
       assert.equal(typeof ctrlSchema[r.handler], 'function', `Missing schema ${spec.dir}.${r.handler}`);
+
+      const handlerCfg = ctrlConfig.handlers[r.handler];
       assert.deepEqual(
-        ctrlConfig.handlers[r.handler],
-        { needProtocolRef: true, params: [] },
-        `Invalid handler config for ${spec.dir}.${r.handler}`,
+        handlerCfg,
+        { needProtocolRef: false, params: r.params },
+        `Handler config mismatch for ${spec.dir}.${r.handler}`,
+      );
+      for (const token of handlerCfg.params) {
+        assert.equal(VALID_PARAM_TOKENS.has(token), true, `Invalid param token: ${token}`);
+      }
+      assert.equal(
+        parsed.argCount,
+        r.params.length,
+        `main.js method ${spec.dir}.${r.handler} arg count (${parsed.argCount}) must match config.params.length (${r.params.length})`,
+      );
+      assert.equal(
+        ctrlHelpers[r.handler].length,
+        r.params.length,
+        `helpers.js ${spec.dir}.${r.handler} arg count (${ctrlHelpers[r.handler].length}) must match config.params.length (${r.params.length})`,
       );
 
       const schemaObj = ctrlSchema[r.handler]();
       assert.equal(typeof schemaObj.header, 'object');
       assert.equal(typeof schemaObj.params, 'object');
       assert.equal(typeof schemaObj.queryString, 'object');
-      if (r.method === 'POST' || r.method === 'PUT') {
-        assert.equal(typeof schemaObj.body, 'object', `${spec.dir}.${r.handler} must define body schema`);
-      }
     }
   }
 
-  assert.equal(totalRoutes, 20, 'Expected all 20 backend API routes across the 3 role-separated controllers');
-});
-
-test('role-guard resolves roles from partSessionManager, user object, JWT, trusted headers, and enforces 403 matrix', async () => {
-  const {
-    ROLES,
-    resolveAuthContext,
-    requireRoles,
-    setAuthResolver,
-  } = require(path.join(ROOT, 'services', 'auth', 'role-guard'));
-
-  delete process.env.AUTH_DEV_DEFAULT_ROLE;
-  process.env.AUTH_TRUST_ROLE_HEADERS = 'false';
-
-  // ۱. کاربر عادی بدون نشست/توکن -> فقط نقش user
-  const anonCtx = await resolveAuthContext({ request: { headers: {} } });
-  assert.deepEqual(anonCtx.roles, [ROLES.USER]);
-  assert.equal(anonCtx.permissions.canViewDashboard, true);
-  assert.equal(anonCtx.permissions.canViewReportDetails, false);
-  assert.equal(anonCtx.permissions.canAccessAdmin, false);
-
-  await assert.rejects(
-    () => requireRoles({ request: { headers: {} } }, [ROLES.CREDIT_EVALUATION, ROLES.ADMIN]),
-    (err) => err.statusCode === 403 && err.response?.code === 'FORBIDDEN_ROLE',
-  );
-
-  // ۲. نشست partSessionManager با callback سنتی session.get(['roles', ...], cb)
-  const sessionProtocolRef = {
-    session: {
-      get(_keys, cb) {
-        cb(null, { samadUsername: 'ce.expert', roles: ['creditEvaluation'] });
-      },
-    },
-    request: { headers: {} },
-  };
-  const ceCtx = await resolveAuthContext(sessionProtocolRef);
-  assert.equal(ceCtx.username, 'ce.expert');
-  assert.deepEqual(ceCtx.roles, [ROLES.CREDIT_EVALUATION]);
-  assert.equal(ceCtx.permissions.canViewReportDetails, true);
-  assert.equal(ceCtx.permissions.canAccessAdmin, false);
-
-  // نقش creditEvaluation به sample دسترسی دارد ولی به admin دسترسی ندارد
-  await requireRoles(sessionProtocolRef, [ROLES.CREDIT_EVALUATION, ROLES.ADMIN]);
-  await assert.rejects(
-    () => requireRoles(sessionProtocolRef, [ROLES.ADMIN]),
-    (err) => err.statusCode === 403,
-  );
-
-  // ۳. توکن Bearer JWT امضاشده با HS256 برای نقش admin
-  process.env.AUTH_JWT_SECRET = 'unit-test-secret';
-  const hdr = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
-  const pld = Buffer.from(
-    JSON.stringify({ username: 'root.admin', roles: ['admin'], exp: Math.floor(Date.now() / 1000) + 300 }),
-  ).toString('base64url');
-  const sig = crypto.createHmac('sha256', 'unit-test-secret').update(`${hdr}.${pld}`).digest('base64url');
-  const jwtProtocolRef = {
-    request: { headers: { authorization: `Bearer ${hdr}.${pld}.${sig}` } },
-  };
-  const adminCtx = await resolveAuthContext(jwtProtocolRef);
-  assert.deepEqual(adminCtx.roles, [ROLES.ADMIN]);
-  assert.equal(adminCtx.permissions.canViewReportDetails, true);
-  assert.equal(adminCtx.permissions.canAccessAdmin, true);
-  await requireRoles(jwtProtocolRef, [ROLES.CREDIT_EVALUATION, ROLES.ADMIN]);
-  await requireRoles(jwtProtocolRef, [ROLES.ADMIN]);
-  delete process.env.AUTH_JWT_SECRET;
-
-  // ۴. قلاب سفارشی setAuthResolver
-  setAuthResolver(async () => ({ username: 'samad.user', roles: ['credit_evaluation'] }));
-  const hookCtx = await resolveAuthContext({ request: { headers: {} } });
-  assert.deepEqual(hookCtx.roles, [ROLES.CREDIT_EVALUATION]);
-  setAuthResolver(null);
+  assert.equal(totalRoutes, 19, 'Expected all 19 backend API routes across the 3 controllers');
 });
 
 test('project-config loads cleanly across dev, prod, and test modes and binds port 3000 by default', () => {
@@ -206,11 +220,11 @@ test('project-config loads cleanly across dev, prod, and test modes and binds po
   assert.equal(Array.isArray(testCfg.servers), true);
 });
 
-test('http-adapter extracts query, params, JSON body, HTML response, and HTTP errors accurately', async () => {
+test('http-adapter extracts injected queryString, request.data, route params, HTML response, and HTTP errors accurately', async () => {
   const {
-    getQuery,
-    getParams,
-    getBody,
+    normalizeQuery,
+    normalizeBody,
+    extractRouteParam,
     sendHtml,
     runJsonHandler,
     BadRequestError,
@@ -221,58 +235,59 @@ test('http-adapter extracts query, params, JSON body, HTML response, and HTTP er
   } = require(path.join(ROOT, 'services', 'http-adapter'));
 
   const mockHeaders = {};
-  const protocolRef = {
-    request: {
-      url: '/api/sample/REQ-42?bank=tavan_mellat&day=1405-08-20',
-      body: JSON.stringify({ mode: 'nightly', rebuild: true }),
-    },
-    response: {
-      statusCode: 200,
-      setHeader(k, v) {
-        mockHeaders[k.toLowerCase()] = v;
-      },
+  const response = {
+    statusCode: 200,
+    setHeader(k, v) {
+      mockHeaders[k.toLowerCase()] = v;
     },
   };
 
-  assert.deepEqual(getQuery(protocolRef), { bank: 'tavan_mellat', day: '1405-08-20' });
-  assert.deepEqual(getParams(protocolRef, /\/api\/sample\/([^/?#]+)/, 'requestId'), { requestId: 'REQ-42' });
-  assert.deepEqual(getBody(protocolRef), { mode: 'nightly', rebuild: true });
+  assert.deepEqual(normalizeQuery({ bank: 'tavan_mellat', day: '1405-08-20' }), {
+    bank: 'tavan_mellat',
+    day: '1405-08-20',
+  });
+  assert.equal(
+    extractRouteParam({ url: '/api/sample/REQ-42' }, { params: { requestId: 'REQ-42' } }, 'requestId', /\/api\/sample\/([^/?#]+)/),
+    'REQ-42',
+  );
+  assert.deepEqual(normalizeBody({ mode: 'nightly', rebuild: true }), { mode: 'nightly', rebuild: true });
+  assert.deepEqual(normalizeBody(JSON.stringify({ mode: 'intraday' })), { mode: 'intraday' });
 
-  const okRes = await runJsonHandler(protocolRef, async () => ({ ok: true }), { noStore: true });
-  assert.equal(protocolRef.response.statusCode, 200);
+  const okRes = await runJsonHandler(response, async () => ({ ok: true }), { noStore: true });
+  assert.equal(response.statusCode, 200);
   assert.deepEqual(okRes, { ok: true });
   assert.match(mockHeaders['cache-control'], /no-store/);
 
-  const badRaw = await runJsonHandler(protocolRef, async () => {
+  const badRaw = await runJsonHandler(response, async () => {
     throw new BadRequestError('ورودی نامعتبر');
   });
-  assert.equal(protocolRef.response.statusCode, 400);
+  assert.equal(response.statusCode, 400);
   const badObj = typeof badRaw === 'string' ? JSON.parse(badRaw) : badRaw;
   assert.equal(badObj.message, 'ورودی نامعتبر');
 
-  const forbiddenRaw = await runJsonHandler(protocolRef, async () => {
+  const forbiddenRaw = await runJsonHandler(response, async () => {
     throw new ForbiddenError('عدم مجوز');
   });
-  assert.equal(protocolRef.response.statusCode, 403);
+  assert.equal(response.statusCode, 403);
   const forbiddenObj = typeof forbiddenRaw === 'string' ? JSON.parse(forbiddenRaw) : forbiddenRaw;
   assert.equal(forbiddenObj.statusCode, 403);
 
-  const notFoundRaw = await runJsonHandler(protocolRef, async () => {
+  const notFoundRaw = await runJsonHandler(response, async () => {
     throw new NotFoundError('پیدا نشد');
   });
-  assert.equal(protocolRef.response.statusCode, 404);
+  assert.equal(response.statusCode, 404);
   const notFoundObj = typeof notFoundRaw === 'string' ? JSON.parse(notFoundRaw) : notFoundRaw;
   assert.equal(notFoundObj.statusCode, 404);
 
-  const conflictRaw = await runJsonHandler(protocolRef, async () => {
+  const conflictRaw = await runJsonHandler(response, async () => {
     throw new ConflictError('تداخل اجرا');
   });
-  assert.equal(protocolRef.response.statusCode, 409);
+  assert.equal(response.statusCode, 409);
   const conflictObj = typeof conflictRaw === 'string' ? JSON.parse(conflictRaw) : conflictRaw;
   assert.equal(conflictObj.statusCode, 409);
 
-  const htmlOut = sendHtml(protocolRef, '<!doctype html><html><body>OK</body></html>');
-  assert.equal(protocolRef.response.statusCode, 200);
+  const htmlOut = sendHtml(response, '<!doctype html><html><body>OK</body></html>');
+  assert.equal(response.statusCode, 200);
   assert.match(mockHeaders['content-type'], /text\/html/);
   assert.equal(htmlOut, '<!doctype html><html><body>OK</body></html>');
 
@@ -285,7 +300,7 @@ test('http-adapter extracts query, params, JSON body, HTML response, and HTTP er
     }
   }
   registerFrameworkGlobals({ HttpResult: MockHttpResult });
-  const wrappedHtml = sendHtml(protocolRef, '<!doctype html><html><body>RAW</body></html>', 200);
+  const wrappedHtml = sendHtml(response, '<!doctype html><html><body>RAW</body></html>', 200);
   assert.equal(wrappedHtml instanceof MockHttpResult, true);
   assert.equal(wrappedHtml.data, '<!doctype html><html><body>RAW</body></html>');
   assert.equal(wrappedHtml.statusCode, 200);

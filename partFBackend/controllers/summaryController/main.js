@@ -9,62 +9,56 @@ registerFrameworkGlobals({
 });
 
 /**
- * سطح دسترسی ۱ — کاربر عادی (عمومی / همهٔ کاربران):
- * مشاهدهٔ صفحهٔ اول داشبورد و تحلیلهای کلی، بدون امکان دریافت اطلاعات تکی گزارش یا ورود به پنل ادمین.
+ * سطح دسترسی ۱ — کاربر عادی (عمومی):
+ * مشاهدهٔ صفحهٔ اول داشبورد و تحلیلهای کلی.
  */
 class SummaryController extends BaseController {
   @Route('/api/health')
   @HTTP('GET')
-  health(protocolRef) {
-    return helpers.health(protocolRef);
-  }
-
-  @Route('/api/auth/me')
-  @HTTP('GET')
-  me(protocolRef) {
-    return helpers.me(protocolRef);
+  health() {
+    return helpers.health();
   }
 
   @Route('/api/banks')
   @HTTP('GET')
-  banks(protocolRef) {
-    return helpers.banks(protocolRef);
+  banks(response) {
+    return helpers.banks(response);
   }
 
   @Route('/api/specs')
   @HTTP('GET')
-  specs(protocolRef) {
-    return helpers.specs(protocolRef);
+  specs(queryString, response) {
+    return helpers.specs(queryString, response);
   }
 
   @Route('/api/report')
   @HTTP('GET')
-  report(protocolRef) {
-    return helpers.report(protocolRef);
+  report(queryString, response) {
+    return helpers.report(queryString, response);
   }
 
   @Route('/api/diagnostics')
   @HTTP('GET')
-  diagnostics(protocolRef) {
-    return helpers.diagnostics(protocolRef);
+  diagnostics(response) {
+    return helpers.diagnostics(response);
   }
 
   @Route('/api/summary')
   @HTTP('GET')
-  summary(protocolRef) {
-    return helpers.summary(protocolRef);
+  summary(queryString, response) {
+    return helpers.summary(queryString, response);
   }
 
   @Route('/api/list')
   @HTTP('GET')
-  list(protocolRef) {
-    return helpers.list(protocolRef);
+  list(queryString, response) {
+    return helpers.list(queryString, response);
   }
 
   @Route('/api/runs')
   @HTTP('GET')
-  runs(protocolRef) {
-    return helpers.runs(protocolRef);
+  runs(response) {
+    return helpers.runs(response);
   }
 }
 

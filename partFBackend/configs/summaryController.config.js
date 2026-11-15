@@ -1,4 +1,1 @@
-module.exports = {
-  accessLevel: 'public',
-  allowedRoles: ['*'],
-};
+module.exports = {};

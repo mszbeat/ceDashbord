@@ -48,7 +48,7 @@ function controlsHtml(controls = {}) {
     <label for="ce-to">تا روز</label><input id="ce-to" name="to" value="${h(to)}" placeholder="1405-08-19" inputmode="numeric" maxlength="10">
     <input type="hidden" name="rowsCap" value="${h(rowsCap)}">
     <button type="submit">⟳ بروزرسانی</button>
-    <a href="/admin" id="ce-admin-link" class="ce-admin-link"${controls.canAccessAdmin === false ? ' style="display:none"' : ''}>⚙ پنل مدیریت</a>
+    <a href="/admin" class="ce-admin-link">⚙ پنل مدیریت</a>
     ${note ? `<span class="ce-live-status">${note}</span>` : ''}
   </form></div>`;
 }

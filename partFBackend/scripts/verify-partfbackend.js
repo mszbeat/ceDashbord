@@ -3,7 +3,8 @@
  * تست یکپارچهٔ سرتاسری partFBackend روی PostgreSQL واقعی در حافظه (PGlite):
  *  ۱. موتور ارزیابی روی نمونههای هر ۳ بانک (ملت، رسالت، پستبانک) + تقویم شمسی و Cron تهران
  *  ۲. هر ۵ باگ بحرانی سروری (حذف کدملی، dedupe دستهٔ تکراری، روز تهران، تراکنش اتمیک rebuild، دریلداون سرور)
- *  ۳. تست کامل ماتریس ۳ سطح دسترسی (کاربر عادی / creditEvaluation / admin) روی تمام ۲۰ مسیر API
+ *  ۳. فراخوانی تمام ۱۹ هندلر در ۳ کنترلر مجزا (summaryController, creditEvaluationController, adminController)
+ *     با شبیهسازی دقیق پارامترهای تزریقی partFramework در حالت needProtocolRef: false
  *  ۴. پنل مدیریت، بررسی پیش از اجرا (EXISTING_DATA_CONFLICT -> Upsert / Rebuild)، فیلترها بدون ذخیرهٔ کدملی و اجرای کران
  */
 'use strict';
@@ -64,7 +65,14 @@ function makeDbAdapter(pg) {
   };
 }
 
-function makeProtocolRef({ url = '/', queryString, params, body, role, username } = {}) {
+/**
+ * شبیهساز تزریقگر پارامترهای partFramework بر اساس آرایهٔ params در config.js هر کنترلر
+ */
+function invokeWithConfigParams(ctrlConfig, ctrlHelpers, handlerName, { url = '/', queryString = {}, params = {}, data = {} } = {}) {
+  const handlerCfg = ctrlConfig.handlers[handlerName];
+  assert.ok(handlerCfg, `Missing handler config for ${handlerName}`);
+  assert.equal(handlerCfg.needProtocolRef, false, `${handlerName} must have needProtocolRef: false`);
+
   const headers = {};
   const response = {
     statusCode: 200,
@@ -72,28 +80,40 @@ function makeProtocolRef({ url = '/', queryString, params, body, role, username 
       headers[k.toLowerCase()] = v;
     },
   };
-  const userObj = role
-    ? {
-        username: username || `${role}-user`,
-        roles: Array.isArray(role) ? role : [role],
-      }
-    : undefined;
+  const request = {
+    url,
+    queryString,
+    params,
+    data,
+    ip: '127.0.0.1',
+    headers: { 'user-agent': 'partFBackend-test-suite' },
+  };
+  const inputData = {
+    header: request.headers,
+    params,
+    queryString,
+    data,
+  };
+
+  const tokenMap = {
+    '_protocolRef.request.queryString': queryString,
+    '_protocolRef.request.data': data,
+    '_protocolRef.request': request,
+    '_protocolRef.response': response,
+    _inputData: inputData,
+    _session: {},
+    _trackingHeaders: {},
+  };
+
+  const args = handlerCfg.params.map((token) => {
+    assert.equal(token in tokenMap, true, `Unsupported param token: ${token}`);
+    return tokenMap[token];
+  });
 
   return {
-    protocolRef: {
-      ...(userObj ? { user: userObj } : {}),
-      request: {
-        url,
-        headers: { 'user-agent': 'partFBackend-test-suite' },
-        ip: '127.0.0.1',
-        ...(queryString ? { queryString } : {}),
-        ...(params ? { params } : {}),
-        ...(body !== undefined ? { body } : {}),
-      },
-      response,
-    },
-    headers,
+    promise: Promise.resolve(ctrlHelpers[handlerName](...args)),
     response,
+    headers,
   };
 }
 
@@ -127,15 +147,14 @@ function cloneSample(base, id, ymdDigits, amount = 500000000, extra = {}) {
   return s;
 }
 
-async function waitForJobViaController(adminHelpers, jobId, timeoutMs = 8000) {
+async function waitForJobViaController(adminConfig, adminHelpers, jobId, timeoutMs = 8000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    const call = makeProtocolRef({
+    const call = invokeWithConfigParams(adminConfig, adminHelpers, 'getJob', {
       url: `/api/admin/jobs/${jobId}`,
       params: { id: jobId },
-      role: 'admin',
     });
-    const job = parseResult(await adminHelpers.getJob(call.protocolRef));
+    const job = parseResult(await call.promise);
     assert.equal(call.response.statusCode, 200);
     if (job.status !== 'running') return job;
     await new Promise((r) => setTimeout(r, 30));
@@ -150,8 +169,6 @@ async function waitForJobViaController(adminHelpers, jobId, timeoutMs = 8000) {
     return;
   }
 
-  delete process.env.AUTH_DEV_DEFAULT_ROLE;
-  process.env.AUTH_TRUST_ROLE_HEADERS = 'false';
   process.env.CE_REDACT_NATIONAL_CODE = 'true';
   process.env.CE_GATEWAY_TOKEN = 'test-gateway-token';
   process.env.CE_API_RETRY = '1';
@@ -164,7 +181,6 @@ async function waitForJobViaController(adminHelpers, jobId, timeoutMs = 8000) {
     tehranToday,
   } = require(path.join(ROOT, 'services', 'utils', 'date'));
 
-  // ۱. بررسی تقویم شمسی، روز تهران و موتور Cron
   assert.equal(normalizeDay('۱۴۰۵/۰۸/۲۰'), '1405-08-20');
   assert.deepEqual(enumerateJalaliDays('1405-07-29', '1405-08-01'), [
     '1405-07-29',
@@ -180,7 +196,6 @@ async function waitForJobViaController(adminHelpers, jobId, timeoutMs = 8000) {
   assert.notEqual(dayBeforeMidnightTehran, dayAfterMidnightTehran, 'Tehran midnight must advance at 20:30Z');
   console.log('  ✓ ۱. تقویم شمسی، مرز نیمهشب تهران و موتور Cron تایید شدند');
 
-  // راهاندازی PGlite + کانتینر سرویسهای partFBackend
   const pg = new PGlite();
   await pg.exec(fs.readFileSync(path.join(ROOT, 'services', 'db', 'schema.sql'), 'utf8'));
   const db = makeDbAdapter(pg);
@@ -209,11 +224,7 @@ async function waitForJobViaController(adminHelpers, jobId, timeoutMs = 8000) {
       '1405-08-20',
       bankKey,
     );
-    assert.equal(
-      JSON.stringify(row).includes('0012345678'),
-      false,
-      `nationalCode must never be stored in evaluated DB row for ${bankKey}`,
-    );
+    assert.equal(JSON.stringify(row).includes('0012345678'), false);
     assert.equal(row.request_id, `chk-${bankKey}`);
     assert.equal(row.day, '1405-08-20');
   }
@@ -259,36 +270,36 @@ async function waitForJobViaController(adminHelpers, jobId, timeoutMs = 8000) {
   };
 
   try {
+    const summaryConfig = require(path.join(ROOT, 'controllers', 'summaryController', 'config'));
     const summaryHelpers = require(path.join(ROOT, 'controllers', 'summaryController', 'helpers'));
+    const ceConfig = require(path.join(ROOT, 'controllers', 'creditEvaluationController', 'config'));
     const ceHelpers = require(path.join(ROOT, 'controllers', 'creditEvaluationController', 'helpers'));
+    const adminConfig = require(path.join(ROOT, 'controllers', 'adminController', 'config'));
     const adminHelpers = require(path.join(ROOT, 'controllers', 'adminController', 'helpers'));
 
-    // ۳. تست اجرای دریافت داده توسط admin + تراکنش اتمیک rebuild
-    const badRebuildCall = makeProtocolRef({
+    // ۳. تست اجرای دریافت داده در adminController با تزریق _protocolRef.request.data + Rollback اتمیک
+    const badRebuildCall = invokeWithConfigParams(adminConfig, adminHelpers, 'runAdminDay', {
       url: '/api/admin/runs',
-      body: { bank: 'tavan_mellat', rebuild: true },
-      role: 'admin',
+      data: { bank: 'tavan_mellat', rebuild: true },
     });
-    await adminHelpers.runAdminDay(badRebuildCall.protocolRef);
+    await badRebuildCall.promise;
     assert.equal(badRebuildCall.response.statusCode, 400);
 
-    const runCall = makeProtocolRef({
+    const runCall = invokeWithConfigParams(adminConfig, adminHelpers, 'runAdminDay', {
       url: '/api/admin/runs',
-      body: { bank: 'tavan_mellat', day: targetDay, mode: 'nightly', rebuild: false },
-      role: 'admin',
+      data: { bank: 'tavan_mellat', day: targetDay, mode: 'nightly', rebuild: false },
     });
-    const runOut = parseResult(await adminHelpers.runAdminDay(runCall.protocolRef));
+    const runOut = parseResult(await runCall.promise);
     assert.equal(runCall.response.statusCode, 200);
     assert.equal(runOut.status, 'complete');
-    assert.equal(runOut.success, 2, 'Duplicate m-1 in same page must be deduplicated cleanly');
+    assert.equal(runOut.success, 2);
 
     failNextUpstream = true;
-    const failedRebuildCall = makeProtocolRef({
+    const failedRebuildCall = invokeWithConfigParams(adminConfig, adminHelpers, 'run', {
       url: '/api/runs',
-      body: { bank: 'tavan_mellat', day: targetDay, mode: 'nightly', rebuild: true },
-      role: 'admin',
+      data: { bank: 'tavan_mellat', day: targetDay, mode: 'nightly', rebuild: true },
     });
-    await adminHelpers.run(failedRebuildCall.protocolRef);
+    await failedRebuildCall.promise;
     assert.equal(failedRebuildCall.response.statusCode, 500);
     failNextUpstream = false;
 
@@ -296,129 +307,66 @@ async function waitForJobViaController(adminHelpers, jobId, timeoutMs = 8000) {
       `SELECT COUNT(*)::int AS cnt FROM samples_mellat WHERE day = $1`,
       [targetDay],
     );
-    assert.equal(preservedRows.rows[0].cnt, 2, 'Failed rebuild must roll back and preserve existing rows');
-    console.log('  ✓ ۳. مسیرهای دریافت داده (admin)، حذف تکراریها و Rollback اتمیک rebuild تایید شدند');
+    assert.equal(preservedRows.rows[0].cnt, 2);
+    console.log('  ✓ ۳. تزریق _protocolRef.request.data در مسیرهای دریافت داده و Rollback اتمیک rebuild تایید شدند');
 
-    // ۴. تست کامل ماتریس ۳ سطح دسترسی (کاربر عادی / creditEvaluation / admin)
-    // ۴-الف: کاربر عادی (بدون نقش خاص)
-    const normalMeCall = makeProtocolRef({ url: '/api/auth/me' });
-    const normalMe = parseResult(await summaryHelpers.me(normalMeCall.protocolRef));
-    assert.equal(normalMeCall.response.statusCode, 200);
-    assert.deepEqual(normalMe.roles, ['user']);
-    assert.equal(normalMe.permissions.canViewDashboard, true);
-    assert.equal(normalMe.permissions.canViewReportDetails, false);
-    assert.equal(normalMe.permissions.canAccessAdmin, false);
+    // ۴. تست تمام ۸ مسیر summaryController و مسیر creditEvaluationController با تزریق params
+    const healthCall = invokeWithConfigParams(summaryConfig, summaryHelpers, 'health');
+    assert.equal((await healthCall.promise).ok, true);
 
-    // کاربر عادی میتواند صفحهٔ اول و تحلیلهای کلی را ببیند
-    const normalReportCall = makeProtocolRef({
-      url: `/api/report?bank=tavan_mellat&from=${targetDay}&to=${targetDay}`,
+    const banksCall = invokeWithConfigParams(summaryConfig, summaryHelpers, 'banks');
+    assert.equal(parseResult(await banksCall.promise).length, 3);
+
+    const specsCall = invokeWithConfigParams(summaryConfig, summaryHelpers, 'specs', {
+      queryString: { bank: 'tavan_mellat' },
     });
-    const normalHtml = unwrapHtmlResult(await summaryHelpers.report(normalReportCall.protocolRef));
-    assert.equal(normalReportCall.response.statusCode, 200);
-    assert.equal(normalHtml.includes('id="ce-admin-link" class="ce-admin-link" style="display:none"'), true);
+    assert.equal(parseResult(await specsCall.promise).bank.key, 'tavan_mellat');
 
-    const sumCall = makeProtocolRef({
-      url: `/api/summary?bank=tavan_mellat&from=${targetDay}&to=${targetDay}`,
+    const reportCall = invokeWithConfigParams(summaryConfig, summaryHelpers, 'report', {
+      queryString: { bank: 'tavan_mellat', from: targetDay, to: targetDay },
     });
-    const sumOut = parseResult(await summaryHelpers.summary(sumCall.protocolRef));
-    assert.equal(sumCall.response.statusCode, 200);
-    assert.equal(sumOut.stats.total, 2);
+    const reportHtml = unwrapHtmlResult(await reportCall.promise);
+    assert.equal(reportCall.response.statusCode, 200);
+    assert.match(reportCall.headers['content-type'], /text\/html/);
+    assert.equal(reportHtml.includes('/api/sample/'), true);
 
-    const listCall = makeProtocolRef({
-      url: `/api/list?bank=tavan_mellat&from=${targetDay}&to=${targetDay}&limit=10&offset=0`,
+    const diagCall = invokeWithConfigParams(summaryConfig, summaryHelpers, 'diagnostics');
+    assert.equal((await diagCall.promise).ok, true);
+
+    const sumCall = invokeWithConfigParams(summaryConfig, summaryHelpers, 'summary', {
+      queryString: { bank: 'tavan_mellat', from: targetDay, to: targetDay },
     });
-    const listOut = parseResult(await summaryHelpers.list(listCall.protocolRef));
-    assert.equal(listCall.response.statusCode, 200);
-    assert.equal(listOut.total, 2);
+    assert.equal(parseResult(await sumCall.promise).stats.total, 2);
 
-    // کاربر عادی نمیتواند اطلاعات یک گزارش تکی را درخواست بزند (403 Forbidden)
-    const upstreamCountBeforeBlocked = capturedUpstreamQueries.length;
-    const normalSampleCall = makeProtocolRef({
+    const listCall = invokeWithConfigParams(summaryConfig, summaryHelpers, 'list', {
+      queryString: { bank: 'tavan_mellat', from: targetDay, to: targetDay, limit: '10', offset: '0' },
+    });
+    assert.equal(parseResult(await listCall.promise).total, 2);
+
+    const runsCall = invokeWithConfigParams(summaryConfig, summaryHelpers, 'runs');
+    assert.equal(Array.isArray(parseResult(await runsCall.promise)), true);
+
+    const sampleFoundCall = invokeWithConfigParams(ceConfig, ceHelpers, 'sample', {
       url: '/api/sample/m-1',
       params: { requestId: 'm-1' },
     });
-    const normalSampleErr = parseResult(await ceHelpers.sample(normalSampleCall.protocolRef));
-    assert.equal(normalSampleCall.response.statusCode, 403);
-    assert.equal(normalSampleErr.code, 'FORBIDDEN_ROLE');
-    assert.equal(
-      capturedUpstreamQueries.length,
-      upstreamCountBeforeBlocked,
-      'Blocked normal user must never trigger upstream sample fetch',
-    );
+    const sampleFoundOut = parseResult(await sampleFoundCall.promise);
+    assert.equal(sampleFoundCall.response.statusCode, 200);
+    assert.equal(sampleFoundOut.found, true);
+    assert.equal(sampleFoundOut.requestId, 'm-1');
+    console.log('  ✓ ۴. کنترلرهای summaryController و creditEvaluationController با needProtocolRef: false تایید شدند');
 
-    // کاربر عادی نمیتواند وارد مسیرهای ادمین شود (403 Forbidden)
-    for (const [fnName, body] of [
-      ['getOverview', undefined],
-      ['getCron', undefined],
-      ['updateCron', { enabled: true }],
-      ['runCronNow', {}],
-      ['checkExisting', { banks: ['tavan_mellat'], day: targetDay }],
-      ['startRun', { banks: ['tavan_mellat'], day: targetDay }],
-      ['listJobs', undefined],
-      ['runAdminDay', { bank: 'tavan_mellat', day: targetDay }],
-      ['run', { bank: 'tavan_mellat', day: targetDay }],
-    ]) {
-      const blockedAdminCall = makeProtocolRef({ url: '/api/admin/test', body });
-      await adminHelpers[fnName](blockedAdminCall.protocolRef);
-      assert.equal(blockedAdminCall.response.statusCode, 403, `Normal user must get 403 on admin.${fnName}`);
-    }
-
-    // ۴-ب: نقش creditEvaluation -> مجاز به دریافت اطلاعات یک گزارش، ولی ممنوع از ورود به پنل ادمین
-    const ceSampleCall = makeProtocolRef({
-      url: '/api/sample/m-1',
-      params: { requestId: 'm-1' },
-      role: 'creditEvaluation',
-    });
-    const ceSampleOut = parseResult(await ceHelpers.sample(ceSampleCall.protocolRef));
-    assert.equal(ceSampleCall.response.statusCode, 200);
-    assert.equal(ceSampleOut.found, true);
-    assert.equal(ceSampleOut.requestId, 'm-1');
-
-    const ceAdminBlockedCall = makeProtocolRef({
-      url: '/api/admin/overview',
-      role: 'creditEvaluation',
-    });
-    const ceAdminBlockedErr = parseResult(await adminHelpers.getOverview(ceAdminBlockedCall.protocolRef));
-    assert.equal(ceAdminBlockedCall.response.statusCode, 403);
-    assert.equal(ceAdminBlockedErr.code, 'FORBIDDEN_ROLE');
-
-    const ceRunBlockedCall = makeProtocolRef({
-      url: '/api/runs',
-      body: { bank: 'tavan_mellat', day: targetDay },
-      role: 'creditEvaluation',
-    });
-    await adminHelpers.run(ceRunBlockedCall.protocolRef);
-    assert.equal(ceRunBlockedCall.response.statusCode, 403);
-
-    // ۴-ج: نقش admin -> دسترسی کامل به همه چیز (تحلیل کلی + جزئیات گزارش + پنل ادمین)
-    const adminReportCall = makeProtocolRef({
-      url: `/api/report?bank=tavan_mellat&from=${targetDay}&to=${targetDay}`,
-      role: 'admin',
-    });
-    const adminHtml = unwrapHtmlResult(await summaryHelpers.report(adminReportCall.protocolRef));
-    assert.equal(adminReportCall.response.statusCode, 200);
-    assert.equal(adminHtml.includes('id="ce-admin-link" class="ce-admin-link">⚙ پنل مدیریت</a>'), true);
-
-    const adminSampleCall = makeProtocolRef({
-      url: '/api/sample/m-1',
-      params: { requestId: 'm-1' },
-      role: 'admin',
-    });
-    const adminSampleOut = parseResult(await ceHelpers.sample(adminSampleCall.protocolRef));
-    assert.equal(adminSampleCall.response.statusCode, 200);
-    assert.equal(adminSampleOut.found, true);
-    console.log('  ✓ ۴. جداسازی مسیرها و گاردهای هر ۳ نقش (کاربر عادی / creditEvaluation / admin) ۱۰۰٪ تایید شدند');
-
-    // ۵. تست عملیات کامل پنل ادمین با نقش admin
-    const overviewCall = makeProtocolRef({ url: '/api/admin/overview', role: 'admin' });
-    const overviewOut = parseResult(await adminHelpers.getOverview(overviewCall.protocolRef));
+    // ۵. تست تمام مسیرهای adminController با تزریق params
+    const overviewCall = invokeWithConfigParams(adminConfig, adminHelpers, 'getOverview');
+    const overviewOut = parseResult(await overviewCall.promise);
     assert.equal(overviewCall.response.statusCode, 200);
     assert.equal(overviewOut.banks.length, 3);
 
-    const cronPutCall = makeProtocolRef({
-      url: '/api/admin/cron',
-      role: 'admin',
-      body: {
+    const cronGetCall = invokeWithConfigParams(adminConfig, adminHelpers, 'getCron');
+    assert.equal(parseResult(await cronGetCall.promise).timezone, 'Asia/Tehran');
+
+    const cronPutCall = invokeWithConfigParams(adminConfig, adminHelpers, 'updateCron', {
+      data: {
         enabled: true,
         schedule_mode: 'daily',
         hour: 3,
@@ -428,26 +376,25 @@ async function waitForJobViaController(adminHelpers, jobId, timeoutMs = 8000) {
         rebuild: false,
       },
     });
-    const cronPutOut = parseResult(await adminHelpers.updateCron(cronPutCall.protocolRef));
-    assert.equal(cronPutCall.response.statusCode, 200);
-    assert.equal(cronPutOut.effective_cron_expr, '30 3 * * *');
+    assert.equal(parseResult(await cronPutCall.promise).effective_cron_expr, '30 3 * * *');
 
-    const checkCall = makeProtocolRef({
-      url: '/api/admin/runs/check',
-      role: 'admin',
-      body: { banks: ['tavan_mellat'], dateScope: 'single', day: targetDay },
+    const checkCall = invokeWithConfigParams(adminConfig, adminHelpers, 'checkExisting', {
+      data: { banks: ['tavan_mellat'], dateScope: 'single', day: targetDay },
     });
-    const checkOut = parseResult(await adminHelpers.checkExisting(checkCall.protocolRef));
-    assert.equal(checkCall.response.statusCode, 200);
-    assert.equal(checkOut.hasExistingData, true);
+    assert.equal(parseResult(await checkCall.promise).hasExistingData, true);
+
+    const unconfirmedCall = invokeWithConfigParams(adminConfig, adminHelpers, 'startRun', {
+      data: { banks: ['tavan_mellat'], dateScope: 'single', day: targetDay },
+    });
+    const unconfirmedErr = parseResult(await unconfirmedCall.promise);
+    assert.equal(unconfirmedCall.response.statusCode, 400);
+    assert.equal(unconfirmedErr.code, 'EXISTING_DATA_CONFLICT');
 
     datasetByDay.set(targetDay, [cloneSample(baseMellat, 'm-3', '14050820', 450000000)]);
     capturedUpstreamQueries.length = 0;
 
-    const startCall = makeProtocolRef({
-      url: '/api/admin/runs/start',
-      role: 'admin',
-      body: {
+    const startCall = invokeWithConfigParams(adminConfig, adminHelpers, 'startRun', {
+      data: {
         banks: ['tavan_mellat'],
         dateScope: 'single',
         day: targetDay,
@@ -462,23 +409,25 @@ async function waitForJobViaController(adminHelpers, jobId, timeoutMs = 8000) {
         },
       },
     });
-    const startedJob = parseResult(await adminHelpers.startRun(startCall.protocolRef));
+    const startedJob = parseResult(await startCall.promise);
     assert.equal(startCall.response.statusCode, 200);
     assert.equal(JSON.stringify(startedJob).includes('0099887766'), false);
 
-    const completedJob = await waitForJobViaController(adminHelpers, startedJob.id);
+    const completedJob = await waitForJobViaController(adminConfig, adminHelpers, startedJob.id);
     assert.equal(completedJob.status, 'completed');
     assert.equal(
       capturedUpstreamQueries.some((q) => q.nationalCode === '0099887766' && q.limit === '25'),
       true,
     );
 
-    const cronNowCall = makeProtocolRef({ url: '/api/admin/cron/run-now', role: 'admin' });
-    const cronNowJob = parseResult(await adminHelpers.runCronNow(cronNowCall.protocolRef));
-    assert.equal(cronNowCall.response.statusCode, 200);
-    const doneCronJob = await waitForJobViaController(adminHelpers, cronNowJob.id);
+    const jobsCall = invokeWithConfigParams(adminConfig, adminHelpers, 'listJobs');
+    assert.equal(parseResult(await jobsCall.promise).length >= 1, true);
+
+    const cronNowCall = invokeWithConfigParams(adminConfig, adminHelpers, 'runCronNow');
+    const cronNowJob = parseResult(await cronNowCall.promise);
+    const doneCronJob = await waitForJobViaController(adminConfig, adminHelpers, cronNowJob.id);
     assert.equal(doneCronJob.status, 'completed');
-    console.log('  ✓ ۵. تمام مسیرهای مدیریتی ادمین، کران تهران و حفاظت کدملی تایید شدند');
+    console.log('  ✓ ۵. کنترلر adminController، محافظ تداخل داده، کران تهران و حفاظت کدملی تایید شدند');
   } finally {
     global.fetch = originalFetch;
     await services.close();
