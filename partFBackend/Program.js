@@ -1,4 +1,6 @@
 const PartFramework = require('partFramework');
+const { getServices } = require('./services/container');
+const { config } = require('./services/config');
 
 class Program {
   #core;
@@ -15,7 +17,18 @@ class Program {
 
   #loadManualControllers() {}
 
-  #loadDependencies() {}
+  async #loadDependencies() {
+    const services = getServices();
+    await services.init();
+
+    const shutdown = async () => {
+      try {
+        await services.close();
+      } catch {}
+    };
+    process.once('SIGINT', shutdown);
+    process.once('SIGTERM', shutdown);
+  }
 
   async #loadControllers() {
     return this.#core.loader.loadControllersByPath(this.#controllers);
@@ -33,11 +46,12 @@ class Program {
 
   async run() {
     await this.#core.init();
-    this.#loadDependencies();
+    await this.#loadDependencies();
     await this.#loadControllers();
     await this.#loadControllerPackages();
     this.#loadManualControllers();
     await this.#loadServers();
+    console.log(`✅ CE Dashboard (partFramework): http://${config.backendHost}:${config.backendPort}/api`);
   }
 }
 

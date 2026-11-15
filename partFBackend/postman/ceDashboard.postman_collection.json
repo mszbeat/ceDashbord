@@ -1,0 +1,130 @@
+{
+  "info": {
+    "_postman_id": "2c8c9e47-9d1a-4b4e-8f57-ce00da54b0fd",
+    "name": "CE Dashboard (partFramework Backend)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000"
+    }
+  ],
+  "item": [
+    {
+      "name": "Summary & Report",
+      "item": [
+        {
+          "name": "GET /api/health",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/health" }
+        },
+        {
+          "name": "GET /api/banks",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/banks" }
+        },
+        {
+          "name": "GET /api/specs",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/specs?bank=tavan_mellat" }
+        },
+        {
+          "name": "GET /api/report (HTML)",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/report?bank=tavan_mellat" }
+        },
+        {
+          "name": "GET /api/summary",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/summary?bank=tavan_mellat" }
+        },
+        {
+          "name": "GET /api/diagnostics",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/diagnostics?bank=tavan_mellat" }
+        },
+        {
+          "name": "GET /api/list",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/list?bank=tavan_mellat&page=1&size=25" }
+        },
+        {
+          "name": "GET /api/sample/:requestId",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/sample/REQ-001?bank=tavan_mellat" }
+        },
+        {
+          "name": "GET /api/runs",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/runs?bank=tavan_mellat" }
+        }
+      ]
+    },
+    {
+      "name": "Ingestion",
+      "item": [
+        {
+          "name": "POST /api/runs",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"bank\": \"tavan_mellat\",\n  \"day\": \"2026-04-16\",\n  \"mode\": \"nightly\",\n  \"rebuild\": false\n}"
+            },
+            "url": "{{baseUrl}}/api/runs"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin & Cron",
+      "item": [
+        {
+          "name": "GET /api/admin/overview",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/admin/overview" }
+        },
+        {
+          "name": "GET /api/admin/cron",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/admin/cron" }
+        },
+        {
+          "name": "PUT /api/admin/cron",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"enabled\": true,\n  \"hour\": 3,\n  \"minute\": 0,\n  \"mode\": \"nightly\",\n  \"banks\": [\"tavan_mellat\", \"tavan_resalat\", \"tavan_postbank\"]\n}"
+            },
+            "url": "{{baseUrl}}/api/admin/cron"
+          }
+        },
+        {
+          "name": "POST /api/admin/cron/run-now",
+          "request": { "method": "POST", "url": "{{baseUrl}}/api/admin/cron/run-now" }
+        },
+        {
+          "name": "POST /api/admin/runs/check",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"bank\": \"tavan_mellat\",\n  \"day\": \"2026-04-16\"\n}"
+            },
+            "url": "{{baseUrl}}/api/admin/runs/check"
+          }
+        },
+        {
+          "name": "POST /api/admin/runs/start",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"bank\": \"tavan_mellat\",\n  \"day\": \"2026-04-16\",\n  \"mode\": \"nightly\",\n  \"strategy\": \"upsert\",\n  \"filters\": {\n    \"status\": \"all\"\n  }\n}"
+            },
+            "url": "{{baseUrl}}/api/admin/runs/start"
+          }
+        },
+        {
+          "name": "GET /api/admin/jobs",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/admin/jobs" }
+        }
+      ]
+    }
+  ]
+}

@@ -4,9 +4,8 @@ import { SummaryModule } from './summary/summary.module';
 import { IngestionModule } from './ingestion/ingestion.module';
 import { EvaluatorModule } from './evaluator/evaluator.module';
 import { AdminModule } from './admin/admin.module';
-import { PartAuthenticationModule } from './part-authentication/part-authentication.module';
 
 @Module({
-  imports: [DbModule, EvaluatorModule, IngestionModule, SummaryModule, AdminModule, PartAuthenticationModule],
+  imports: [DbModule, EvaluatorModule, IngestionModule, SummaryModule, AdminModule],
 })
 export class AppModule {}
