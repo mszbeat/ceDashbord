@@ -1,10 +1,15 @@
 {
   "name": "partfbackend",
   "version": "1.0.0",
-  "description": "",
+  "description": "CE Dashboard Server Backend - Powered by partFramework",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node index.js",
+    "migrate": "node services/db/migrate.js",
+    "ingest": "node services/ingestion/run-ingest.js",
+    "ingest:mellat": "node services/ingestion/run-ingest.js --bank=tavan_mellat",
+    "import:legacy": "node scripts/import-legacy-reports.js",
+    "test": "node --test tests/*.test.js && node scripts/verify-partfbackend.js"
   },
   "keywords": [],
   "author": "",
@@ -12,7 +17,10 @@
   "type": "commonjs",
   "dependencies": {
     "@partFramework/cli": "^1.1.0",
+    "@partFramework/http": "*",
+    "dotenv": "^16.4.5",
     "partAuthenticationInterface": "^12.0.0",
-    "partFramework": "^10.29.0"
+    "partFramework": "^10.29.0",
+    "pg": "^8.11.3"
   }
 }

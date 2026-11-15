@@ -1,0 +1,8 @@
+{
+  "name": "summary-controller",
+  "version": "1.0.0",
+  "description": "داشبورد زنده، گزارشهای تحلیلی، جزئیات نمونه و تشخیص دیتابیس",
+  "main": "main.js",
+  "author": "",
+  "license": "ISC"
+}

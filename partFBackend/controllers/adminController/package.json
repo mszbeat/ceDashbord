@@ -1,0 +1,8 @@
+{
+  "name": "admin-controller",
+  "version": "1.0.0",
+  "description": "پنل مدیریت، زمانبند خودکار کران شبانه و اجرای دستی با بررسی پیش از اجرا",
+  "main": "main.js",
+  "author": "",
+  "license": "ISC"
+}
