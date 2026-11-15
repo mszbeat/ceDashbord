@@ -18,7 +18,8 @@
     "test:ab-parity": "node scripts/ab-parity.js --self-test",
     "import:legacy": "node scripts/import-legacy-reports.js",
     "test:rebuild": "node scripts/rebuild-test.js",
-    "test:server-bugs": "node scripts/server-bugs-test.js"
+    "test:server-bugs": "node scripts/server-bugs-test.js",
+    "test:admin": "node scripts/admin-test.js"
   },
   "dependencies": {
     "@nestjs/common": "^10.3.0",

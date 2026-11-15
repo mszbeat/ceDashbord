@@ -155,3 +155,29 @@ CREATE TABLE IF NOT EXISTS sample_access_logs (
   user_agent TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_sample_access_logs_request ON sample_access_logs(request_id, accessed_at DESC);
+
+CREATE TABLE IF NOT EXISTS cron_configs (
+  id TEXT PRIMARY KEY DEFAULT 'nightly_default',
+  enabled BOOLEAN NOT NULL DEFAULT false,
+  schedule_mode TEXT NOT NULL DEFAULT 'daily',
+  hour INTEGER NOT NULL DEFAULT 2 CHECK (hour >= 0 AND hour <= 23),
+  minute INTEGER NOT NULL DEFAULT 0 CHECK (minute >= 0 AND minute <= 59),
+  cron_expr TEXT NOT NULL DEFAULT '0 2 * * *',
+  timezone TEXT NOT NULL DEFAULT 'Asia/Tehran',
+  banks TEXT[] NOT NULL DEFAULT ARRAY['tavan_mellat', 'tavan_resalat', 'tavan_postbank']::TEXT[],
+  target_offset_days INTEGER NOT NULL DEFAULT 1 CHECK (target_offset_days >= 0 AND target_offset_days <= 30),
+  rebuild BOOLEAN NOT NULL DEFAULT true,
+  last_slot TEXT,
+  last_run_at TIMESTAMPTZ,
+  last_status TEXT,
+  last_error TEXT,
+  last_summary JSONB,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+INSERT INTO cron_configs (
+  id, enabled, schedule_mode, hour, minute, cron_expr, timezone, banks, target_offset_days, rebuild
+) VALUES (
+  'nightly_default', false, 'daily', 2, 0, '0 2 * * *', 'Asia/Tehran',
+  ARRAY['tavan_mellat', 'tavan_resalat', 'tavan_postbank'], 1, true
+) ON CONFLICT (id) DO NOTHING;

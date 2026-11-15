@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { DatabaseService } from '../db/database.service';
 import { EvaluatorService, AnalyzedRow } from '../evaluator/evaluator.service';
 import { BANKS, BankKey, config } from '../config';
-import { normalizeDay, tehranToday, tehranYesterday, toApiDate } from '../utils/date';
+import { jalaliStampDigitsOf, normalizeDay, tehranToday, tehranYesterday, toApiDate } from '../utils/date';
 export { normalizeDay, tehranToday, tehranYesterday } from '../utils/date';
 
 const UPSERT_COLUMNS = [
@@ -12,20 +12,61 @@ const UPSERT_COLUMNS = [
   'credit_alerts', 'display_extras', 'analysis_version',
 ] as const;
 
+export interface IngestionFilters {
+  status?: string;
+  requestId?: string;
+  uniqueKey?: string;
+  /** فقط به عنوان پارامتر جستجو برای API اصلی ارسال میشود؛ هرگز در دیتابیس یا لاگ ذخیره نمیشود. */
+  nationalCode?: string;
+  maxCount?: number;
+  pageSize?: number;
+}
+
+export function hasNarrowingFilters(filters?: IngestionFilters): boolean {
+  if (!filters) return false;
+  return Boolean(
+    filters.status?.trim()
+    || filters.requestId?.trim()
+    || filters.uniqueKey?.trim()
+    || filters.nationalCode?.trim()
+    || (filters.maxCount !== undefined && filters.maxCount !== null && Number(filters.maxCount) > 0),
+  );
+}
+
 /** گزینههای اجرای یک روز. rebuild: پاک کردن کامل ردیفهای آن روز پیش از ورود مجدد. */
 export interface RunDayOptions {
   rebuild?: boolean;
+  filters?: IngestionFilters;
+}
+
+function inferDayFromSample(sample: any): string {
+  const candidates = [
+    sample?.insertDate_yearMonthDay,
+    jalaliStampDigitsOf(sample?.insertDate_full)?.slice(0, 8),
+    jalaliStampDigitsOf(sample?.insertDate)?.slice(0, 8),
+  ];
+  for (const raw of candidates) {
+    const digits = String(raw ?? '').replace(/\D/g, '');
+    if (/^1[34]\d{6}$/.test(digits)) {
+      return `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}`;
+    }
+  }
+  return tehranToday();
 }
 
 @Injectable()
 export class IngestionService {
   constructor(private db: DatabaseService, private evaluator: EvaluatorService) {}
 
-  private async fetchPage(page: number, limit: number, day: string): Promise<any> {
+  private async fetchPage(page: number, limit: number, day: string | null, filters?: IngestionFilters): Promise<any> {
     const url = new URL(config.apiBaseUrl);
     url.searchParams.set('page', String(page));
     url.searchParams.set('limit', String(limit));
-    url.searchParams.set('date', toApiDate(day));
+    if (day) url.searchParams.set('date', toApiDate(day));
+    if (filters?.status?.trim()) url.searchParams.set('status', filters.status.trim());
+    if (filters?.requestId?.trim()) url.searchParams.set('requestId', filters.requestId.trim());
+    if (filters?.uniqueKey?.trim()) url.searchParams.set('uniqueKey', filters.uniqueKey.trim());
+    if (filters?.nationalCode?.trim()) url.searchParams.set('nationalCode', filters.nationalCode.trim());
     const headers: Record<string, string> = {
       'gateway-system': config.apiSystem,
       'gateway-token': config.apiToken,
@@ -46,8 +87,8 @@ export class IngestionService {
     throw new Error(`دریافت صفحه ${page} از API اصلی ناموفق بود: ${lastError?.message ?? lastError}`);
   }
 
-  private async sourceTotal(day: string): Promise<number> {
-    const data = await this.fetchPage(1, 1, day);
+  private async sourceTotal(day: string | null, filters?: IngestionFilters): Promise<number> {
+    const data = await this.fetchPage(1, 1, day, filters);
     const raw = data?.count ?? data?.totalCount ?? data?.total ?? data?.reportResults?.length ?? 0;
     const total = Number(raw);
     return Number.isFinite(total) ? total : 0;
@@ -111,6 +152,14 @@ export class IngestionService {
     const bank = BANKS[bankKey];
     if (!bank) throw new Error(`بانک پشتیبانیشده نیست: ${bankInput} (بانکهای پشتیبانیشده: ملت، رسالت، پستبانک)`);
     const rebuild = options.rebuild === true;
+    const filters = options.filters;
+    const pageSize = filters?.pageSize && Number(filters.pageSize) >= 1 && Number(filters.pageSize) <= 200
+      ? Math.floor(Number(filters.pageSize))
+      : config.pageSize;
+    const maxCount = filters?.maxCount && Number(filters.maxCount) >= 1
+      ? Math.floor(Number(filters.maxCount))
+      : null;
+    const filteredRun = hasNarrowingFilters(filters);
     if (rebuild && !dayInput) throw new Error('--rebuild نیاز به --day مشخص دارد (برای جلوگیری از پاک شدن ناخواستهٔ دیروز).');
     const day = normalizeDay(dayInput ?? (mode === 'nightly' ? tehranYesterday() : tehranToday()));
     const client = await this.db.getClient();
@@ -123,7 +172,7 @@ export class IngestionService {
     try {
       await client.query('SELECT pg_advisory_lock(hashtext($1))', [lockKey]);
       // پیشبینی خرابی API پیش از پاک کردن: اگر منبع پاسخ نداد، چیزی حذف نشود.
-      const preflight = await this.sourceTotal(day);
+      const preflight = await this.sourceTotal(day, filters);
       if (rebuild && !preflight) {
         throw new Error(`--rebuild لغو شد: API برای ${day} هیچ رکوردی برنگرداند؛ دادههای موجود دستنخورده ماندند.`);
       }
@@ -136,9 +185,19 @@ export class IngestionService {
         await client.query('DELETE FROM day_runs WHERE bank=$1 AND day=$2', [bankKey, day]);
         console.warn(`[ingest] --rebuild: ${deleted} ردیف قدیمی ${bankKey}/${day} حذف شد؛ تراکنش تا پایان ورود باز است.`);
       }
-      const initialTotal = preflight;
-      checkpoint = await this.startRun(client, bankKey, day, mode);
-      sourceTotal = preflight;
+      const effectiveInitial = maxCount !== null ? Math.min(preflight, maxCount) : preflight;
+      const initialTotal = effectiveInitial;
+      checkpoint = filteredRun ? 0 : await this.startRun(client, bankKey, day, mode);
+      if (filteredRun) {
+        await client.query(
+          `INSERT INTO day_runs(bank,day,mode,status,checkpoint,analysis_version,started_at)
+           VALUES($1,$2,$3,'running',0,$4,now())
+           ON CONFLICT(bank,day) DO UPDATE SET mode=EXCLUDED.mode, status='running', checkpoint=0,
+             analysis_version=EXCLUDED.analysis_version, started_at=now(), finished_at=NULL, error=NULL, updated_at=now()`,
+          [bankKey, day, mode, this.evaluator.versionOf(bankKey)],
+        );
+      }
+      sourceTotal = effectiveInitial;
       await this.updateRun(client, bankKey, day, { source_total: sourceTotal });
 
       const seenStatus = new Map<string, boolean>();
@@ -191,13 +250,15 @@ export class IngestionService {
       };
 
       while (checkpoint < sourceTotal) {
-        const page = Math.floor(checkpoint / config.pageSize) + 1;
-        const skip = checkpoint % config.pageSize;
-        const data = await this.fetchPage(page, config.pageSize, day);
+        const page = Math.floor(checkpoint / pageSize) + 1;
+        const skip = checkpoint % pageSize;
+        // همیشه limit برابر pageSize ثابت ارسال میشود تا offset صفحات API جابهجا نشود
+        const data = await this.fetchPage(page, pageSize, day, filters);
         const liveRaw = data?.count ?? data?.totalCount ?? data?.total;
         const liveTotal = Number(liveRaw);
-        if (Number.isFinite(liveTotal) && liveTotal > sourceTotal) {
-          sourceTotal = liveTotal;
+        if (Number.isFinite(liveTotal)) {
+          const cappedLive = maxCount !== null ? Math.min(liveTotal, maxCount) : liveTotal;
+          if (cappedLive > sourceTotal) sourceTotal = cappedLive;
         }
         const reports: any[] = Array.isArray(data?.reportResults) ? data.reportResults
           : Array.isArray(data?.reports) ? data.reports : Array.isArray(data) ? data : [];
@@ -205,7 +266,10 @@ export class IngestionService {
           reachedEndOfPages = true;
           break;
         }
-        const slice = reports.slice(skip);
+        let slice = reports.slice(skip);
+        if (maxCount !== null && checkpoint + slice.length > maxCount) {
+          slice = slice.slice(0, maxCount - checkpoint);
+        }
         if (!slice.length) {
           reachedEndOfPages = true;
           break;
@@ -220,34 +284,34 @@ export class IngestionService {
 
         // اگر صفحه کمتر از pageSize رکورد برگرداند، به انتهای واقعی دادههای API رسیدهایم
         // (جلوگیری از حلقهٔ بینهایت وقتی sourceTotal اولیه بزرگتر از تعداد واقعی رکوردها بوده).
-        if (reports.length < config.pageSize) {
+        if (reports.length < pageSize || (maxCount !== null && checkpoint >= maxCount)) {
           reachedEndOfPages = true;
           break;
         }
       }
 
-      // در حالت زنده، اگر حین پیمایش صفحات رکوردهای جدیدی اضافه شده و ترتیب API نزولی باشد،
+      // در حالت زنده (بدون maxCount محدودکننده)، اگر حین پیمایش صفحات رکوردهای جدیدی اضافه شده باشند،
       // صفحات ابتدایی را به اندازهٔ رشد sourceTotal بازخوانی میکنیم تا رکوردهای تازه جا نمانند.
-      if (sourceTotal > initialTotal && initialTotal > 0) {
+      if (maxCount === null && sourceTotal > initialTotal && initialTotal > 0) {
         const headPages = Math.min(
-          Math.ceil((sourceTotal - initialTotal) / config.pageSize) + 1,
-          Math.ceil(sourceTotal / config.pageSize),
+          Math.ceil((sourceTotal - initialTotal) / pageSize) + 1,
+          Math.ceil(sourceTotal / pageSize),
         );
         for (let headPage = 1; headPage <= headPages; headPage++) {
-          const headData = await this.fetchPage(headPage, config.pageSize, day);
+          const headData = await this.fetchPage(headPage, pageSize, day, filters);
           const headReports: any[] = Array.isArray(headData?.reportResults) ? headData.reportResults
             : Array.isArray(headData?.reports) ? headData.reports : Array.isArray(headData) ? headData : [];
           if (!headReports.length) break;
           await ingestSlice(headReports, false);
-          if (headReports.length < config.pageSize) break;
+          if (headReports.length < pageSize) break;
         }
         processed = Math.max(processed, success + fail + skipped);
       }
 
-      const complete = mode === 'nightly'
+      const complete = mode === 'nightly' && !filteredRun
         && (checkpoint >= sourceTotal || (reachedEndOfPages && checkpoint > 0))
         && skipped === 0;
-      const status = mode === 'intraday' ? 'partial' : complete ? 'complete' : 'needs_review';
+      const status = (mode === 'intraday' || filteredRun) ? 'partial' : complete ? 'complete' : 'needs_review';
       await this.updateRun(client, bankKey, day, {
         status, finished_at: new Date(), source_total: sourceTotal, checkpoint,
         ingested_count: processed, success_count: success, fail_count: fail, skipped_count: skipped,
@@ -268,6 +332,116 @@ export class IngestionService {
     } finally {
       if (inTransaction) await client.query('ROLLBACK').catch(() => undefined);
       await client.query('SELECT pg_advisory_unlock(hashtext($1))', [lockKey]).catch(() => undefined);
+      client.release();
+    }
+  }
+
+  /**
+   * واکشی و تحلیل رکوردها بدون قید تاریخ (صرفاً بر اساس شناسهٔ یکتا / شناسهٔ درخواست / کدملی).
+   * روز شمسی هر رکورد بهصورت خودکار از تاریخ ثبت آن استخراج میشود و بهصورت Upsert ذخیره میگردد.
+   */
+  async runFilteredLookup(bankInput: string, filters: IngestionFilters) {
+    const bankKey = bankInput as BankKey;
+    const bank = BANKS[bankKey];
+    if (!bank) throw new Error(`بانک پشتیبانیشده نیست: ${bankInput} (بانکهای پشتیبانیشده: ملت، رسالت، پستبانک)`);
+    if (!filters?.requestId?.trim() && !filters?.uniqueKey?.trim() && !filters?.nationalCode?.trim()) {
+      throw new Error('در حالت بدون تاریخ، حداقل یکی از فیلترهای requestId، uniqueKey یا کد ملی الزامی است.');
+    }
+    const pageSize = filters?.pageSize && Number(filters.pageSize) >= 1 && Number(filters.pageSize) <= 200
+      ? Math.floor(Number(filters.pageSize))
+      : config.pageSize;
+    const maxCount = filters?.maxCount && Number(filters.maxCount) >= 1
+      ? Math.min(Math.floor(Number(filters.maxCount)), 5000)
+      : 500;
+
+    const client = await this.db.getClient();
+    let checkpoint = 0, sourceTotal = 0, success = 0, fail = 0, skipped = 0, processed = 0;
+    const daysTouched = new Set<string>();
+    const messageTemplates = new Map<string, string>();
+    const writtenTemplates = new Set<string>();
+    const seenStatus = new Map<string, boolean>();
+
+    try {
+      const preflight = await this.sourceTotal(null, filters);
+      sourceTotal = Math.min(preflight, maxCount);
+      while (checkpoint < sourceTotal) {
+        const page = Math.floor(checkpoint / pageSize) + 1;
+        const skip = checkpoint % pageSize;
+        const data = await this.fetchPage(page, pageSize, null, filters);
+        const reports: any[] = Array.isArray(data?.reportResults) ? data.reportResults
+          : Array.isArray(data?.reports) ? data.reports : Array.isArray(data) ? data : [];
+        if (!reports.length) break;
+        let slice = reports.slice(skip);
+        if (checkpoint + slice.length > maxCount) {
+          slice = slice.slice(0, maxCount - checkpoint);
+        }
+        if (!slice.length) break;
+
+        const rows: AnalyzedRow[] = [];
+        for (const raw of slice) {
+          processed++;
+          try {
+            const sample = this.evaluator.normalizeSample(raw, { fromApi: true });
+            const method = String(sample?.input?.method ?? '').trim().toLowerCase();
+            if (method !== bank.method) {
+              skipped++;
+              continue;
+            }
+            const inferredDay = inferDayFromSample(sample);
+            const isSuccess = this.evaluator.isReportSuccess(sample);
+            const template = this.evaluator.messageTemplateOf(sample, isSuccess);
+            if (template) messageTemplates.set(template.key, template.text);
+            const row = this.evaluator.evaluate(sample, isSuccess, inferredDay, bankKey);
+            if (!row.request_id) {
+              skipped++;
+              continue;
+            }
+            daysTouched.add(inferredDay);
+            rows.push(row);
+            const seenKey = `${inferredDay}\0${row.request_id}`;
+            const prev = seenStatus.get(seenKey);
+            if (prev === undefined) {
+              seenStatus.set(seenKey, isSuccess);
+              if (isSuccess) success++; else fail++;
+            } else if (prev !== isSuccess) {
+              seenStatus.set(seenKey, isSuccess);
+              if (isSuccess) { success++; fail--; } else { fail++; success--; }
+            }
+          } catch (error) {
+            skipped++;
+            console.warn(`[ingest] پرش نمونه در جستجوی شناسهای: ${(error as any)?.message ?? error}`);
+          }
+        }
+        await this.upsertBatch(client, bank.table, rows);
+        const pending = [...messageTemplates.entries()].filter(([key]) => !writtenTemplates.has(key));
+        if (pending.length) {
+          await client.query(
+            `INSERT INTO message_dict(message_key, label, topic, message_text)
+             SELECT k, k, 'other', t FROM unnest($1::text[], $2::text[]) AS x(k, t)
+             ON CONFLICT (message_key) DO UPDATE SET message_text=EXCLUDED.message_text`,
+            [pending.map(([key]) => key), pending.map(([, text]) => text)],
+          );
+          for (const [key] of pending) writtenTemplates.add(key);
+        }
+        checkpoint += slice.length;
+        if (reports.length < pageSize || checkpoint >= maxCount) break;
+      }
+      return {
+        bank: bankKey,
+        day: daysTouched.size ? [...daysTouched].sort().join('، ') : 'بدون داده',
+        days_touched: [...daysTouched].sort(),
+        mode: 'intraday' as const,
+        status: 'partial',
+        source_total: sourceTotal,
+        processed,
+        success,
+        fail,
+        skipped,
+        checkpoint,
+        rebuild: false,
+        deleted: 0,
+      };
+    } finally {
       client.release();
     }
   }
