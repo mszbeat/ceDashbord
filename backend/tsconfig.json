@@ -10,10 +10,13 @@
     "target": "ES2021",
     "sourceMap": true,
     "outDir": "./dist",
+    "baseUrl": "./",
     "incremental": true,
+    "tsBuildInfoFile": "./dist/tsconfig.tsbuildinfo",
     "skipLibCheck": true,
     "strictNullChecks": false,
     "forceConsistentCasingInFileNames": false,
     "noImplicitAny": false
-  }
+  },
+  "include": ["src/**/*"]
 }

@@ -109,6 +109,7 @@ function bankDisplayName(key: BankKey): string {
 @Injectable()
 export class AdminService implements OnModuleInit {
   private jobs = new Map<string, AdminJobState>();
+  private cronTableReady = false;
 
   constructor(
     private readonly db: DatabaseService,
@@ -116,10 +117,18 @@ export class AdminService implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
-    await this.ensureCronTable();
+    try {
+      await this.ensureCronTable();
+    } catch (err: any) {
+      console.warn(
+        '[admin] دیتابیس هنگام بالا آمدن سرور در دسترس نبود؛ جدول cron_configs در اولین اتصال ساخته خواهد شد:',
+        err?.code || err?.message || err,
+      );
+    }
   }
 
   async ensureCronTable() {
+    if (this.cronTableReady) return;
     await this.db.query(`
       CREATE TABLE IF NOT EXISTS cron_configs (
         id                  TEXT PRIMARY KEY DEFAULT 'nightly_default',
@@ -146,6 +155,7 @@ export class AdminService implements OnModuleInit {
        ON CONFLICT (id) DO NOTHING`,
       [CRON_ID],
     );
+    this.cronTableReady = true;
   }
 
   private resolveBanks(banksInput?: string[] | 'all', singleBank?: string): BankKey[] {
