@@ -3,7 +3,8 @@
 /**
  * لایهٔ تطبیق HTTP برای partFramework:
  * - استخراج یکنواخت queryString، params، body و مشخصات کلاینت از protocolRef
- * - ساخت پاسخهای سفارشی HTML و خطاهای HTTP (400/404/503) با پشتیبانی هوشمند از HttpResult در partFramework
+ * - پشتیبانی از HttpResult بومی partFramework (از حوزهٔ کنترلر، ماژولها یا require.cache) برای ارسال مستقیم HTML/هدرها
+ * - ارسال خطاهای ساختیافته بدون دوبار JSON.stringify شدن در پوشش { data: ... } فریمورک
  */
 
 class HttpError extends Error {
@@ -40,36 +41,81 @@ class ConflictError extends HttpError {
   }
 }
 
-let cachedHttpResultClass;
+let registeredHttpResult = null;
+let registeredResult = null;
+let registeredBaseController = null;
+let cachedHttpResultClass = null;
+
+function registerFrameworkGlobals(globals = {}) {
+  if (typeof globals.HttpResult === 'function') {
+    registeredHttpResult = globals.HttpResult;
+    cachedHttpResultClass = globals.HttpResult;
+  }
+  if (globals.Result) registeredResult = globals.Result;
+  if (globals.BaseController) registeredBaseController = globals.BaseController;
+}
+
+function extractHttpResultFromExport(mod) {
+  if (!mod) return null;
+  if (typeof mod === 'function' && mod.name === 'HttpResult') return mod;
+  if (typeof mod.HttpResult === 'function') return mod.HttpResult;
+  if (typeof mod.default?.HttpResult === 'function') return mod.default.HttpResult;
+  if (typeof mod.result?.HttpResult === 'function') return mod.result.HttpResult;
+  if (typeof mod.response?.HttpResult === 'function') return mod.response.HttpResult;
+  return null;
+}
+
 function resolveHttpResultClass() {
-  if (cachedHttpResultClass !== undefined) return cachedHttpResultClass;
+  if (cachedHttpResultClass) return cachedHttpResultClass;
+  if (typeof registeredHttpResult === 'function') {
+    cachedHttpResultClass = registeredHttpResult;
+    return cachedHttpResultClass;
+  }
   if (typeof global.HttpResult === 'function') {
     cachedHttpResultClass = global.HttpResult;
     return cachedHttpResultClass;
   }
+  const fromBase = extractHttpResultFromExport(registeredBaseController);
+  if (fromBase) {
+    cachedHttpResultClass = fromBase;
+    return cachedHttpResultClass;
+  }
+
   const candidates = [
+    '@partFramework/baseController',
     '@partFramework/helper',
-    'partFramework',
     '@partFramework/http',
     '@partFramework/router',
     '@partFramework/baseServer',
+    '@partFramework/core',
+    '@partFramework/decorators',
+    'partFramework',
+    'partUtilities',
   ];
   for (const modName of candidates) {
     try {
-      const mod = require(modName);
-      if (typeof mod?.HttpResult === 'function') {
-        cachedHttpResultClass = mod.HttpResult;
-        return cachedHttpResultClass;
-      }
-      if (typeof mod === 'function' && mod.name === 'HttpResult') {
-        cachedHttpResultClass = mod;
+      const found = extractHttpResultFromExport(require(modName));
+      if (found) {
+        cachedHttpResultClass = found;
         return cachedHttpResultClass;
       }
     } catch {
       // ادامه به ماژول بعدی
     }
   }
-  cachedHttpResultClass = null;
+
+  // جستجو در ماژولهای بارگذاریشدهٔ فریمورک در require.cache
+  try {
+    for (const [cacheKey, modEntry] of Object.entries(require.cache || {})) {
+      if (!cacheKey.includes('partFramework') && !cacheKey.includes('partUtilities')) continue;
+      const found = extractHttpResultFromExport(modEntry?.exports);
+      if (found) {
+        cachedHttpResultClass = found;
+        return cachedHttpResultClass;
+      }
+    }
+  } catch {}
+
   return null;
 }
 
@@ -166,6 +212,66 @@ function applyResponseMeta(protocolRef, statusCode, headers) {
   }
 }
 
+function instantiateHttpResult(HttpResult, body, statusCode, headers, contentType) {
+  const src = Function.prototype.toString.call(HttpResult);
+  const ctorMatch =
+    src.match(/constructor\s*\(([^)]*)\)/) ||
+    src.match(/^function(?:\s+\w+)?\s*\(([^)]*)\)/);
+  const paramSig = (ctorMatch ? ctorMatch[1] : '').trim();
+
+  if (paramSig.startsWith('{')) {
+    return new HttpResult({
+      statusCode,
+      status: statusCode,
+      code: statusCode,
+      headers,
+      contentType,
+      type: contentType,
+      mimeType: contentType,
+      data: body,
+      body,
+      content: body,
+      result: body,
+    });
+  }
+
+  if (paramSig && paramSig.includes(',')) {
+    const paramNames = paramSig.split(',').map((s) => s.split('=')[0].trim().toLowerCase());
+    const args = paramNames.map((name, idx) => {
+      if (name.includes('status') || name === 'code') return statusCode;
+      if (name.includes('header')) return headers;
+      if (name.includes('type') || name.includes('mime')) return contentType;
+      if (
+        name.includes('data') ||
+        name.includes('body') ||
+        name.includes('content') ||
+        name.includes('result') ||
+        name.includes('payload') ||
+        idx === 0
+      ) {
+        return body;
+      }
+      return undefined;
+    });
+    return new HttpResult(...args);
+  }
+
+  // سازنده تکارگومانی یا ترنسپایلشده با arguments
+  if (/\.statusCode\b|\.headers\b|\.contentType\b/.test(src) && /=\s*\w+\.(statusCode|headers|contentType|data|body)/.test(src)) {
+    return new HttpResult({
+      statusCode,
+      status: statusCode,
+      headers,
+      contentType,
+      data: body,
+      body,
+      result: body,
+    });
+  }
+
+  return new HttpResult(body, statusCode, headers, contentType);
+}
+
 function buildCustomHttpResponse(protocolRef, body, statusCode = 200, headers = {}) {
   const contentType =
     headers['Content-Type'] || headers['content-type'] || 'application/json; charset=utf-8';
@@ -174,33 +280,13 @@ function buildCustomHttpResponse(protocolRef, body, statusCode = 200, headers = 
   const HttpResult = resolveHttpResultClass();
   if (typeof HttpResult === 'function') {
     try {
-      const src = Function.prototype.toString.call(HttpResult);
-      const ctorMatch = src.match(/constructor\s*\(([^)]*)\)/);
-      const paramSig = (ctorMatch ? ctorMatch[1] : '').trim();
-      // اگر سازنده شیء تنظیمات دریافت میکند (معمول در @partFramework/helper)
-      if (!paramSig || paramSig.startsWith('{') || !paramSig.includes(',')) {
-        return new HttpResult({
-          statusCode,
-          status: statusCode,
-          headers,
-          contentType,
-          data: body,
-          body,
-          result: body,
-        });
-      }
-      // اگر سازنده پارامترهای موقعیتی دارد، بر اساس نام پارامترها مقداردهی کن
-      const paramNames = paramSig.split(',').map((s) => s.split('=')[0].trim().toLowerCase());
-      const args = paramNames.map((name, idx) => {
-        if (name.includes('status') || name === 'code') return statusCode;
-        if (name.includes('header')) return headers;
-        if (name.includes('type') || name.includes('mime')) return contentType;
-        if (idx === 0) return body;
-        return undefined;
-      });
-      return new HttpResult(...args);
+      const payloadForHttpResult =
+        typeof body === 'object' && body !== null && !Buffer.isBuffer(body)
+          ? JSON.stringify(body)
+          : body;
+      return instantiateHttpResult(HttpResult, payloadForHttpResult, statusCode, headers, contentType);
     } catch {
-      // بازگشت به مقدار مستقیم در صورت تفاوت امضا
+      // بازگشت امن به مقدار مستقیم در صورت تفاوت امضا
     }
   }
   return body;
@@ -219,8 +305,7 @@ function sendNoStoreJson(protocolRef, payload, statusCode = 200) {
     Pragma: 'no-cache',
   });
   if (statusCode === 200) return payload;
-  const serialized = typeof payload === 'string' ? payload : JSON.stringify(payload);
-  return buildCustomHttpResponse(protocolRef, serialized, statusCode, {
+  return buildCustomHttpResponse(protocolRef, payload, statusCode, {
     'Content-Type': 'application/json; charset=utf-8',
     'Cache-Control': 'no-store, no-cache, must-revalidate',
   });
@@ -243,7 +328,7 @@ async function runJsonHandler(protocolRef, fn, options = {}) {
       };
     return buildCustomHttpResponse(
       protocolRef,
-      JSON.stringify(payload),
+      payload,
       statusCode,
       {
         'Content-Type': 'application/json; charset=utf-8',
@@ -258,6 +343,8 @@ module.exports = {
   BadRequestError,
   NotFoundError,
   ConflictError,
+  registerFrameworkGlobals,
+  resolveHttpResultClass,
   getQuery,
   getParams,
   getBody,
@@ -265,4 +352,7 @@ module.exports = {
   sendHtml,
   sendNoStoreJson,
   runJsonHandler,
+  get registeredResult() {
+    return registeredResult;
+  },
 };

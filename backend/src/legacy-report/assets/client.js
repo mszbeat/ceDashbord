@@ -120,7 +120,10 @@
     const url = `/api/sample/${encodeURIComponent(requestId)}`;
     const response = await fetch(url, { cache: 'no-store', headers: { accept: 'application/json' } });
     if (!response.ok) throw new Error(`دریافت جزئیات از API اصلی ناموفق بود (HTTP ${response.status}).`);
-    const payload = await response.json();
+    const raw = await response.json();
+    const payload = (raw && typeof raw === 'object' && !Array.isArray(raw) && raw.data && !raw.sample && typeof raw.data === 'object')
+      ? raw.data
+      : raw;
     if (!payload || !payload.meta || !payload.sample) throw new Error('پاسخ جزئیات معتبر نیست.');
     return payload;
   }

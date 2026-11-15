@@ -160,24 +160,44 @@ test('http-adapter extracts query, params, JSON body, HTML response, and HTTP er
     throw new BadRequestError('ورودی نامعتبر');
   });
   assert.equal(protocolRef.response.statusCode, 400);
-  assert.equal(JSON.parse(badRaw).message, 'ورودی نامعتبر');
+  const badObj = typeof badRaw === 'string' ? JSON.parse(badRaw) : badRaw;
+  assert.equal(badObj.message, 'ورودی نامعتبر');
 
   const notFoundRaw = await runJsonHandler(protocolRef, async () => {
     throw new NotFoundError('پیدا نشد');
   });
   assert.equal(protocolRef.response.statusCode, 404);
-  assert.equal(JSON.parse(notFoundRaw).statusCode, 404);
+  const notFoundObj = typeof notFoundRaw === 'string' ? JSON.parse(notFoundRaw) : notFoundRaw;
+  assert.equal(notFoundObj.statusCode, 404);
 
   const conflictRaw = await runJsonHandler(protocolRef, async () => {
     throw new ConflictError('تداخل اجرا');
   });
   assert.equal(protocolRef.response.statusCode, 409);
-  assert.equal(JSON.parse(conflictRaw).statusCode, 409);
+  const conflictObj = typeof conflictRaw === 'string' ? JSON.parse(conflictRaw) : conflictRaw;
+  assert.equal(conflictObj.statusCode, 409);
 
   const htmlOut = sendHtml(protocolRef, '<!doctype html><html><body>OK</body></html>');
   assert.equal(protocolRef.response.statusCode, 200);
   assert.match(mockHeaders['content-type'], /text\/html/);
   assert.equal(htmlOut, '<!doctype html><html><body>OK</body></html>');
+
+  // تست زمانی که HttpResult توسط لودر partFramework تزریق میشود
+  const { registerFrameworkGlobals } = require(path.join(ROOT, 'services', 'http-adapter'));
+  class MockHttpResult {
+    constructor(data, statusCode, headers, contentType) {
+      this.data = data;
+      this.statusCode = statusCode;
+      this.headers = headers;
+      this.contentType = contentType;
+    }
+  }
+  registerFrameworkGlobals({ HttpResult: MockHttpResult });
+  const wrappedHtml = sendHtml(protocolRef, '<!doctype html><html><body>RAW</body></html>', 200);
+  assert.equal(wrappedHtml instanceof MockHttpResult, true);
+  assert.equal(wrappedHtml.data, '<!doctype html><html><body>RAW</body></html>');
+  assert.equal(wrappedHtml.statusCode, 200);
+  assert.match(wrappedHtml.contentType, /text\/html/);
 });
 
 test('all controller main.js classes transpile and instantiate cleanly under decorator loader simulation and Program.js boots in order', async () => {

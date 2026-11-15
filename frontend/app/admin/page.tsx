@@ -107,6 +107,31 @@ function statusBadge(status?: string | null) {
   }
 }
 
+function unwrapPartEnvelope(raw: any): any {
+  let cur = raw;
+  if (
+    cur &&
+    typeof cur === 'object' &&
+    !Array.isArray(cur) &&
+    'data' in cur &&
+    cur.data !== undefined &&
+    !('serverClock' in cur) &&
+    !('hasExistingData' in cur) &&
+    !('schedule_mode' in cur) &&
+    !('totalSteps' in cur)
+  ) {
+    cur = cur.data;
+    if (typeof cur === 'string') {
+      try {
+        cur = JSON.parse(cur);
+      } catch {
+        // متن ساده خطا
+      }
+    }
+  }
+  return cur;
+}
+
 async function apiFetch<T = any>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     ...init,
@@ -119,14 +144,16 @@ async function apiFetch<T = any>(path: string, init?: RequestInit): Promise<T> {
   const text = await res.text();
   let data: any = null;
   try {
-    data = text ? JSON.parse(text) : null;
+    data = text ? unwrapPartEnvelope(JSON.parse(text)) : null;
   } catch {
     data = { message: text };
   }
   if (!res.ok) {
     const msg = Array.isArray(data?.message)
       ? data.message.join(' | ')
-      : data?.message || `خطای سرور (HTTP ${res.status})`;
+      : typeof data === 'string'
+        ? data
+        : data?.message || data?.error?.message || `خطای سرور (HTTP ${res.status})`;
     const err: any = new Error(msg);
     err.payload = data;
     err.status = res.status;

@@ -14,8 +14,32 @@ const errorPage = (title: string, detail: string, status?: number) => `<!doctype
 </style></head><body><main><h1>${escapeHtml(title)}</h1><p>${escapeHtml(detail)}</p>
 <pre>${escapeHtml(status ? `HTTP ${status}\n` : '')}${escapeHtml(detail)}</pre>
 <p>بررسی سریع: <a href="/api/diagnostics">گزارش تشخیصی دیتابیس</a> · <a href="/">تلاش دوباره</a></p>
-<p>اگر روی سیستم خودتان اجرا میکنید: <code>backend/.env</code>، <code>./migrate.sh</code>، <code>./ingest.sh</code> و <code>BACKEND_URL</code> در <code>frontend/.env.local</code> را بررسی کنید.</p>
+<p>اگر روی سیستم خودتان اجرا میکنید: <code>partFBackend/.env</code> (یا <code>backend/.env</code>)، <code>./migrate.sh</code>، <code>./ingest.sh</code> و <code>BACKEND_URL</code> در <code>frontend/.env.local</code> را بررسی کنید.</p>
 </main></body></html>`;
+
+/**
+ * استخراج رشتهٔ HTML در صورتی که پاسخ بکاند در پوشش استاندارد partFramework
+ * مثل {"data":"<!doctype html>..."} یا {"result":"<!doctype html>..."} قرار گرفته باشد.
+ */
+function extractHtmlDocument(rawBody: string): string | null {
+  const trimmed = rawBody.trimStart();
+  if (/^<!doctype\s+html\b|^<html\b/i.test(trimmed)) {
+    return rawBody;
+  }
+  if (trimmed.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      for (const candidate of [parsed?.data, parsed?.result, parsed?.body, parsed?.html]) {
+        if (typeof candidate === 'string' && /<!doctype\s+html\b|<html\b/i.test(candidate)) {
+          return candidate;
+        }
+      }
+    } catch {
+      // بدنه JSON معتبر نیست
+    }
+  }
+  return null;
+}
 
 /**
  * صفحهٔ زنده داشبورد: همان HTML قدیمی (render.js + style.css + client.js)
@@ -32,11 +56,17 @@ export async function GET(request: NextRequest) {
     const body = await response.text();
     const contentType = response.headers.get('content-type') || '';
 
-    // بکاند یا صفحهٔ خطای HTML خودش را داده یا HTML معمولی report را.
-    if (contentType.includes('text/html')) {
+    const extractedHtml = extractHtmlDocument(body);
+    if (extractedHtml !== null) {
+      return new Response(extractedHtml, { status: response.status, headers });
+    }
+
+    // اگر بکاند پاسخ HTML غیرمعمول ولی واقعاً text/html غیر JSON فرستاده باشد
+    if (contentType.includes('text/html') && !body.trimStart().startsWith('{')) {
       return new Response(body, { status: response.status, headers });
     }
-    // جلوی نمایش JSON خام {"statusCode":500,...} در مرورگر گرفته میشود.
+
+    // جلوی نمایش JSON خام در مرورگر گرفته میشود.
     return new Response(
       errorPage('پاسخ بکاند معتبر نیست', `پاسخ ${target.origin}/api/report بهجای HTML، ${contentType || 'بدون Content-Type'} بود.\n${body.slice(0, 1200)}`, response.status),
       { status: response.status, headers },

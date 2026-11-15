@@ -4,7 +4,18 @@ export async function api<T = any>(path: string): Promise<T> {
     const text = await response.text().catch(() => '');
     throw new Error(`خطا در ارتباط با بکاند (${response.status}): ${text.slice(0, 200)}`);
   }
-  return response.json();
+  const json = await response.json();
+  if (
+    json &&
+    typeof json === 'object' &&
+    !Array.isArray(json) &&
+    'data' in json &&
+    json.data !== undefined &&
+    Object.keys(json).every((k) => ['data', 'meta', 'status', 'statusCode', 'success'].includes(k))
+  ) {
+    return json.data as T;
+  }
+  return json as T;
 }
 
 export function qs(params: Record<string, string | number | undefined | null>) {

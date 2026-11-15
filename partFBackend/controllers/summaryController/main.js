@@ -1,5 +1,12 @@
 const BaseController = require('@partFramework/baseController');
+const { registerFrameworkGlobals } = require('../../services/http-adapter');
 const helpers = require('./helpers');
+
+registerFrameworkGlobals({
+  HttpResult: typeof HttpResult !== 'undefined' ? HttpResult : undefined,
+  Result: typeof Result !== 'undefined' ? Result : undefined,
+  BaseController,
+});
 
 class SummaryController extends BaseController {
   @Route('/api/health')
