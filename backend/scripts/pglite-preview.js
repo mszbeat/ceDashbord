@@ -16,11 +16,11 @@ const { AppModule } = require('../dist/app.module');
 const { DatabaseService } = require('../dist/db/database.service');
 const { EvaluatorService } = require('../dist/evaluator/evaluator.service');
 
-const ROOT = path.join(__dirname, '..', '..', '..');
+const REPO_ROOT = path.join(__dirname, '..', '..');
 const SAMPLES = {
-  tavan_mellat: path.join(ROOT, 'ceDashbord', 'samples', 'mellat.json'),
-  tavan_resalat: path.join(ROOT, 'ceDashbord', 'samples', 's.json'),
-  tavan_postbank: path.join(ROOT, 'ceDashbord', 'samples', 'postbank.json'),
+  tavan_mellat: path.join(REPO_ROOT, 'samples', 'mellat.json'),
+  tavan_resalat: path.join(REPO_ROOT, 'samples', 's.json'),
+  tavan_postbank: path.join(REPO_ROOT, 'samples', 'postbank.json'),
 };
 const TABLES = {
   tavan_mellat: 'samples_mellat',
@@ -37,13 +37,46 @@ const JSON_COLUMNS = new Set(['flags', 'cats', 'counters', 'metrics', 'paths', '
 
 function clone(value) { return JSON.parse(JSON.stringify(value)); }
 
+const BASE_SAMPLES = {
+  tavan_mellat: JSON.parse(fs.readFileSync(SAMPLES.tavan_mellat, 'utf8')),
+  tavan_resalat: JSON.parse(fs.readFileSync(SAMPLES.tavan_resalat, 'utf8')),
+  tavan_postbank: JSON.parse(fs.readFileSync(SAMPLES.tavan_postbank, 'utf8')),
+};
+
+function buildMockDatasetForDay(dayDigits, rawByRequestId) {
+  const cleanDigits = String(dayDigits || '14050818').replace(/\D/g, '').slice(0, 8) || '14050818';
+  const all = [];
+  for (const [bankKey, base] of Object.entries(BASE_SAMPLES)) {
+    const variants = [
+      ['a', `${cleanDigits}090000001`, '0012345678', null],
+      ['b', `${cleanDigits}100000002`, '0012345679', null],
+      ['c', `${cleanDigits}110000003`, '0099887766', { statusCode: '500', message: { fa: 'شناسه یکتا تکراری است!', en: 'duplicate UniqueKey!' } }],
+    ];
+    for (const [suffix, stamp, natCode, override] of variants) {
+      const raw = clone(base);
+      raw.requestId = `${bankKey}-${cleanDigits}-${suffix}`;
+      if (raw.input && typeof raw.input === 'object') {
+        raw.input.uniqueKey = `${bankKey}-uk-${cleanDigits}-${suffix}`;
+        raw.input.nationalCode = natCode;
+      }
+      raw.insertDate_full = stamp;
+      raw.insertDate_yearMonthDay = cleanDigits;
+      if (override?.message) raw.output.message = override.message;
+      if (override?.statusCode) raw.output.statusCode = override.statusCode;
+      rawByRequestId.set(raw.requestId, raw);
+      all.push(raw);
+    }
+  }
+  return all;
+}
+
 async function seed(pg, evaluator) {
   const schema = fs.readFileSync(path.join(__dirname, '..', 'src', 'db', 'schema.sql'), 'utf8');
   await pg.exec(schema);
   const rawByRequestId = new Map();
   const day = '1405-08-18';
   for (const [bankKey, table] of Object.entries(TABLES)) {
-    const base = JSON.parse(fs.readFileSync(SAMPLES[bankKey], 'utf8'));
+    const base = BASE_SAMPLES[bankKey];
     const variants = [
       ['a', '14050818090000001', null],
       ['b', '14050818100000002', null],
@@ -55,13 +88,14 @@ async function seed(pg, evaluator) {
       raw.requestId = `${bankKey}-${suffix}`;
       if (raw.input && typeof raw.input === 'object') raw.input.uniqueKey = `${bankKey}-uk-${suffix}`;
       raw.insertDate_full = stamp;
+      raw.insertDate_yearMonthDay = '14050818';
       if (override?.message) raw.output.message = override.message;
       if (override?.statusCode) raw.output.statusCode = override.statusCode;
       const normalized = evaluator.normalizeSample(raw);
       const ok = evaluator.isReportSuccess(normalized);
       const row = evaluator.evaluate(normalized, ok, day, bankKey);
       rows.push(row);
-      rawByRequestId.set(row.request_id, raw);
+      rawByRequestId.set(row.requestId, raw);
     }
     const values = [];
     const params = [];
@@ -74,7 +108,7 @@ async function seed(pg, evaluator) {
       }
     });
     await pg.query(`INSERT INTO ${table} (${UPSERT_COLUMNS.join(',')}) VALUES ${values.join(',')}
-      ON CONFLICT (request_id) DO NOTHING`, params);
+      ON CONFLICT (day, request_id) DO NOTHING`, params);
     await pg.query(`INSERT INTO day_runs(bank,day,mode,status,source_total,ingested_count,success_count,fail_count,
       skipped_count,checkpoint,analysis_version,started_at,finished_at)
       VALUES($1,$2,'nightly','complete',$3,$3,$4,$5,0,$3,$6,now(),now())
@@ -114,10 +148,36 @@ function dbWrapper(pg) {
   app.enableCors({ origin: true, credentials: false });
   const express = app.getHttpAdapter().getInstance();
   express.get('/api/mock-report', (req, res) => {
-    const requestId = String(req.query.requestId || '');
-    const raw = rawByRequestId.get(requestId) || rawByRequestId.values().next().value;
+    const requestId = String(req.query.requestId || '').trim();
+    const uniqueKey = String(req.query.uniqueKey || '').trim();
+    const nationalCode = String(req.query.nationalCode || '').trim();
+    const status = String(req.query.status || '').trim();
+    const dateParam = String(req.query.date || '').trim();
+    const page = Math.max(1, Number(req.query.page || 1));
+    const limit = Math.max(1, Number(req.query.limit || 50));
+
+    // حالت نمونهٔ تکی برای دکمهٔ مشاهده جزئیات خام در داشبورد
+    if (requestId && rawByRequestId.has(requestId) && !dateParam && !req.query.page) {
+      res.set('Cache-Control', 'no-store');
+      return res.json({ data: { count: 1, reportResults: [rawByRequestId.get(requestId)] } });
+    }
+
+    let pool = dateParam
+      ? buildMockDatasetForDay(dateParam, rawByRequestId)
+      : [
+          ...buildMockDatasetForDay('14050818', rawByRequestId),
+          ...buildMockDatasetForDay('14050822', rawByRequestId),
+        ];
+
+    if (requestId) pool = pool.filter((r) => String(r.requestId || '') === requestId);
+    if (uniqueKey) pool = pool.filter((r) => String(r.input?.uniqueKey || '') === uniqueKey);
+    if (nationalCode) pool = pool.filter((r) => String(r.input?.nationalCode || '') === nationalCode);
+    if (status) pool = pool.filter((r) => String(r.output?.statusCode || '') === status);
+
+    const start = (page - 1) * limit;
+    const slice = pool.slice(start, start + limit);
     res.set('Cache-Control', 'no-store');
-    res.json({ data: { reportResults: [raw] } });
+    return res.json({ data: { count: pool.length, reportResults: slice } });
   });
   await app.listen(3000, '0.0.0.0');
   console.log('✅ PGlite live preview: http://0.0.0.0:3000/api/report?bank=tavan_resalat');

@@ -21,8 +21,10 @@ const CONTROL_CSS = `
 .ce-live-bar label{display:inline-flex;align-items:center;gap:5px;white-space:nowrap;font-weight:700;color:var(--ink)}
 .ce-live-bar select,.ce-live-bar input{border:1px solid var(--line);border-radius:8px;background:var(--surface-2);color:var(--ink);padding:5px 8px;min-height:32px;font:inherit}
 .ce-live-bar input{direction:ltr;text-align:left;width:112px}
-.ce-live-bar button{border:1px solid var(--line);border-radius:8px;background:var(--accent-soft);color:var(--accent-strong);padding:5px 12px;min-height:32px;font:inherit;font-weight:700}
+.ce-live-bar button{border:1px solid var(--line);border-radius:8px;background:var(--accent-soft);color:var(--accent-strong);padding:5px 12px;min-height:32px;font:inherit;font-weight:700;cursor:pointer}
 .ce-live-bar button:hover{background:var(--accent);color:#fff}
+.ce-admin-link{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);border-radius:8px;background:var(--surface-2);color:var(--ink);padding:5px 12px;min-height:32px;text-decoration:none;font-weight:700;transition:all .15s}
+.ce-admin-link:hover{border-color:var(--accent);color:var(--accent-strong);background:var(--accent-soft)}
 .ce-live-status{margin-inline-start:auto;color:var(--subtle);font-size:11px}
 @media (max-width:720px){.ce-live-status{width:100%;margin-inline-start:0}}
 </style>`;
@@ -46,6 +48,7 @@ function controlsHtml(controls = {}) {
     <label for="ce-to">تا روز</label><input id="ce-to" name="to" value="${h(to)}" placeholder="1405-08-19" inputmode="numeric" maxlength="10">
     <input type="hidden" name="rowsCap" value="${h(rowsCap)}">
     <button type="submit">⟳ بروزرسانی</button>
+    <a href="/admin" class="ce-admin-link">⚙ پنل مدیریت</a>
     ${note ? `<span class="ce-live-status">${note}</span>` : ''}
   </form></div>`;
 }
