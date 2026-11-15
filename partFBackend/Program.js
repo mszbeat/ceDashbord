@@ -1,7 +1,6 @@
 const PartFramework = require('partFramework');
 const { getServices } = require('./services/container');
 const { config } = require('./services/config');
-const AuthService = require('./controllers/auth/auth.service')
 
 class Program {
   #core;
@@ -16,17 +15,22 @@ class Program {
     this.#servers = this.#config.servers;
   }
 
-  #loadManualControllers() { }
+  #loadManualControllers() {}
 
   async #loadDependencies() {
-    this.#core.loader.loadResolver('authService', './controllers/auth/auth.service', undefined, { resolveConfig: true })
+    this.#core.loader.loadResolver(
+      'authService',
+      './controllers/auth/auth.service',
+      undefined,
+      { resolveConfig: true },
+    );
     const services = getServices();
     await services.init();
 
     const shutdown = async () => {
       try {
         await services.close();
-      } catch { }
+      } catch {}
     };
     process.once('SIGINT', shutdown);
     process.once('SIGTERM', shutdown);

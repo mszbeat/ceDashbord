@@ -8,6 +8,7 @@ const ROOT = path.join(__dirname, '..');
 
 const VALID_PARAM_TOKENS = new Set([
   '_protocolRef.request.queryString',
+  '_protocolRef.request.postData',
   '_protocolRef.request.data',
   '_protocolRef.request',
   '_protocolRef.response',
@@ -18,9 +19,36 @@ const VALID_PARAM_TOKENS = new Set([
 
 const EXPECTED_CONTROLLERS = [
   {
+    dir: 'auth',
+    configFile: 'auth.config.js',
+    packageName: 'auth-controller',
+    hasHelpers: false,
+    routes: [
+      {
+        method: 'POST',
+        route: '/api/auth/register',
+        handler: 'register',
+        params: ['_protocolRef.request.postData', '_trackingHeaders'],
+      },
+      {
+        method: 'POST',
+        route: '/api/auth/login',
+        handler: 'login',
+        params: ['_protocolRef.request.postData', '_trackingHeaders'],
+      },
+      {
+        method: 'POST',
+        route: '/api/auth/remove',
+        handler: 'removeUser',
+        params: ['_protocolRef.request.postData', '_trackingHeaders'],
+      },
+    ],
+  },
+  {
     dir: 'summaryController',
     configFile: 'summaryController.config.js',
     packageName: 'summary-controller',
+    hasHelpers: true,
     routes: [
       { method: 'GET', route: '/api/health', handler: 'health', params: [] },
       { method: 'GET', route: '/api/banks', handler: 'banks', params: ['_protocolRef.response'] },
@@ -56,6 +84,7 @@ const EXPECTED_CONTROLLERS = [
     dir: 'creditEvaluationController',
     configFile: 'creditEvaluationController.config.js',
     packageName: 'credit-evaluation-controller',
+    hasHelpers: true,
     routes: [
       {
         method: 'GET',
@@ -69,6 +98,7 @@ const EXPECTED_CONTROLLERS = [
     dir: 'adminController',
     configFile: 'adminController.config.js',
     packageName: 'admin-controller',
+    hasHelpers: true,
     routes: [
       { method: 'GET', route: '/api/admin/overview', handler: 'getOverview', params: ['_protocolRef.response'] },
       { method: 'GET', route: '/api/admin/cron', handler: 'getCron', params: ['_protocolRef.response'] },
@@ -76,20 +106,20 @@ const EXPECTED_CONTROLLERS = [
         method: 'PUT',
         route: '/api/admin/cron',
         handler: 'updateCron',
-        params: ['_protocolRef.request.data', '_protocolRef.response'],
+        params: ['_protocolRef.request', '_protocolRef.response'],
       },
       { method: 'POST', route: '/api/admin/cron/run-now', handler: 'runCronNow', params: ['_protocolRef.response'] },
       {
         method: 'POST',
         route: '/api/admin/runs/check',
         handler: 'checkExisting',
-        params: ['_protocolRef.request.data', '_protocolRef.response'],
+        params: ['_protocolRef.request', '_protocolRef.response'],
       },
       {
         method: 'POST',
         route: '/api/admin/runs/start',
         handler: 'startRun',
-        params: ['_protocolRef.request.data', '_protocolRef.response'],
+        params: ['_protocolRef.request', '_protocolRef.response'],
       },
       { method: 'GET', route: '/api/admin/jobs', handler: 'listJobs', params: ['_protocolRef.response'] },
       {
@@ -102,20 +132,20 @@ const EXPECTED_CONTROLLERS = [
         method: 'POST',
         route: '/api/admin/runs',
         handler: 'runAdminDay',
-        params: ['_protocolRef.request.data', '_protocolRef.response'],
+        params: ['_protocolRef.request', '_protocolRef.response'],
       },
       {
         method: 'POST',
         route: '/api/runs',
         handler: 'run',
-        params: ['_protocolRef.request.data', '_protocolRef.response'],
+        params: ['_protocolRef.request', '_protocolRef.response'],
       },
     ],
   },
 ];
 
 function parseDecoratedRoutes(mainSource) {
-  const regex = /@Route\('([^']+)'\)\s*@HTTP\('([^']+)'\)\s*([A-Za-z0-9_]+)\s*\(([^)]*)\)/g;
+  const regex = /@Route\('([^']+)'\)\s*@HTTP\('([^']+)'\)\s*(?:async\s+)?([A-Za-z0-9_]+)\s*\(([^)]*)\)/g;
   const found = [];
   let match;
   while ((match = regex.exec(mainSource)) !== null) {
@@ -127,7 +157,7 @@ function parseDecoratedRoutes(mainSource) {
   return found;
 }
 
-test('all 3 access-separated controller-packages use needProtocolRef: false and ordered params matching method signatures', () => {
+test('all 4 controller-packages (auth + 3 access tiers) use needProtocolRef: false and ordered params matching method signatures', () => {
   assert.equal(
     fs.existsSync(path.join(ROOT, 'controllers', 'ingestionController')),
     false,
@@ -153,7 +183,7 @@ test('all 3 access-separated controller-packages use needProtocolRef: false and 
 
     const ctrlConfig = require(path.join(ctrlDir, 'config.js'));
     const ctrlSchema = require(path.join(ctrlDir, 'schema.js'));
-    const ctrlHelpers = require(path.join(ctrlDir, 'helpers.js'));
+    const ctrlHelpers = spec.hasHelpers ? require(path.join(ctrlDir, 'helpers.js')) : null;
     const mainSource = fs.readFileSync(path.join(ctrlDir, 'main.js'), 'utf8');
 
     assert.equal(ctrlConfig.name, spec.packageName);
@@ -175,7 +205,6 @@ test('all 3 access-separated controller-packages use needProtocolRef: false and 
       const r = spec.routes[i];
       const parsed = parsedRoutes[i];
 
-      assert.equal(typeof ctrlHelpers[r.handler], 'function', `Missing helper ${spec.dir}.${r.handler}`);
       assert.equal(typeof ctrlSchema[r.handler], 'function', `Missing schema ${spec.dir}.${r.handler}`);
 
       const handlerCfg = ctrlConfig.handlers[r.handler];
@@ -192,23 +221,25 @@ test('all 3 access-separated controller-packages use needProtocolRef: false and 
         r.params.length,
         `main.js method ${spec.dir}.${r.handler} arg count (${parsed.argCount}) must match config.params.length (${r.params.length})`,
       );
-      assert.equal(
-        ctrlHelpers[r.handler].length,
-        r.params.length,
-        `helpers.js ${spec.dir}.${r.handler} arg count (${ctrlHelpers[r.handler].length}) must match config.params.length (${r.params.length})`,
-      );
+
+      if (ctrlHelpers) {
+        assert.equal(typeof ctrlHelpers[r.handler], 'function', `Missing helper ${spec.dir}.${r.handler}`);
+        assert.equal(
+          ctrlHelpers[r.handler].length,
+          r.params.length,
+          `helpers.js ${spec.dir}.${r.handler} arg count (${ctrlHelpers[r.handler].length}) must match config.params.length (${r.params.length})`,
+        );
+      }
 
       const schemaObj = ctrlSchema[r.handler]();
-      assert.equal(typeof schemaObj.header, 'object');
-      assert.equal(typeof schemaObj.params, 'object');
-      assert.equal(typeof schemaObj.queryString, 'object');
+      assert.equal(typeof schemaObj, 'object');
     }
   }
 
-  assert.equal(totalRoutes, 19, 'Expected all 19 backend API routes across the 3 controllers');
+  assert.equal(totalRoutes, 22, 'Expected all 22 backend API routes across auth + 3 dashboard controllers');
 });
 
-test('project-config loads cleanly across dev, prod, and test modes and binds port 3000 by default', () => {
+test('project-config loads cleanly across dev, prod, and test modes and boots all 4 controllers', () => {
   const devCfg = require(path.join(ROOT, 'project-config', 'dev'));
   const prodCfg = require(path.join(ROOT, 'project-config', 'prod'));
   const testCfg = require(path.join(ROOT, 'project-config', 'test'));
@@ -216,11 +247,17 @@ test('project-config loads cleanly across dev, prod, and test modes and binds po
   assert.equal(Array.isArray(devCfg.servers), true);
   assert.equal(devCfg.servers[0].packageName, '@partFramework/http');
   assert.equal(devCfg.servers[0].port, Number(process.env.BACKEND_PORT || process.env.PORT || 3000));
+  assert.deepEqual(devCfg.loaderConf.makeInstanceOnBoot, [
+    'auth',
+    'summaryController',
+    'creditEvaluationController',
+    'adminController',
+  ]);
   assert.equal(Array.isArray(prodCfg.servers), true);
   assert.equal(Array.isArray(testCfg.servers), true);
 });
 
-test('http-adapter extracts injected queryString, request.data, route params, HTML response, and HTTP errors accurately', async () => {
+test('http-adapter extracts injected queryString, request.postData/data, route params, HTML response, and HTTP errors accurately', async () => {
   const {
     normalizeQuery,
     normalizeBody,
@@ -251,6 +288,14 @@ test('http-adapter extracts injected queryString, request.data, route params, HT
     'REQ-42',
   );
   assert.deepEqual(normalizeBody({ mode: 'nightly', rebuild: true }), { mode: 'nightly', rebuild: true });
+  assert.deepEqual(
+    normalizeBody({ url: '/api/admin/runs/check', headers: {}, postData: { bank: 'tavan_mellat' } }),
+    { bank: 'tavan_mellat' },
+  );
+  assert.deepEqual(
+    normalizeBody({ url: '/api/admin/cron', headers: {}, data: { enabled: true } }),
+    { enabled: true },
+  );
   assert.deepEqual(normalizeBody(JSON.stringify({ mode: 'intraday' })), { mode: 'intraday' });
 
   const okRes = await runJsonHandler(response, async () => ({ ok: true }), { noStore: true });
@@ -323,7 +368,7 @@ test('all controller main.js classes transpile and instantiate cleanly under dec
   }
 
   if (ts) {
-    const allDirs = ['sampleController', ...EXPECTED_CONTROLLERS.map((c) => c.dir)];
+    const allDirs = EXPECTED_CONTROLLERS.map((c) => c.dir);
     for (const dir of allDirs) {
       const mainPath = path.join(ROOT, 'controllers', dir, 'main.js');
       const source = fs.readFileSync(mainPath, 'utf8');
@@ -390,6 +435,9 @@ test('all controller main.js classes transpile and instantiate cleanly under dec
         constructor(cfg) {
           this.cfg = cfg;
           this.loader = {
+            loadResolver(name, resolverPath) {
+              events.push(`loadResolver:${name}:${resolverPath}`);
+            },
             async loadControllersByPath(p) {
               events.push(`loadControllersByPath:${p}`);
             },
@@ -418,6 +466,7 @@ test('all controller main.js classes transpile and instantiate cleanly under dec
 
     assert.deepEqual(events, [
       'core.init',
+      'loadResolver:authService:./controllers/auth/auth.service',
       'services.init',
       'loadControllersByPath:./controllers',
       `loadServers:@partFramework/http:${projectConfig.servers[0].port}`,

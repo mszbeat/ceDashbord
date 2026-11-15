@@ -1,25 +1,27 @@
 module.exports = {
-  name: 'my-controller',
+  name: 'auth-controller',
   path: './main.js',
   handlers: {
     register: {
       needProtocolRef: false,
       params: [
         '_protocolRef.request.postData',
-        '_trackingHeaders'
+        '_trackingHeaders',
       ],
     },
     login: {
       needProtocolRef: false,
-      params: ['_protocolRef.request.postData']
+      params: [
+        '_protocolRef.request.postData',
+        '_trackingHeaders',
+      ],
     },
-    http_sendStream: {
+    removeUser: {
       needProtocolRef: false,
       params: [
-        '_protocolRef.request',
-        '_protocolRef.response',
-        '_inputData'
+        '_protocolRef.request.postData',
+        '_trackingHeaders',
       ],
-    }
-  }
-};   
+    },
+  },
+};

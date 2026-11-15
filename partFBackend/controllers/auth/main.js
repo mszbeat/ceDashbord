@@ -1,12 +1,11 @@
 const BaseController = require('@partFramework/baseController');
 
-exports.controller = class MyController extends BaseController {
+class AuthController extends BaseController {
   /**
    * @param {Core} core
    * @param {Schema} schema
    * @param {Config} config
-   * @param {Dependency1} dependency1
-   * @param {Dependency2} dependency2
+   * @param {AuthService} authService
    */
   constructor(core, schema, config, authService) {
     super(core, schema, config);
@@ -18,9 +17,24 @@ exports.controller = class MyController extends BaseController {
   async register(postData, trackingHeaders) {
     return await this.authService.addAuthEntry(postData, trackingHeaders);
   }
-};
 
-exports.introduceToLoader = BaseController.exportedProperties(
-  require('./schema'),
-  require('./config')
-);
+  @Route('/api/auth/login')
+  @HTTP('POST')
+  async login(postData, trackingHeaders) {
+    return await this.authService.authenticate(postData, trackingHeaders);
+  }
+
+  @Route('/api/auth/remove')
+  @HTTP('POST')
+  async removeUser(postData, trackingHeaders) {
+    return await this.authService.removeUser(postData, trackingHeaders);
+  }
+}
+
+module.exports = {
+  controller: AuthController,
+  introduceToLoader: BaseController.exportedProperties(
+    require('./schema'),
+    require('./config')
+  ),
+};

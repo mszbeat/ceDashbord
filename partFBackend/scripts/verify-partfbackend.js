@@ -84,6 +84,7 @@ function invokeWithConfigParams(ctrlConfig, ctrlHelpers, handlerName, { url = '/
     url,
     queryString,
     params,
+    postData: data,
     data,
     ip: '127.0.0.1',
     headers: { 'user-agent': 'partFBackend-test-suite' },
@@ -97,6 +98,7 @@ function invokeWithConfigParams(ctrlConfig, ctrlHelpers, handlerName, { url = '/
 
   const tokenMap = {
     '_protocolRef.request.queryString': queryString,
+    '_protocolRef.request.postData': data,
     '_protocolRef.request.data': data,
     '_protocolRef.request': request,
     '_protocolRef.response': response,

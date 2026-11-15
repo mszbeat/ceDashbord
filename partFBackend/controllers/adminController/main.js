@@ -27,8 +27,8 @@ class AdminController extends BaseController {
 
   @Route('/api/admin/cron')
   @HTTP('PUT')
-  updateCron(data, response) {
-    return helpers.updateCron(data, response);
+  updateCron(request, response) {
+    return helpers.updateCron(request, response);
   }
 
   @Route('/api/admin/cron/run-now')
@@ -39,14 +39,14 @@ class AdminController extends BaseController {
 
   @Route('/api/admin/runs/check')
   @HTTP('POST')
-  checkExisting(data, response) {
-    return helpers.checkExisting(data, response);
+  checkExisting(request, response) {
+    return helpers.checkExisting(request, response);
   }
 
   @Route('/api/admin/runs/start')
   @HTTP('POST')
-  startRun(data, response) {
-    return helpers.startRun(data, response);
+  startRun(request, response) {
+    return helpers.startRun(request, response);
   }
 
   @Route('/api/admin/jobs')
@@ -63,14 +63,14 @@ class AdminController extends BaseController {
 
   @Route('/api/admin/runs')
   @HTTP('POST')
-  runAdminDay(data, response) {
-    return helpers.runAdminDay(data, response);
+  runAdminDay(request, response) {
+    return helpers.runAdminDay(request, response);
   }
 
   @Route('/api/runs')
   @HTTP('POST')
-  run(data, response) {
-    return helpers.run(data, response);
+  run(request, response) {
+    return helpers.run(request, response);
   }
 }
 

@@ -1,6 +1,11 @@
 module.exports = {
   getConfigFrom: {
-    CCS: false
+    CCS: false,
   },
-  makeInstanceOnBoot: ['auth']
+  makeInstanceOnBoot: [
+    'auth',
+    'summaryController',
+    'creditEvaluationController',
+    'adminController',
+  ],
 };

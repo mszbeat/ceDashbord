@@ -8,8 +8,8 @@ const {
 } = require('../../services/http-adapter');
 const { tehranToday, tehranYesterday } = require('../../services/utils/date');
 
-async function executeDirectDayRun(data) {
-  const body = normalizeBody(data);
+async function executeDirectDayRun(requestOrBody) {
+  const body = normalizeBody(requestOrBody);
   const mode = body.mode === 'intraday' ? 'intraday' : 'nightly';
   const rebuild = body.rebuild === true;
   if (rebuild && !body.day) {
@@ -30,9 +30,9 @@ exports.getCron = function (response) {
   return runJsonHandler(response, () => getServices().admin.getCronConfig(), { noStore: true });
 };
 
-exports.updateCron = function (data, response) {
+exports.updateCron = function (request, response) {
   return runJsonHandler(response, () => {
-    const body = normalizeBody(data);
+    const body = normalizeBody(request);
     return getServices().admin.updateCronConfig(body);
   });
 };
@@ -41,16 +41,16 @@ exports.runCronNow = function (response) {
   return runJsonHandler(response, () => getServices().admin.triggerCronExecution('cron_manual'));
 };
 
-exports.checkExisting = function (data, response) {
+exports.checkExisting = function (request, response) {
   return runJsonHandler(response, () => {
-    const body = normalizeBody(data);
+    const body = normalizeBody(request);
     return getServices().admin.checkExistingData(body);
   });
 };
 
-exports.startRun = function (data, response) {
+exports.startRun = function (request, response) {
   return runJsonHandler(response, () => {
-    const body = normalizeBody(data);
+    const body = normalizeBody(request);
     return getServices().admin.startManualRun(body);
   });
 };
@@ -70,10 +70,10 @@ exports.getJob = function (request, response, inputData) {
   );
 };
 
-exports.runAdminDay = function (data, response) {
-  return runJsonHandler(response, () => executeDirectDayRun(data));
+exports.runAdminDay = function (request, response) {
+  return runJsonHandler(response, () => executeDirectDayRun(request));
 };
 
-exports.run = function (data, response) {
-  return runJsonHandler(response, () => executeDirectDayRun(data));
+exports.run = function (request, response) {
+  return runJsonHandler(response, () => executeDirectDayRun(request));
 };

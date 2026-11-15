@@ -161,9 +161,12 @@ function normalizeBody(data) {
     }
   }
   if (typeof data === 'object') {
-    // در صورتی که کل request بهجای request.data پاس داده شده باشد
-    if (('data' in data || 'body' in data) && ('url' in data || 'headers' in data)) {
-      return normalizeBody(data.data ?? data.body);
+    // در صورتی که کل _protocolRef.request پاس داده شده باشد (پشتیبانی همزمان از postData، putData، data و body)
+    if (
+      ('postData' in data || 'putData' in data || 'data' in data || 'body' in data) &&
+      ('url' in data || 'headers' in data || 'method' in data || 'queryString' in data)
+    ) {
+      return normalizeBody(data.postData ?? data.putData ?? data.data ?? data.body);
     }
     return data;
   }

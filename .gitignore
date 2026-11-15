@@ -14,6 +14,8 @@ logs/
 *.tsbuildinfo
 .DS_Store
 coverage/
+*.transpiled.min.js
+*.transpiled.min.js.map
 # خروجیهای تست تطبیق و بایگانی UI قبلی (تحویل داده نمیشوند)
 backend/test-data/*.html
 frontend/tailwind-page.tsx.bak

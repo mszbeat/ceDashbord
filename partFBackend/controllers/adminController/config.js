@@ -12,7 +12,7 @@ module.exports = {
     },
     updateCron: {
       needProtocolRef: false,
-      params: ['_protocolRef.request.data', '_protocolRef.response'],
+      params: ['_protocolRef.request', '_protocolRef.response'],
     },
     runCronNow: {
       needProtocolRef: false,
@@ -20,11 +20,11 @@ module.exports = {
     },
     checkExisting: {
       needProtocolRef: false,
-      params: ['_protocolRef.request.data', '_protocolRef.response'],
+      params: ['_protocolRef.request', '_protocolRef.response'],
     },
     startRun: {
       needProtocolRef: false,
-      params: ['_protocolRef.request.data', '_protocolRef.response'],
+      params: ['_protocolRef.request', '_protocolRef.response'],
     },
     listJobs: {
       needProtocolRef: false,
@@ -36,11 +36,11 @@ module.exports = {
     },
     runAdminDay: {
       needProtocolRef: false,
-      params: ['_protocolRef.request.data', '_protocolRef.response'],
+      params: ['_protocolRef.request', '_protocolRef.response'],
     },
     run: {
       needProtocolRef: false,
-      params: ['_protocolRef.request.data', '_protocolRef.response'],
+      params: ['_protocolRef.request', '_protocolRef.response'],
     },
   },
 };
