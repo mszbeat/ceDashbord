@@ -3,9 +3,11 @@
 const { getServices } = require('../../services/container');
 const { sendHtml } = require('../../services/http/result');
 const { readQuery } = require('../../services/http/request');
+const { requireAuthenticatedSession } = require('../../services/http/session-guard');
+const { error: summaryError } = require('./config');
 
 /**
- * سطح دسترسی ۱ — کاربر عادی (`visitor`/کاربر عادی):
+ * سطح دسترسی ۱ — کاربر دارای سشن احرازشده:
  * صفحهٔ اول داشبورد، تحلیل‌های کلی، متادیتای بانک‌ها و گزارش HTML زنده.
  */
 
@@ -22,16 +24,19 @@ exports.health = function () {
   };
 };
 
-exports.banks = function () {
+exports.banks = async function (session) {
+  await requireAuthenticatedSession(session, () => summaryError.sessionRequired);
   return getSummaryService().banks();
 };
 
-exports.specs = function (queryString) {
+exports.specs = async function (queryString, session) {
+  await requireAuthenticatedSession(session, () => summaryError.sessionRequired);
   const query = readQuery(queryString);
   return getSummaryService().specs(query.bank || 'tavan_mellat');
 };
 
-exports.report = async function (queryString, response) {
+exports.report = async function (queryString, response, session) {
+  await requireAuthenticatedSession(session, () => summaryError.sessionRequired);
   const query = readQuery(queryString);
   const bank = query.bank || 'tavan_mellat';
   const rowsCap = query.rowsCap ? Number(query.rowsCap) : 100;
@@ -43,16 +48,19 @@ exports.report = async function (queryString, response) {
   }
 };
 
-exports.diagnostics = function () {
+exports.diagnostics = async function (session) {
+  await requireAuthenticatedSession(session, () => summaryError.sessionRequired);
   return getSummaryService().diagnostics();
 };
 
-exports.summary = function (queryString) {
+exports.summary = async function (queryString, session) {
+  await requireAuthenticatedSession(session, () => summaryError.sessionRequired);
   const query = readQuery(queryString);
   return getSummaryService().summary(query.bank || 'tavan_mellat', query.from || undefined, query.to || undefined);
 };
 
-exports.list = function (queryString) {
+exports.list = async function (queryString, session) {
+  await requireAuthenticatedSession(session, () => summaryError.sessionRequired);
   const query = readQuery(queryString);
   return getSummaryService().list({
     bank: query.bank || 'tavan_mellat',
@@ -68,6 +76,7 @@ exports.list = function (queryString) {
   });
 };
 
-exports.runs = function () {
+exports.runs = async function (session) {
+  await requireAuthenticatedSession(session, () => summaryError.sessionRequired);
   return getSummaryService().runs();
 };

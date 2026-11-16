@@ -11,17 +11,27 @@ module.exports = {
   },
   handlers: {
     getOverview: { needProtocolRef: false, params: ['_session'] },
-    getCron: { needProtocolRef: false, params: [] },
+    getCron: { needProtocolRef: false, params: ['_session'] },
     updateCron: { needProtocolRef: false, params: ['_protocolRef.request.data', '_session'] },
     runCronNow: { needProtocolRef: false, params: ['_session'] },
-    checkExisting: { needProtocolRef: false, params: ['_protocolRef.request.data'] },
+    checkExisting: { needProtocolRef: false, params: ['_protocolRef.request.data', '_session'] },
     startRun: { needProtocolRef: false, params: ['_protocolRef.request.data', '_session'] },
-    listJobs: { needProtocolRef: false, params: [] },
-    getJob: { needProtocolRef: false, params: ['_protocolRef.request', '_inputData'] },
-    runAdminDay: { needProtocolRef: false, params: ['_protocolRef.request.data'] },
-    run: { needProtocolRef: false, params: ['_protocolRef.request.data'] },
+    listJobs: { needProtocolRef: false, params: ['_session'] },
+    getJob: { needProtocolRef: false, params: ['_protocolRef.request', '_inputData', '_session'] },
+    runAdminDay: { needProtocolRef: false, params: ['_protocolRef.request.data', '_session'] },
+    run: { needProtocolRef: false, params: ['_protocolRef.request.data', '_session'] },
   },
   error: {
+    sessionRequired: {
+      meta: errorInfo('sessionRequired'),
+      data: {
+        message: {
+          fa: 'برای دسترسی به پنل مدیریت ابتدا وارد حساب کاربری شوید',
+          en: 'authentication session is required',
+        },
+      },
+      statusCode: 401,
+    },
     rebuildRequiresExplicitDay: {
       meta: errorInfo('rebuildRequiresExplicitDay'),
       data: {

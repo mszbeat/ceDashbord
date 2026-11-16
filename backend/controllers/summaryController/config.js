@@ -11,15 +11,28 @@ module.exports = {
   },
   handlers: {
     health: { needProtocolRef: false, params: [] },
-    banks: { needProtocolRef: false, params: [] },
-    specs: { needProtocolRef: false, params: ['_protocolRef.request.queryString'] },
-    report: { needProtocolRef: false, params: ['_protocolRef.request.queryString', '_protocolRef.response'] },
-    diagnostics: { needProtocolRef: false, params: [] },
-    summary: { needProtocolRef: false, params: ['_protocolRef.request.queryString'] },
-    list: { needProtocolRef: false, params: ['_protocolRef.request.queryString'] },
-    runs: { needProtocolRef: false, params: [] },
+    banks: { needProtocolRef: false, params: ['_session'] },
+    specs: { needProtocolRef: false, params: ['_protocolRef.request.queryString', '_session'] },
+    report: {
+      needProtocolRef: false,
+      params: ['_protocolRef.request.queryString', '_protocolRef.response', '_session'],
+    },
+    diagnostics: { needProtocolRef: false, params: ['_session'] },
+    summary: { needProtocolRef: false, params: ['_protocolRef.request.queryString', '_session'] },
+    list: { needProtocolRef: false, params: ['_protocolRef.request.queryString', '_session'] },
+    runs: { needProtocolRef: false, params: ['_session'] },
   },
   error: {
+    sessionRequired: {
+      meta: errorInfo('sessionRequired'),
+      data: {
+        message: {
+          fa: 'برای مشاهدهٔ داشبورد ابتدا وارد حساب کاربری شوید',
+          en: 'authentication session is required',
+        },
+      },
+      statusCode: 401,
+    },
     unsupportedBank: function (bank) {
       return {
         meta: errorInfo('unsupportedBank'),

@@ -62,11 +62,40 @@ function appendSetCookieHeaders(source: Headers, dest: Headers) {
   }
 }
 
+function redirectToLoginResponse(request: NextRequest, reason?: string, sourceHeaders?: Headers) {
+  const search = request.nextUrl.search || '';
+  const nextPath = `/${search}`;
+  const sp = new URLSearchParams();
+  if (search) sp.set('next', nextPath);
+  if (reason) sp.set('reason', reason);
+  const qs = sp.toString();
+
+  const forwardedHost = request.headers.get('x-forwarded-host');
+  const host = forwardedHost?.split(',')[0].trim() || request.headers.get('host');
+  const forwardedProto = request.headers.get('x-forwarded-proto');
+  const proto = forwardedProto?.split(',')[0].trim() || request.nextUrl.protocol.replace(/:$/, '') || 'http';
+  const origin = host ? `${proto}://${host}` : request.nextUrl.origin;
+
+  const headers = new Headers({
+    location: new URL(qs ? `/login?${qs}` : '/login', origin).toString(),
+    'cache-control': 'no-store',
+  });
+  if (sourceHeaders) {
+    appendSetCookieHeaders(sourceHeaders, headers);
+  }
+  return new Response(null, { status: 307, headers });
+}
+
 /**
  * صفحهٔ زنده داشبورد: همان HTML قدیمی (render.js + style.css + client.js)
  * در لحظه از بکاند گرفته میشود و کوکی‌های نشست/رفرش‌توکن بکاند را حفظ میکند.
  */
 export async function GET(request: NextRequest) {
+  const cookieHeader = request.headers.get('cookie') || '';
+  if (!cookieHeader.trim()) {
+    return redirectToLoginResponse(request);
+  }
+
   const backendUrl = process.env.BACKEND_URL || 'http://127.0.0.1:3000';
   const target = new URL('/api/report', backendUrl);
   request.nextUrl.searchParams.forEach((value, key) => {
@@ -99,6 +128,10 @@ export async function GET(request: NextRequest) {
     });
     appendSetCookieHeaders(response.headers, headers);
 
+    if (response.status === 401) {
+      return redirectToLoginResponse(request, 'expired', response.headers);
+    }
+
     const body = await response.text();
     const contentType = response.headers.get('content-type') || '';
 
@@ -112,7 +145,7 @@ export async function GET(request: NextRequest) {
     }
 
     const hintTitle =
-      response.status === 401 || response.status === 403
+      response.status === 403
         ? 'دسترسی به داشبورد مجاز نیست'
         : 'پاسخ بکاند معتبر نیست';
     return new Response(

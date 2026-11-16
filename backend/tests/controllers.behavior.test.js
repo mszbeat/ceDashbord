@@ -213,7 +213,15 @@ test('auth-controller: register/login/refresh/logout/me/role/removeUser با ت�
   assert.match(String(logoutCall.response.headers['set-cookie'][0]), /Max-Age=0/);
   assert.equal((await invoke(controller, authConfig, 'me', { session }).promise).authenticated, false);
 
-  // remove → حذف از اصالت‌سنجی، سمد و ابطال رفرش‌توکن‌ها
+  // پس از logout سشن خالی است؛ عملیات removeUser بدون سشن باید ۴۰۱ بدهد
+  await assert.rejects(
+    () => invoke(controller, authConfig, 'removeUser', { data: { username: 'ali' }, session }).promise,
+    (err) => err.statusCode === 401,
+  );
+
+  // با سشن ادمین معتبر، removeUser کاربر را از اصالت‌سنجی و سمد حذف و رفرش‌توکن‌ها را باطل می‌کند
+  sessionStore.samadUsername = 'ali';
+  sessionStore.roles = ['admin'];
   const removeOut = await invoke(controller, authConfig, 'removeUser', {
     data: { username: 'ali' },
     session,
@@ -325,7 +333,11 @@ test('admin-controller: همهٔ ۱۰ هندلر با تزریق _session و dat
 
     assert.equal((await invoke(controller, config, 'runCronNow', { session: { samadUsername: 'adm' } }).promise).id, 'job-1');
     assert.equal((await invoke(controller, config, 'checkExisting', { data: { banks: ['tavan_mellat'] } }).promise).hasExistingData, true);
-    assert.equal((await invoke(controller, config, 'startRun', { data: { banks: ['tavan_mellat'] }, session: {} }).promise).id, 'job-1');
+    await assert.rejects(
+      () => invoke(controller, config, 'startRun', { data: { banks: ['tavan_mellat'] }, session: {} }).promise,
+      (err) => err.statusCode === 401,
+    );
+    assert.equal((await invoke(controller, config, 'startRun', { data: { banks: ['tavan_mellat'] }, session: { samadUsername: 'adm' } }).promise).id, 'job-1');
     assert.equal((await invoke(controller, config, 'listJobs').promise).length, 1);
 
     const job = await invoke(controller, config, 'getJob', { url: '/api/admin/jobs/job-1', params: { id: 'job-1' } }).promise;
@@ -405,6 +417,83 @@ test('http/result.js: نبود HttpResult در فریم‌ورک باعث باز
   assert.equal(r2.data, '<html>b</html>');
   assert.equal(r2.statusCode, 503);
   assert.equal(r2.headers['Content-Type'], 'text/html');
+});
+
+test('session-guard: تمام روت‌های داشبورد/جزئیات/مدیریت بدون سشن احرازشده (visitor یا خالی) خطای ۴۰۱ می‌دهند و از session.get پشتیبانی می‌کنند', async () => {
+  const { controller: SummaryController } = require(path.join(ROOT, 'controllers', 'summaryController', 'main.js'));
+  const summaryConfig = require(path.join(ROOT, 'controllers', 'summaryController', 'config.js'));
+  const summaryCtrl = new SummaryController({}, {}, summaryConfig);
+
+  const { controller: CEController } = require(path.join(ROOT, 'controllers', 'creditEvaluationController', 'main.js'));
+  const ceConfig = require(path.join(ROOT, 'controllers', 'creditEvaluationController', 'config.js'));
+  const ceCtrl = new CEController({}, {}, ceConfig);
+
+  const { controller: AdminController } = require(path.join(ROOT, 'controllers', 'adminController', 'main.js'));
+  const adminConfig = require(path.join(ROOT, 'controllers', 'adminController', 'config.js'));
+  const adminCtrl = new AdminController({}, {}, adminConfig);
+
+  const { controller: AuthController } = require(path.join(ROOT, 'controllers', 'auth', 'main.js'));
+  const authConfig = require(path.join(ROOT, 'controllers', 'auth', 'config.js'));
+  const SessionManager = require(path.join(ROOT, 'controllers', 'auth', 'session-manager'));
+  const authCtrl = new AuthController({}, {}, authConfig, {}, new SessionManager({ useMemoryOnly: true }), {});
+
+  const callbackVisitorSession = {
+    get(keys, cb) {
+      cb(null, { samadUsername: 'visitor', roles: ['visitor'] });
+    },
+  };
+  const callbackAdminSession = {
+    get(keys, cb) {
+      cb(null, { samadUsername: 'real-admin', roles: ['admin'] });
+    },
+  };
+
+  // health همچنان بدون سشن مجاز است
+  assert.equal((await invoke(summaryCtrl, summaryConfig, 'health', { session: callbackVisitorSession }).promise).ok, true);
+
+  for (const [ctrl, cfg, handler, extra] of [
+    [summaryCtrl, summaryConfig, 'banks', {}],
+    [summaryCtrl, summaryConfig, 'specs', { queryString: { bank: 'tavan_mellat' } }],
+    [summaryCtrl, summaryConfig, 'report', { queryString: { bank: 'tavan_mellat' } }],
+    [summaryCtrl, summaryConfig, 'diagnostics', {}],
+    [summaryCtrl, summaryConfig, 'summary', { queryString: { bank: 'tavan_mellat' } }],
+    [summaryCtrl, summaryConfig, 'list', { queryString: { bank: 'tavan_mellat' } }],
+    [summaryCtrl, summaryConfig, 'runs', {}],
+    [ceCtrl, ceConfig, 'sample', { url: '/api/sample/m-1', params: { requestId: 'm-1' } }],
+    [adminCtrl, adminConfig, 'getOverview', {}],
+    [adminCtrl, adminConfig, 'getCron', {}],
+    [adminCtrl, adminConfig, 'updateCron', { data: { enabled: true } }],
+    [adminCtrl, adminConfig, 'runCronNow', {}],
+    [adminCtrl, adminConfig, 'checkExisting', { data: { banks: ['tavan_mellat'] } }],
+    [adminCtrl, adminConfig, 'startRun', { data: { banks: ['tavan_mellat'] } }],
+    [adminCtrl, adminConfig, 'listJobs', {}],
+    [adminCtrl, adminConfig, 'getJob', { url: '/api/admin/jobs/job-1', params: { id: 'job-1' } }],
+    [adminCtrl, adminConfig, 'runAdminDay', { data: { bank: 'tavan_mellat' } }],
+    [adminCtrl, adminConfig, 'run', { data: { bank: 'tavan_mellat' } }],
+    [authCtrl, authConfig, 'assignRole', { data: { username: 'ali', role: 'admin' } }],
+    [authCtrl, authConfig, 'getRole', { queryString: { username: 'ali' } }],
+    [authCtrl, authConfig, 'removeUser', { data: { username: 'ali' } }],
+  ]) {
+    await assert.rejects(
+      () => invoke(ctrl, cfg, handler, { ...extra, session: callbackVisitorSession }).promise,
+      (err) => err.statusCode === 401,
+      `${cfg.name}.${handler} must reject visitor session with 401`,
+    );
+  }
+
+  // سشن callback-based معتبر (مثل خروجی واقعی partSessionManager) باید پذیرفته شود
+  container.setServicesForTest({
+    summary: fakeSummaryService(),
+    admin: fakeAdminService(),
+  });
+  try {
+    const overview = await invoke(adminCtrl, adminConfig, 'getOverview', { session: callbackAdminSession }).promise;
+    assert.equal(overview.actor, 'real-admin');
+    const banks = await invoke(summaryCtrl, summaryConfig, 'banks', { session: callbackAdminSession }).promise;
+    assert.equal(banks.length, 3);
+  } finally {
+    container.setServicesForTest(undefined);
+  }
 });
 
 test.after(() => restore());

@@ -2,11 +2,12 @@
 
 const { getServices } = require('../../services/container');
 const { readBody, readRouteParam } = require('../../services/http/request');
+const { requireAuthenticatedSession } = require('../../services/http/session-guard');
 const { error: adminError } = require('./config');
 const { tehranToday, tehranYesterday } = require('../../services/utils/date');
 
 /**
- * سطح دسترسی ۳ — فقط نقش `admin`:
+ * سطح دسترسی ۳ — فقط نقش `admin` (با الزام سشن معتبر):
  * پنل مدیریت، زمان‌بند کران شبانه (Asia/Tehran) و اجرای دریافت گزارش‌ها.
  *
  * همهٔ مسیرهای این کنترلر در `routes.js` با `.checkAccess(true)` محافظت می‌شوند،
@@ -15,10 +16,6 @@ const { tehranToday, tehranYesterday } = require('../../services/utils/date');
 
 function getAdminService() {
   return getServices().admin;
-}
-
-function actorOf(session) {
-  return session?.samadUsername || 'unknown';
 }
 
 /**
@@ -38,44 +35,54 @@ async function executeDirectDayRun(body) {
   });
 }
 
-exports.getOverview = function (session) {
-  return getAdminService().getOverview({ actor: actorOf(session) });
+exports.getOverview = async function (session) {
+  const actor = await requireAuthenticatedSession(session, () => adminError.sessionRequired);
+  return getAdminService().getOverview({ actor: actor.username });
 };
 
-exports.getCron = function () {
+exports.getCron = async function (session) {
+  await requireAuthenticatedSession(session, () => adminError.sessionRequired);
   return getAdminService().getCronConfig();
 };
 
-exports.updateCron = function (body, session) {
-  return getAdminService().updateCronConfig(readBody(body), { actor: actorOf(session) });
+exports.updateCron = async function (body, session) {
+  const actor = await requireAuthenticatedSession(session, () => adminError.sessionRequired);
+  return getAdminService().updateCronConfig(readBody(body), { actor: actor.username });
 };
 
-exports.runCronNow = function (session) {
-  return getAdminService().triggerCronExecution('cron_manual', undefined, { actor: actorOf(session) });
+exports.runCronNow = async function (session) {
+  const actor = await requireAuthenticatedSession(session, () => adminError.sessionRequired);
+  return getAdminService().triggerCronExecution('cron_manual', undefined, { actor: actor.username });
 };
 
-exports.checkExisting = function (body) {
+exports.checkExisting = async function (body, session) {
+  await requireAuthenticatedSession(session, () => adminError.sessionRequired);
   return getAdminService().checkExistingData(readBody(body));
 };
 
-exports.startRun = function (body, session) {
-  return getAdminService().startManualRun(readBody(body), { actor: actorOf(session) });
+exports.startRun = async function (body, session) {
+  const actor = await requireAuthenticatedSession(session, () => adminError.sessionRequired);
+  return getAdminService().startManualRun(readBody(body), { actor: actor.username });
 };
 
-exports.listJobs = function () {
+exports.listJobs = async function (session) {
+  await requireAuthenticatedSession(session, () => adminError.sessionRequired);
   return getAdminService().listJobs(20);
 };
 
-exports.getJob = function (request, inputData) {
+exports.getJob = async function (request, inputData, session) {
+  await requireAuthenticatedSession(session, () => adminError.sessionRequired);
   const jobId = readRouteParam(request, inputData, 'id', /\/api\/admin\/jobs\/([^/?#]+)/);
   if (!jobId) throw adminError.jobNotFound(jobId);
   return getAdminService().getJob(jobId);
 };
 
-exports.runAdminDay = function (body) {
+exports.runAdminDay = async function (body, session) {
+  await requireAuthenticatedSession(session, () => adminError.sessionRequired);
   return executeDirectDayRun(body);
 };
 
-exports.run = function (body) {
+exports.run = async function (body, session) {
+  await requireAuthenticatedSession(session, () => adminError.sessionRequired);
   return executeDirectDayRun(body);
 };

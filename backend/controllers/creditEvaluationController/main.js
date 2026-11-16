@@ -20,8 +20,8 @@ exports.controller = class CreditEvaluationController extends BaseController {
   }
 
   /** GET /api/sample/:requestId */
-  sample(request, inputData) {
-    return helpers.sample(request, inputData);
+  sample(request, inputData, session) {
+    return helpers.sample(request, inputData, session);
   }
 };
 

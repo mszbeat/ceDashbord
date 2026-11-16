@@ -221,6 +221,7 @@ test('legacy-report: خروجی HTML شامل نوار وضعیت احراز ه�
   assert.match(html, /BroadcastChannel\('ce-auth'\)/);
   assert.match(html, /navigator\.locks/);
   assert.match(html, /\/login\?next=/);
+  assert.match(html, /redirectToLogin/);
 });
 
 test('SamadService: تخصیص/خواندن/حذف نقش + rollback هنگام خطای setRole', async () => {

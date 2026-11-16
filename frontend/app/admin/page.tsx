@@ -235,6 +235,7 @@ export default function AdminPage() {
           window.location.replace('/login?next=%2Fadmin&reason=expired');
         }
       },
+      { requireSession: true },
     );
   }, []);
 

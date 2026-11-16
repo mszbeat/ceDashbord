@@ -12,10 +12,20 @@ module.exports = {
   handlers: {
     sample: {
       needProtocolRef: false,
-      params: ['_protocolRef.request', '_inputData'],
+      params: ['_protocolRef.request', '_inputData', '_session'],
     },
   },
   error: {
+    sessionRequired: {
+      meta: errorInfo('sessionRequired'),
+      data: {
+        message: {
+          fa: 'برای مشاهدهٔ جزئیات گزارش ابتدا وارد حساب کاربری شوید',
+          en: 'authentication session is required',
+        },
+      },
+      statusCode: 401,
+    },
     requestIdRequired: {
       meta: errorInfo('requestIdRequired'),
       data: {

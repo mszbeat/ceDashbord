@@ -322,10 +322,12 @@ export async function authFetch(input: string, init?: RequestInit): Promise<Resp
 export function startSessionKeepalive(
   onUpdate: (state: AuthSessionState) => void,
   onExpired?: () => void,
+  options: { requireSession?: boolean } = {},
 ): () => void {
   let stopped = false;
   let timerId: number | null = null;
   let lastAuthenticated = false;
+  const requireSession = Boolean(options.requireSession);
 
   const scheduleNext = (state: AuthSessionState) => {
     if (timerId !== null) {
@@ -357,7 +359,7 @@ export function startSessionKeepalive(
         window.clearInterval(timerId);
         timerId = null;
       }
-      if (lastAuthenticated) {
+      if (lastAuthenticated || requireSession) {
         lastAuthenticated = false;
         onExpired?.();
       }

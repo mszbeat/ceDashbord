@@ -124,9 +124,7 @@ export default function LoginPage() {
         const target =
           nextPath !== '/'
             ? nextPath
-            : auth.roles.includes('admin')
-              ? '/admin'
-              : '/';
+            : '/';
         window.location.assign(target);
       }
     } catch (err: any) {
@@ -183,7 +181,7 @@ export default function LoginPage() {
     <div className="lgn-root" dir="rtl">
       <div className="lgn-container">
         <header className="lgn-topbar">
-          <a href="/" className="lgn-brand">
+          <a href={sessionState?.authenticated ? '/' : '/login'} className="lgn-brand">
             <span className="lgn-brand-mark" aria-hidden="true">
               <svg viewBox="0 0 40 40" fill="none">
                 <path d="M20 3 37 20 20 37 3 20 20 3Z" stroke="currentColor" strokeWidth="1.5" />
@@ -197,9 +195,11 @@ export default function LoginPage() {
           </a>
 
           <div className="lgn-actions">
-            <a className="lgn-btn" href="/">
-              ← بازگشت به داشبورد زنده
-            </a>
+            {sessionState?.authenticated && (
+              <a className="lgn-btn" href="/">
+                ← بازگشت به داشبورد زنده
+              </a>
+            )}
             <button type="button" className="lgn-btn" onClick={toggleTheme}>
               {theme === 'light' ? '☾ حالت تیره' : '☀ حالت روشن'}
             </button>
@@ -372,9 +372,7 @@ export default function LoginPage() {
 
                 <div className="lgn-foot-links">
                   <span>احراز هویت یکپارچه با سرویس اصالت‌سنجی و سمد</span>
-                  <a href="/" style={{ color: 'var(--login-accent-strong)', fontWeight: 700, textDecoration: 'none' }}>
-                    ادامه با دسترسی عمومی ↗
-                  </a>
+                  <span>مشاهدهٔ داشبورد نیازمند ورود است</span>
                 </div>
               </div>
             )}

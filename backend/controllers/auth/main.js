@@ -1,5 +1,6 @@
 const BaseController = require('@partFramework/baseController');
 const { readBody, readQuery, readClientMeta } = require('../../services/http/request');
+const { requireAuthenticatedSession } = require('../../services/http/session-guard');
 const { error: authError } = require('./config');
 
 exports.controller = class AuthController extends BaseController {
@@ -159,6 +160,7 @@ exports.controller = class AuthController extends BaseController {
   }
 
   async assignRole(body, session) {
+    await requireAuthenticatedSession(session, () => authError.unauthorizedSession);
     const payload = readBody(body);
     if (!payload.username || !payload.role) throw authError.roleRequired;
 
@@ -175,7 +177,8 @@ exports.controller = class AuthController extends BaseController {
     return { status: 'ok', username: payload.username, roles };
   }
 
-  async getRole(queryString) {
+  async getRole(queryString, session) {
+    await requireAuthenticatedSession(session, () => authError.unauthorizedSession);
     const query = readQuery(queryString);
     if (!query.username) throw authError.usernameRequired;
     const roles = await this.samadService.getRole(query.username);
@@ -183,6 +186,7 @@ exports.controller = class AuthController extends BaseController {
   }
 
   async removeUser(body, trackingHeaders, session, response) {
+    await requireAuthenticatedSession(session, () => authError.unauthorizedSession);
     const payload = readBody(body);
     if (!payload.username) throw authError.usernameRequired;
 

@@ -4,7 +4,7 @@ const BaseController = require('@partFramework/baseController');
 const helpers = require('./helpers');
 
 /**
- * سطح دسترسی ۳ — فقط نقش `admin` (اعمال گارد توسط سمد):
+ * سطح دسترسی ۳ — فقط نقش `admin` (با الزام سشن معتبر و گارد سمد):
  * پنل مدیریت، زمان‌بند خودکار کران شبانه و اجرای دریافت گزارش‌ها (Ingestion).
  *
  * پارامترهای تزریقی هر هندلر در `config.js` (params) و مسیرها در `routes.js` تعریف شده‌اند.
@@ -25,8 +25,8 @@ exports.controller = class AdminController extends BaseController {
   }
 
   /** GET /api/admin/cron */
-  getCron() {
-    return helpers.getCron();
+  getCron(session) {
+    return helpers.getCron(session);
   }
 
   /** PUT /api/admin/cron */
@@ -40,8 +40,8 @@ exports.controller = class AdminController extends BaseController {
   }
 
   /** POST /api/admin/runs/check */
-  checkExisting(body) {
-    return helpers.checkExisting(body);
+  checkExisting(body, session) {
+    return helpers.checkExisting(body, session);
   }
 
   /** POST /api/admin/runs/start */
@@ -50,23 +50,23 @@ exports.controller = class AdminController extends BaseController {
   }
 
   /** GET /api/admin/jobs */
-  listJobs() {
-    return helpers.listJobs();
+  listJobs(session) {
+    return helpers.listJobs(session);
   }
 
   /** GET /api/admin/jobs/:id */
-  getJob(request, inputData) {
-    return helpers.getJob(request, inputData);
+  getJob(request, inputData, session) {
+    return helpers.getJob(request, inputData, session);
   }
 
   /** POST /api/admin/runs */
-  runAdminDay(body) {
-    return helpers.runAdminDay(body);
+  runAdminDay(body, session) {
+    return helpers.runAdminDay(body, session);
   }
 
   /** POST /api/runs */
-  run(body) {
-    return helpers.run(body);
+  run(body, session) {
+    return helpers.run(body, session);
   }
 };
 

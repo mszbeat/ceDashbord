@@ -4,12 +4,11 @@ const BaseController = require('@partFramework/baseController');
 const helpers = require('./helpers');
 
 /**
- * سطح دسترسی ۱ — کاربر عادی (عمومی):
- * مشاهدهٔ صفحهٔ اول داشبورد و تحلیل‌های کلی.
+ * سطح دسترسی ۱ — کاربر دارای سشن احرازشده:
+ * مشاهدهٔ صفحهٔ اول داشبورد و تحلیل‌های کلی (به‌جز `/api/health` که عمومی است).
  *
  * مسیرها در `routes.js` و پارامترهای تزریقی در `config.js` تعریف شده‌اند
- * (`needProtocolRef: false`). خروجی ساده توسط `@partFramework/http` در پوشش
- * `{ "data": ... }` برگردانده می‌شود؛ برای HTML زنده از `sendHtml` (HttpResult) استفاده می‌شود.
+ * (`needProtocolRef: false`).
  */
 exports.controller = class SummaryController extends BaseController {
   /**
@@ -27,38 +26,38 @@ exports.controller = class SummaryController extends BaseController {
   }
 
   /** GET /api/banks */
-  banks() {
-    return helpers.banks();
+  banks(session) {
+    return helpers.banks(session);
   }
 
   /** GET /api/specs?bank=... */
-  specs(queryString) {
-    return helpers.specs(queryString);
+  specs(queryString, session) {
+    return helpers.specs(queryString, session);
   }
 
   /** GET /api/report?bank=...&from=...&to=... (HTML) */
-  report(queryString, response) {
-    return helpers.report(queryString, response);
+  report(queryString, response, session) {
+    return helpers.report(queryString, response, session);
   }
 
   /** GET /api/diagnostics */
-  diagnostics() {
-    return helpers.diagnostics();
+  diagnostics(session) {
+    return helpers.diagnostics(session);
   }
 
   /** GET /api/summary?bank=...&from=...&to=... */
-  summary(queryString) {
-    return helpers.summary(queryString);
+  summary(queryString, session) {
+    return helpers.summary(queryString, session);
   }
 
   /** GET /api/list?bank=... */
-  list(queryString) {
-    return helpers.list(queryString);
+  list(queryString, session) {
+    return helpers.list(queryString, session);
   }
 
   /** GET /api/runs */
-  runs() {
-    return helpers.runs();
+  runs(session) {
+    return helpers.runs(session);
   }
 };
 

@@ -42,7 +42,7 @@ module.exports = {
     },
     getRole: {
       needProtocolRef: false,
-      params: ['_protocolRef.request.queryString'],
+      params: ['_protocolRef.request.queryString', '_session'],
     },
     removeUser: {
       needProtocolRef: false,

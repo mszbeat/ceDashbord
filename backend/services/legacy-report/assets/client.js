@@ -20,7 +20,22 @@
   let authState = null;
   let refreshInFlight = null;
   let keepaliveTimer = null;
+  let redirectingToLogin = false;
   const authChannel = typeof BroadcastChannel === 'function' ? new BroadcastChannel('ce-auth') : null;
+
+  function redirectToLogin(reason) {
+    if (redirectingToLogin) return;
+    redirectingToLogin = true;
+    stopKeepalive();
+    const currentPath = `${window.location.pathname || '/'}${window.location.search || ''}`;
+    const sp = new URLSearchParams();
+    if (currentPath && currentPath !== '/login') {
+      sp.set('next', currentPath);
+    }
+    if (reason) sp.set('reason', reason);
+    const qs = sp.toString();
+    window.location.replace(qs ? `/login?${qs}` : '/login');
+  }
 
   function unwrapEnvelope(raw) {
     if (
@@ -159,6 +174,7 @@
         } catch {
           // ignore
         }
+        redirectToLogin();
       });
 
       container.append(chip, logoutBtn);
@@ -206,6 +222,7 @@
         scheduleKeepalive(me);
       } else {
         stopKeepalive();
+        redirectToLogin('expired');
       }
     }
     return authState;
@@ -219,6 +236,7 @@
         authState = { authenticated: false, username: 'visitor', roles: ['visitor'], canRefresh: false };
         stopKeepalive();
         renderAuthBar(authState);
+        redirectToLogin();
       } else if (msg.type === 'refreshed' || msg.type === 'login') {
         if (msg.auth) {
           authState = msg.auth;
@@ -360,6 +378,13 @@
         response = await doFetch();
       }
     }
+    if (response.status === 401) {
+      stopKeepalive();
+      redirectToLogin('expired');
+      const err = new Error('نشست کاربری شما منقضی شده است؛ در حال انتقال به صفحه ورود…');
+      err.status = 401;
+      throw err;
+    }
 
     let raw = null;
     try {
@@ -402,7 +427,12 @@
       const html = window.renderSampleViewer(payload, theme);
       win.document.open(); win.document.write(html); win.document.close();
     } catch (error) {
-      const isForbidden = error && (error.status === 403 || error.status === 401);
+      if (error && error.status === 401) {
+        try { win.close(); } catch { /* ignore */ }
+        redirectToLogin('expired');
+        return;
+      }
+      const isForbidden = error && error.status === 403;
       const origin = window.location.origin && window.location.origin !== 'null' ? window.location.origin : '';
       const escAttr = (s) => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
       const loginHref = escAttr(`${origin}/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`);
