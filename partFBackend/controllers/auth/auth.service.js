@@ -1,6 +1,4 @@
 class AuthService {
-  #user = process.env.PART_AUTH_USERNAME;
-  #pass = process.env.PART_AUTH_PASS;
   #system = process.env.PART_AUTH_SYSTEM;
   #status = 'Active';
 
@@ -8,23 +6,12 @@ class AuthService {
     partAuthenticationInterface,
     partRequest,
     partLogger,
+    sessionManager
   ) {
     this.partRequest = partRequest;
     this.logger = partLogger;
-    this.partAuth = partAuthenticationInterface;
     this.partAuthenticationInterface = partAuthenticationInterface;
-  }
-
-  #normalizeBody(body) {
-    if (!body) return {};
-    if (typeof body === 'string') {
-      try {
-        return JSON.parse(body);
-      } catch {
-        return {};
-      }
-    }
-    return typeof body === 'object' ? body : {};
+    this.sessionManager = sessionManager;
   }
 
   #rethrowAuthError(err, fallbackFa, fallbackEn) {
@@ -47,7 +34,7 @@ class AuthService {
   }
 
   async addAuthEntry(body, trackingHeaders) {
-    const { username, password } = this.#normalizeBody(body);
+    const { username, password } = body;
     if (!username || !password) {
       throw {
         statusCode: 400,
@@ -94,7 +81,7 @@ class AuthService {
   }
 
   async authenticate(body, trackingHeaders) {
-    const { username, password } = this.#normalizeBody(body);
+    const { username, password } = body;
     if (!username || !password) {
       throw {
         statusCode: 400,
@@ -165,7 +152,7 @@ class AuthService {
     const parsed =
       typeof body === 'string' && !body.trim().startsWith('{')
         ? { username: body.trim() }
-        : this.#normalizeBody(body);
+        : body;
     const { username } = parsed;
 
     if (!username) {

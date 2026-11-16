@@ -1,6 +1,7 @@
 const PartFramework = require('partFramework');
 const { getServices } = require('./services/container');
 const { config } = require('./services/config');
+const SessionManager = require('./controllers/auth/session-manager');
 
 class Program {
   #core;
@@ -24,6 +25,9 @@ class Program {
       undefined,
       { resolveConfig: true },
     );
+    
+    this.#core.loader.load('sessionManager',SessionManager);
+
     const services = getServices();
     await services.init();
 

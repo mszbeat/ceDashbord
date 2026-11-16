@@ -7,6 +7,7 @@ module.exports = {
       params: [
         '_protocolRef.request.postData',
         '_trackingHeaders',
+        '_session'
       ],
     },
     login: {
@@ -14,6 +15,7 @@ module.exports = {
       params: [
         '_protocolRef.request.postData',
         '_trackingHeaders',
+        '_session'
       ],
     },
     removeUser: {
@@ -21,6 +23,7 @@ module.exports = {
       params: [
         '_protocolRef.request.postData',
         '_trackingHeaders',
+        '_session'
       ],
     },
   },

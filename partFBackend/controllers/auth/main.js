@@ -14,20 +14,20 @@ class AuthController extends BaseController {
 
   @Route('/api/auth/register')
   @HTTP('POST')
-  async register(postData, trackingHeaders) {
-    return await this.authService.addAuthEntry(postData, trackingHeaders);
+  async register(postData, trackingHeaders, session) {
+    return await this.authService.addAuthEntry(postData, trackingHeaders, session);
   }
 
   @Route('/api/auth/login')
   @HTTP('POST')
-  async login(postData, trackingHeaders) {
-    return await this.authService.authenticate(postData, trackingHeaders);
+  async login(postData, trackingHeaders, session) {
+    return await this.authService.authenticate(postData, trackingHeaders, session);
   }
 
   @Route('/api/auth/remove')
   @HTTP('POST')
-  async removeUser(postData, trackingHeaders) {
-    return await this.authService.removeUser(postData, trackingHeaders);
+  async removeUser(postData, trackingHeaders, session) {
+    return await this.authService.removeUser(postData, trackingHeaders, session);
   }
 }
 
