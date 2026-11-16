@@ -1,112 +1,66 @@
+const { error: authError } = require('./config');
+
 /**
- * ماژول مدیریت سشن کاربر.
- *
- * این ماژول یک لایه Promise-based روی متدهای session ایجاد می‌کند
- * تا بتوان از /await =استفادهasync کرد.
+ * ماژول مدیریت سشن کاربر (Promise-based روی partSessionManager).
  *
  * عملیات‌های پشتیبانی‌شده:
  *  - ذخیره اطلاعات در سشن (setSession)
- *  - حذف سشن (removeSession)
+ *  - حذف سشن و کوکی (removeSession)
  *  - دریافت اطلاعات از سشن (getSession)
  */
 class SessionManager {
-
-  /**
-   * ذخیره اطلاعات کاربر در سشن.
-   *
-   * اطلاعات ذخیره‌شده شامل:
-   *  - samadUsername
-   *  - roles
-   *
-   * این متد session.set را در قالب Promise برمی‌گرداند
-   * تا بتوان با /await =استفادهasync کرد.
-   *
-   * @param {Object} session - شیء سشن (مانند req.session).
-   * @param {Object} body - اطلاعات ورود کاربر.
-   * @param {string} body.username - نام کاربری.
-   * @param {Array<string>} roles - لیست نقش‌های کاربر.
-   *
-   * @returns {Promise<any>} نتیجه‌ی متد session.set.
-   *
-   * @throws {Error} در صورت بروز خطا در ذخیره سشن.
-   */
   setSession = async (session, body, roles) => {
+    const normalizedRoles = Array.isArray(roles) && roles.length ? roles : ['visitor'];
+    if (!session || typeof session.set !== 'function') {
+      return { samadUsername: body.username, roles: normalizedRoles };
+    }
     return new Promise((resolve, reject) => {
       session.set(
-        { samadUsername: body.username, roles },
+        { samadUsername: body.username, roles: normalizedRoles },
         (err, res) => {
-          if (err) return reject(err);
+          if (err) return reject(authError.sessionError(err?.message || err));
           resolve(res);
-        }
+        },
       );
     });
   };
 
-  /**
-   * حذف کامل سشن کاربر و پاک کردن کوکی.
-   *
-   * این متد:
-   * 1) session.remove را اجرا می‌کند.
-   * 2) در صورت موفقیت، کوکی token را از مرورگر حذف می‌کند.
-   *
-   * @param {Object} session - شیء سشن کاربر.
-   * @param {Object} response - شیء پاسخ HTTP (مانند res در Express).
-   *
-   * @returns {Promise<any>} نتیجه‌ی متد session.remove.
-   *
-   * @throws {Error} در صورت بروز خطا در حذف سشن.
-   */
   removeSession = async (session, response) => {
+    if (!session || typeof session.remove !== 'function') {
+      await this.removeCookie(response);
+      return [];
+    }
     return new Promise((resolve, reject) => {
       session.remove((err, resArray) => {
-        if (err) return reject(err);
+        if (err) return reject(authError.sessionError(err?.message || err));
         this.removeCookie(response);
         resolve(resArray);
       });
     });
   };
 
-  /**
-   * دریافت اطلاعات کاربر از سشن.
-   *
-   * فیلدهای دریافت‌شده:
-   *  - samadUsername
-   *  - roles
-   *
-   * این متد session.get را در قالب Promise برمی‌گرداند.
-   *
-   * @param {Object} session - شیء سشن کاربر.
-   *
-   * @returns {Promise<Object>}
-   * شیء شامل:
-   *  - samadUsername
-   *  - roles
-   *
-   * @throws {Error} در صورت بروز خطا در خواندن سشن.
-   */
   getSession = async (session) => {
+    if (!session || typeof session.get !== 'function') {
+      return { samadUsername: 'visitor', roles: ['visitor'] };
+    }
     return new Promise((resolve, reject) => {
       session.get(['samadUsername', 'roles'], (err, res) => {
-        if (err) return reject(err);
-        resolve(res);
+        if (err) return reject(authError.sessionError(err?.message || err));
+        resolve({
+          samadUsername: res?.samadUsername || 'visitor',
+          roles: Array.isArray(res?.roles) && res.roles.length ? res.roles : ['visitor'],
+        });
       });
     });
   };
 
-  /**
-   * حذف کوکی token از مرورگر.
-   *
-   * این متد کوکی را با Max-Age=0 و تاریخ انقضای گذشته تنظیم می‌کند
-   * تا مرورگر آن را حذف کند.
-   *
-   * @private
-   * @param {Object} response - شیء پاسخ HTTP.
-   */
   removeCookie = async (response) => {
-    response.setHeader(
-      'Set-Cookie',
-      'token=; Path=/; Domain=localhost; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly;'
-    );
+    if (!response || typeof response.setHeader !== 'function') return;
+    const domain = process.env.COOKIE_DOMAIN || 'localhost';
+    response.setHeader('Set-Cookie', [
+      'token=; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly;',
+      `token=; Path=/; Domain=${domain}; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly;`,
+    ]);
   };
 }
 

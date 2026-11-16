@@ -24,10 +24,34 @@ class AuthController extends BaseController {
     return await this.authService.authenticate(postData, trackingHeaders, session);
   }
 
+  @Route('/api/auth/logout')
+  @HTTP('POST')
+  async logout(session, response) {
+    return await this.authService.logout(session, response);
+  }
+
+  @Route('/api/auth/me')
+  @HTTP('GET')
+  async me(session) {
+    return await this.authService.getCurrentSession(session);
+  }
+
+  @Route('/api/auth/role')
+  @HTTP('POST')
+  async assignRole(postData, session) {
+    return await this.authService.assignRole(postData, session);
+  }
+
+  @Route('/api/auth/role')
+  @HTTP('GET')
+  async getRole(queryString) {
+    return await this.authService.getUserRoles(queryString);
+  }
+
   @Route('/api/auth/remove')
   @HTTP('POST')
-  async removeUser(postData, trackingHeaders, session) {
-    return await this.authService.removeUser(postData, trackingHeaders, session);
+  async removeUser(postData, trackingHeaders, session, response) {
+    return await this.authService.removeUser(postData, trackingHeaders, session, response);
   }
 }
 

@@ -2,6 +2,7 @@ const PartFramework = require('partFramework');
 const { getServices } = require('./services/container');
 const { config } = require('./services/config');
 const SessionManager = require('./controllers/auth/session-manager');
+const SamadService = require('./controllers/auth/samad.service');
 
 class Program {
   #core;
@@ -19,14 +20,14 @@ class Program {
   #loadManualControllers() {}
 
   async #loadDependencies() {
+    this.#core.loader.load('sessionManager', SessionManager);
+    this.#core.loader.load('samadService', SamadService);
     this.#core.loader.loadResolver(
       'authService',
       './controllers/auth/auth.service',
       undefined,
       { resolveConfig: true },
     );
-    
-    this.#core.loader.load('sessionManager',SessionManager);
 
     const services = getServices();
     await services.init();

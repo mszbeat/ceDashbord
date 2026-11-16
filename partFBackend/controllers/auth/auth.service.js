@@ -1,3 +1,5 @@
+const { error: authError } = require('./config');
+
 class AuthService {
   #system = process.env.PART_AUTH_SYSTEM;
   #status = 'Active';
@@ -6,103 +8,114 @@ class AuthService {
     partAuthenticationInterface,
     partRequest,
     partLogger,
-    sessionManager
+    sessionManager,
+    samadService,
   ) {
     this.partRequest = partRequest;
     this.logger = partLogger;
+    this.partAuth = partAuthenticationInterface;
     this.partAuthenticationInterface = partAuthenticationInterface;
-    this.sessionManager = sessionManager;
+    this.sessionManager =
+      typeof sessionManager === 'function' ? new sessionManager() : sessionManager;
+    this.samadService =
+      typeof samadService === 'function' ? new samadService() : samadService;
   }
 
-  #rethrowAuthError(err, fallbackFa, fallbackEn) {
-    if (err && typeof err === 'object' && err.statusCode && err.data?.message) {
+  #normalizeBody(body) {
+    if (!body) return {};
+    if (typeof body === 'string') {
+      try {
+        return JSON.parse(body);
+      } catch {
+        return {};
+      }
+    }
+    return typeof body === 'object' ? body : {};
+  }
+
+  #rethrowUnexpected(err) {
+    if (err && typeof err === 'object' && err.statusCode && err.meta) {
       throw err;
     }
     if (this.logger && typeof this.logger.error === 'function') {
       this.logger.error(err);
     }
-    const statusCode = Number(err?.statusCode) || 500;
-    throw {
-      statusCode,
-      data: err?.data || {
-        message: {
-          fa: fallbackFa,
-          en: err?.meta?.code || err?.message || fallbackEn,
-        },
-      },
-    };
+    if (err?.statusCode === 503) {
+      throw authError.authBaseServiceError;
+    }
+    throw authError.internalServerError(err?.meta?.code || err?.message);
   }
 
-  async addAuthEntry(body, trackingHeaders) {
-    const { username, password } = body;
+  async addAuthEntry(body, trackingHeaders, session) {
+    const { username, password, role } = this.#normalizeBody(body);
     if (!username || !password) {
-      throw {
-        statusCode: 400,
-        data: {
-          message: {
-            fa: 'نام کاربری و رمز عبور الزامی است',
-            en: 'username and password are required',
-          },
-        },
-      };
+      throw authError.invalidAuthInput;
     }
 
-    const payload = {
-      username,
-      password,
-    };
+    const targetRole = typeof role === 'string' && role.trim() ? role.trim() : 'visitor';
+    let rollbackSamad = null;
 
     try {
+      if (this.samadService) {
+        rollbackSamad = await this.samadService.addUser(username, targetRole);
+      }
+
       await this.partAuthenticationInterface.addUser(
-        payload,
+        { username, password },
         this.#status,
         this.#system,
         trackingHeaders,
       );
-      return 'ok';
-    } catch (err) {
-      if (err?.meta?.code === 'authEntryAlreadyExists') {
-        throw {
-          statusCode: 409,
-          data: {
-            message: {
-              fa: 'ترکیب اصالت‌سنجی تکراری است',
-              en: 'auth entry alreadyExists',
-            },
-          },
-        };
+
+      if (session && this.sessionManager) {
+        const current = await this.sessionManager.getSession(session).catch(() => null);
+        if (!current?.samadUsername || current.samadUsername === 'visitor') {
+          await this.sessionManager.setSession(session, { username }, [targetRole]);
+        }
       }
-      this.#rethrowAuthError(
-        err,
-        'خطا در ثبت اطلاعات اصالت‌سنجی کاربر',
-        'failed to add auth entry',
-      );
+
+      return { status: 'ok', username, roles: [targetRole] };
+    } catch (err) {
+      if (typeof rollbackSamad === 'function') {
+        try {
+          await rollbackSamad();
+        } catch (rbErr) {
+          this.logger?.error?.(rbErr);
+        }
+      }
+      if (err?.meta?.code === 'authEntryAlreadyExists') {
+        throw authError.authEntryAlreadyExists;
+      }
+      this.#rethrowUnexpected(err);
     }
   }
 
-  async authenticate(body, trackingHeaders) {
-    const { username, password } = body;
+  async authenticate(body, trackingHeaders, session) {
+    const { username, password } = this.#normalizeBody(body);
     if (!username || !password) {
-      throw {
-        statusCode: 400,
-        data: {
-          message: {
-            fa: 'نام کاربری و رمز عبور الزامی است',
-            en: 'username and password are required',
-          },
-        },
-      };
+      throw authError.invalidAuthInput;
     }
 
-    const fields = { username, password };
-
     try {
-      const result = await this.partAuthenticationInterface.authenticate(
-        fields,
+      await this.partAuthenticationInterface.authenticate(
+        { username, password },
         this.#system,
         trackingHeaders,
       );
-      return result ?? 'ok';
+
+      let roles = ['visitor'];
+      if (this.samadService) {
+        const samadRoles = await this.samadService.getRole(username);
+        if (Array.isArray(samadRoles) && samadRoles.length) {
+          roles = samadRoles;
+        }
+      }
+
+      if (this.sessionManager) {
+        await this.sessionManager.setSession(session, { username }, roles);
+      }
+
+      return { status: 'ok', username, roles };
     } catch (err) {
       const code = err?.meta?.code;
       if (
@@ -114,15 +127,7 @@ class AuthService {
         code === 'authEntryNotFound' ||
         code === 'userNotFound'
       ) {
-        throw {
-          statusCode: 401,
-          data: {
-            message: {
-              fa: 'نام کاربری یا رمز عبور نادرست است',
-              en: 'invalid username or password',
-            },
-          },
-        };
+        throw authError.invalidCredentials;
       }
       if (
         err?.statusCode === 403 ||
@@ -130,41 +135,88 @@ class AuthService {
         code === 'authEntryIsInactive' ||
         code === 'authEntryIsNotActive'
       ) {
-        throw {
-          statusCode: 403,
-          data: {
-            message: {
-              fa: 'حساب کاربری غیرفعال است',
-              en: 'user account is inactive',
-            },
-          },
-        };
+        throw authError.userAccountInactive;
       }
-      this.#rethrowAuthError(
-        err,
-        'خطا در بررسی اصالت‌سنجی کاربر',
-        'authentication failed',
-      );
+      this.#rethrowUnexpected(err);
     }
   }
 
-  async removeUser(body, trackingHeaders) {
+  async logout(session, response) {
+    try {
+      if (this.sessionManager) {
+        await this.sessionManager.removeSession(session, response);
+      }
+      return { status: 'ok' };
+    } catch (err) {
+      this.#rethrowUnexpected(err);
+    }
+  }
+
+  async getCurrentSession(session) {
+    try {
+      const info = this.sessionManager
+        ? await this.sessionManager.getSession(session)
+        : { samadUsername: 'visitor', roles: ['visitor'] };
+      const username = info?.samadUsername || 'visitor';
+      const roles = Array.isArray(info?.roles) && info.roles.length ? info.roles : ['visitor'];
+      return {
+        authenticated: username !== 'visitor',
+        username,
+        samadUsername: username,
+        roles,
+      };
+    } catch (err) {
+      this.#rethrowUnexpected(err);
+    }
+  }
+
+  async assignRole(body, session) {
+    const { username, role } = this.#normalizeBody(body);
+    if (!username || !role) {
+      throw authError.roleRequired;
+    }
+
+    try {
+      await this.samadService.setRole(username, role);
+      const fetchedRoles = await this.samadService.getRole(username).catch(() => [role]);
+      const roles = Array.isArray(fetchedRoles) && fetchedRoles.length ? fetchedRoles : [role];
+
+      if (session && this.sessionManager) {
+        const current = await this.sessionManager.getSession(session).catch(() => null);
+        if (current?.samadUsername === username) {
+          await this.sessionManager.setSession(session, { username }, roles);
+        }
+      }
+
+      return { status: 'ok', username, roles };
+    } catch (err) {
+      this.#rethrowUnexpected(err);
+    }
+  }
+
+  async getUserRoles(queryOrBody) {
+    const { username } = this.#normalizeBody(queryOrBody);
+    if (!username) {
+      throw authError.usernameRequired;
+    }
+
+    try {
+      const roles = await this.samadService.getRole(username);
+      return { username, roles };
+    } catch (err) {
+      this.#rethrowUnexpected(err);
+    }
+  }
+
+  async removeUser(body, trackingHeaders, session, response) {
     const parsed =
       typeof body === 'string' && !body.trim().startsWith('{')
         ? { username: body.trim() }
-        : body;
+        : this.#normalizeBody(body);
     const { username } = parsed;
 
     if (!username) {
-      throw {
-        statusCode: 400,
-        data: {
-          message: {
-            fa: 'نام کاربری الزامی است',
-            en: 'username is required',
-          },
-        },
-      };
+      throw authError.usernameRequired;
     }
 
     try {
@@ -173,7 +225,23 @@ class AuthService {
         this.#system,
         trackingHeaders,
       );
-      return 'ok';
+
+      if (this.samadService) {
+        try {
+          await this.samadService.removeUser(username);
+        } catch (samadErr) {
+          if (samadErr?.statusCode !== 404) throw samadErr;
+        }
+      }
+
+      if (session && this.sessionManager) {
+        const current = await this.sessionManager.getSession(session).catch(() => null);
+        if (current?.samadUsername === username) {
+          await this.sessionManager.removeSession(session, response);
+        }
+      }
+
+      return { status: 'ok', username };
     } catch (err) {
       const code = err?.meta?.code;
       if (
@@ -181,30 +249,22 @@ class AuthService {
         code === 'authEntryNotFound' ||
         code === 'userNotFound'
       ) {
-        throw {
-          statusCode: 404,
-          data: {
-            message: {
-              fa: 'کاربر مورد نظر یافت نشد',
-              en: 'auth entry not found',
-            },
-          },
-        };
+        throw authError.userNotFound;
       }
-      this.#rethrowAuthError(
-        err,
-        'خطا در حذف کاربر از سرویس اصالت‌سنجی',
-        'failed to remove auth entry',
-      );
+      this.#rethrowUnexpected(err);
     }
   }
 
-  async removeAuthEntry(body, trackingHeaders) {
-    return this.removeUser(body, trackingHeaders);
+  async setRole(body, session) {
+    return this.assignRole(body, session);
   }
 
-  async login(body, trackingHeaders) {
-    return this.authenticate(body, trackingHeaders);
+  async removeAuthEntry(body, trackingHeaders, session, response) {
+    return this.removeUser(body, trackingHeaders, session, response);
+  }
+
+  async login(body, trackingHeaders, session) {
+    return this.authenticate(body, trackingHeaders, session);
   }
 }
 

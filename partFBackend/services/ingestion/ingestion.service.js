@@ -1,5 +1,6 @@
 'use strict';
 const { BANKS, config } = require('../config');
+const { error: adminError } = require('../../controllers/adminController/config');
 const {
   jalaliStampDigitsOf,
   normalizeDay,
@@ -80,7 +81,11 @@ class IngestionService {
         if (attempt < config.retryCount) await new Promise((r) => setTimeout(r, 500 * 2 ** (attempt - 1)));
       }
     }
-    throw new Error(`دریافت صفحه ${page} از API اصلی ناموفق بود: ${lastError?.message ?? lastError}`);
+    throw adminError.creditEvaluationBaseServiceError({
+      page,
+      day: day || null,
+      cause: lastError?.message ?? String(lastError),
+    });
   }
 
   async sourceTotal(day, filters) {
@@ -149,7 +154,7 @@ class IngestionService {
   async runDay(bankInput, dayInput, mode = 'nightly', options = {}) {
     const bankKey = bankInput;
     const bank = BANKS[bankKey];
-    if (!bank) throw new Error(`بانک پشتیبانیشده نیست: ${bankInput} (بانکهای پشتیبانیشده: ملت، رسالت، پستبانک)`);
+    if (!bank) throw adminError.invalidBank(bankInput);
     const rebuild = options.rebuild === true;
     const filters = options.filters;
     const pageSize =
@@ -162,7 +167,7 @@ class IngestionService {
         : null;
     const filteredRun = hasNarrowingFilters(filters);
     if (rebuild && !dayInput) {
-      throw new Error('--rebuild نیاز به --day مشخص دارد (برای جلوگیری از پاک شدن ناخواستهٔ دیروز).');
+      throw adminError.rebuildRequiresExplicitDay;
     }
     const day = normalizeDay(dayInput ?? (mode === 'nightly' ? tehranYesterday() : tehranToday()));
     const client = await this.db.getClient();
@@ -176,7 +181,7 @@ class IngestionService {
       await client.query('SELECT pg_advisory_lock(hashtext($1))', [lockKey]);
       const preflight = await this.sourceTotal(day, filters);
       if (rebuild && !preflight) {
-        throw new Error(`--rebuild لغو شد: API برای ${day} هیچ رکوردی برنگرداند؛ دادههای موجود دستنخورده ماندند.`);
+        throw adminError.emptyRebuildAborted(day);
       }
       if (rebuild) {
         await client.query('BEGIN');
@@ -353,7 +358,7 @@ class IngestionService {
         deleted,
       };
     } catch (error) {
-      const message = String(error?.message ?? error);
+      const message = String(error?.data?.message?.fa ?? error?.message ?? error);
       if (inTransaction) {
         await client.query('ROLLBACK').catch(() => undefined);
         inTransaction = false;
@@ -370,9 +375,14 @@ class IngestionService {
           skipped_count: skipped,
         }).catch(() => undefined);
       }
-      throw new Error(
-        rebuild ? `${message} (--rebuild: تراکنش برگردانده شد، دادههای ${day} دستنخورده ماندند)` : message,
-      );
+      if (error && typeof error === 'object' && error.statusCode && error.meta) {
+        throw error;
+      }
+      throw adminError.internalServerError({
+        day,
+        rebuild,
+        cause: message,
+      });
     } finally {
       if (inTransaction) await client.query('ROLLBACK').catch(() => undefined);
       await client.query('SELECT pg_advisory_unlock(hashtext($1))', [lockKey]).catch(() => undefined);
@@ -383,9 +393,9 @@ class IngestionService {
   async runFilteredLookup(bankInput, filters) {
     const bankKey = bankInput;
     const bank = BANKS[bankKey];
-    if (!bank) throw new Error(`بانک پشتیبانیشده نیست: ${bankInput} (بانکهای پشتیبانیشده: ملت، رسالت، پستبانک)`);
+    if (!bank) throw adminError.invalidBank(bankInput);
     if (!filters?.requestId?.trim() && !filters?.uniqueKey?.trim() && !filters?.nationalCode?.trim()) {
-      throw new Error('در حالت بدون تاریخ، حداقل یکی از فیلترهای requestId، uniqueKey یا کد ملی الزامی است.');
+      throw adminError.filterRequiredWithoutDate;
     }
     const pageSize =
       filters?.pageSize && Number(filters.pageSize) >= 1 && Number(filters.pageSize) <= 200

@@ -149,11 +149,14 @@ async function apiFetch<T = any>(path: string, init?: RequestInit): Promise<T> {
     data = { message: text };
   }
   if (!res.ok) {
-    const msg = Array.isArray(data?.message)
-      ? data.message.join(' | ')
-      : typeof data === 'string'
-        ? data
-        : data?.message || data?.error?.message || `خطای سرور (HTTP ${res.status})`;
+    const rawMessage = data?.message ?? data?.data?.message ?? data?.error?.message;
+    const msg = Array.isArray(rawMessage)
+      ? rawMessage.join(' | ')
+      : typeof rawMessage === 'string'
+        ? rawMessage
+        : typeof rawMessage === 'object' && rawMessage !== null
+          ? rawMessage.fa || rawMessage.en || `خطای سرور (HTTP ${res.status})`
+          : `خطای سرور (HTTP ${res.status})`;
     const err: any = new Error(msg);
     err.payload = data;
     err.status = res.status;

@@ -339,12 +339,28 @@ async function runJsonHandler(responseTarget, fn, options = {}) {
     applyResponseMeta(responseTarget, 200, {});
     return result;
   } catch (err) {
-    const statusCode = err?.statusCode || 500;
-    const payload =
-      err?.response || {
+    const statusCode = Number(err?.statusCode) || 500;
+    let payload;
+    if (err && typeof err === 'object' && err.meta && err.data) {
+      const faMessage =
+        typeof err.data?.message === 'object'
+          ? err.data.message.fa || err.data.message.en
+          : err.data?.message;
+      payload = {
         statusCode,
-        message: String(err?.message ?? err),
+        meta: err.meta,
+        data: err.data,
+        code: err.data?.code || err.meta?.code,
+        message: faMessage || `HTTP ${statusCode}`,
+        ...(err.data?.check ? { check: err.data.check } : {}),
       };
+    } else {
+      payload =
+        err?.response || {
+          statusCode,
+          message: String(err?.message ?? err),
+        };
+    }
     return buildCustomHttpResponse(
       responseTarget,
       payload,

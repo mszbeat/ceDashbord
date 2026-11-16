@@ -3,9 +3,9 @@ const { getServices } = require('../../services/container');
 const {
   normalizeBody,
   extractRouteParam,
-  BadRequestError,
   runJsonHandler,
 } = require('../../services/http-adapter');
+const { error: adminError } = require('./config');
 const { tehranToday, tehranYesterday } = require('../../services/utils/date');
 
 async function executeDirectDayRun(requestOrBody) {
@@ -13,7 +13,7 @@ async function executeDirectDayRun(requestOrBody) {
   const mode = body.mode === 'intraday' ? 'intraday' : 'nightly';
   const rebuild = body.rebuild === true;
   if (rebuild && !body.day) {
-    throw new BadRequestError('rebuild نیاز به day صریح دارد.');
+    throw adminError.rebuildRequiresExplicitDay;
   }
   const day = body.day ?? (mode === 'nightly' ? tehranYesterday() : tehranToday());
   return getServices().ingestion.runDay(body.bank ?? 'tavan_mellat', day, mode, {

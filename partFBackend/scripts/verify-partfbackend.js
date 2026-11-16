@@ -301,8 +301,9 @@ async function waitForJobViaController(adminConfig, adminHelpers, jobId, timeout
       url: '/api/runs',
       data: { bank: 'tavan_mellat', day: targetDay, mode: 'nightly', rebuild: true },
     });
-    await failedRebuildCall.promise;
-    assert.equal(failedRebuildCall.response.statusCode, 500);
+    const failedRebuildErr = parseResult(await failedRebuildCall.promise);
+    assert.equal(failedRebuildCall.response.statusCode, 503);
+    assert.equal(failedRebuildErr.meta.code, 'creditEvaluationBaseServiceError');
     failNextUpstream = false;
 
     const preservedRows = await db.query(

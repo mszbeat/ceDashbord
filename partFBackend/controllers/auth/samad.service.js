@@ -1,148 +1,127 @@
-
-const PartRequest = require('partRequest');
-const pr = new PartRequest();
+const { error: authError } = require('./config');
 
 class SamadService {
-  org = process.env.org;
-  samadService = new pr({
-    defaultHttpRequestOptions: {
-      baseURL: process.env.samadServiceUrl,
-      headers: {
-        user: process.env.user,
-        pass: process.env.pass,
-      },
-      timeout: 7000,
-      protocol: 'http'
-    }
-  });
-  
-  
-  async addUser  (username, role)  {
-    try {
-      const data = {
-        org: this.org,
-        users: [{ username }]
-      };
-      const options = {
-        url: 'users',
-        method: 'PUT'
-      };
-      const addUser = await this.samadService.sendHttp(options, data);
-      const status = addUser?.data[0].status;
-      if (status !== 'ok') {
-        const error = errorReturner(addUser, 409, 'userAlreadyExists');
-        throw error;
-      }
-      else {
-        const rollback = await this.setRole(username, role);
-        return rollback;
-      }
-    }
-    catch (err) {
-      if (err?.setRole) {
-        await this.removeUser(username);
-      }
-      catchHandler(err);
+  constructor(httpClient) {
+    this.org = process.env.SAMAD_ORG || process.env.org;
+    if (httpClient) {
+      this.samadService = httpClient;
+    } else {
+      const PartRequest = require('partRequest');
+      const pr = new PartRequest();
+      this.samadService = new pr({
+        defaultHttpRequestOptions: {
+          baseURL: process.env.SAMAD_SERVICE_URL || process.env.samadServiceUrl,
+          headers: {
+            user: process.env.SAMAD_USER || process.env.user,
+            pass: process.env.SAMAD_PASS || process.env.pass,
+          },
+          timeout: 7000,
+          protocol: 'http',
+        },
+      });
     }
   }
 
-  async removeUser  (username) {
+  #rethrowSamadError(err) {
+    if (err && typeof err === 'object' && err.statusCode && err.meta) {
+      throw err;
+    }
+    const code = err?.meta?.code;
+    if (code === 'permissionDenied') throw authError.samadPermissionDenied;
+    if (code === 'roleNotFound') throw authError.roleNotFound;
+    if (code === 'userNotFound') throw authError.userNotFound;
+    if (code === 'userAlreadyExists') throw authError.samadUserAlreadyExists;
+    throw authError.samadBaseServiceError(err?.meta || err?.data || err?.message);
+  }
+
+  async addUser(username, role = 'visitor') {
+    let createdInSamad = false;
     try {
       const data = {
         org: this.org,
-        filters: [{ 'username': username }]
+        users: [{ username }],
       };
       const options = {
         url: 'users',
-        method: 'DELETE'
+        method: 'PUT',
       };
-      const removeUser = await this.samadService.sendHttp(options, data);
-      const status = removeUser?.data[0].status;
+      const addRes = await this.samadService.sendHttp(options, data);
+      const status = addRes?.data?.[0]?.status;
       if (status !== 'ok') {
-        const error = errorReturner(removeUser, 404, 'userNotFound');
-        throw error;
+        throw authError.samadUserAlreadyExists;
       }
-    }
-    catch (err) {
-      catchHandler(err);
+      createdInSamad = true;
+      return await this.setRole(username, role);
+    } catch (err) {
+      if (createdInSamad) {
+        try {
+          await this.removeUser(username);
+        } catch {}
+      }
+      this.#rethrowSamadError(err);
     }
   }
 
-  async setRole  (username, role = 'visitor') {
+  async removeUser(username) {
+    try {
+      const data = {
+        org: this.org,
+        filters: [{ username }],
+      };
+      const options = {
+        url: 'users',
+        method: 'DELETE',
+      };
+      const removeRes = await this.samadService.sendHttp(options, data);
+      const status = removeRes?.data?.[0]?.status;
+      if (status !== 'ok') {
+        throw authError.userNotFound;
+      }
+      return 'ok';
+    } catch (err) {
+      this.#rethrowSamadError(err);
+    }
+  }
+
+  async setRole(username, role = 'visitor') {
     try {
       const data = {
         org: this.org,
         roleName: role,
-        users: [username]
+        users: [username],
       };
       const options = {
         url: 'users',
-        method: 'PUT'
+        method: 'PUT',
       };
-      const setRole = await this.samadService.sendHttp(options, data);
-      const status = setRole?.data[0].status;
+      const setRes = await this.samadService.sendHttp(options, data);
+      const status = setRes?.data?.[0]?.status;
       if (status !== 'ok') {
-        const error = errorReturner(setRole, 404, 'userNotFound');
-        throw error;
+        throw authError.userNotFound;
       }
-      else {
-        const rollback = this.removeUser.bind(this,username);
-        return rollback;
-      }
-    }
-    catch (err) {
-      err.setRole = true;
-      catchHandler(err);
+      return this.removeUser.bind(this, username);
+    } catch (err) {
+      this.#rethrowSamadError(err);
     }
   }
 
-  async getRole  (username) {
-    const data = {
-      org: this.org,
-      filters: [{ 'username': username }]
-    };
-    const options = {
-      url: 'users',
-      method: 'POST'
-    };
-    const getInfo = await this.samadService.sendHttp(options, data);
-    return getInfo?.data[0].roles;
+  async getRole(username) {
+    try {
+      const data = {
+        org: this.org,
+        filters: [{ username }],
+      };
+      const options = {
+        url: 'users',
+        method: 'POST',
+      };
+      const getInfo = await this.samadService.sendHttp(options, data);
+      const roles = getInfo?.data?.[0]?.roles;
+      return Array.isArray(roles) ? roles : [];
+    } catch (err) {
+      this.#rethrowSamadError(err);
+    }
   }
 }
-
-
-const errorReturner = (err, statusCode, code = 'badRequest') => {
-  return {
-    statusCode,
-    meta: {
-      code: code,
-      sourceName: 'partServiceSamad',
-      requestId: err?.meta?.requestId || 'unknown'
-    },
-    data: err?.data || {}
-  };
-};
-
-
-const catchHandler = (err) => {
-  if (!err?.statusCode) {
-    const code = err?.meta.code;
-    let statusCode = null;
-    switch (code) {
-      case 'permissionDenied':
-        statusCode = 403;
-        break;
-      case 'roleNotFound':
-        statusCode = 404;
-        break;
-      default:
-        statusCode = 400;
-    }
-    throw errorReturner(err, statusCode, code);
-  }
-  else {
-    throw err;
-  }
-};
 
 module.exports = SamadService;

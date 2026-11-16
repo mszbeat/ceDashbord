@@ -2,7 +2,7 @@
 const { randomUUID } = require('node:crypto');
 const { BANKS } = require('../config');
 const { hasNarrowingFilters } = require('../ingestion/ingestion.service');
-const { BadRequestError, NotFoundError } = require('../http-adapter');
+const { error: adminError } = require('../../controllers/adminController/config');
 const {
   enumerateJalaliDays,
   matchesCronExpr,
@@ -99,7 +99,7 @@ class AdminService {
           ? [singleBank]
           : [];
     if (!rawList.length) {
-      throw new BadRequestError('حداقل یک بانک باید انتخاب شود.');
+      throw adminError.bankSelectionRequired;
     }
     if (rawList.includes('all')) return [...ALL_BANKS];
     const resolved = [];
@@ -107,7 +107,7 @@ class AdminService {
       const normalized = String(item ?? '').trim().toLowerCase();
       const key = BANK_ALIAS_MAP[normalized];
       if (!key || !BANKS[key]) {
-        throw new BadRequestError(`بانک نامعتبر است: ${item}`);
+        throw adminError.invalidBank(item);
       }
       if (!resolved.includes(key)) resolved.push(key);
     }
@@ -123,21 +123,21 @@ class AdminService {
     if (typeof raw.nationalCode === 'string' && raw.nationalCode.trim()) {
       const digits = normalizeDigitsOnly(raw.nationalCode);
       if (!/^\d{8,12}$/.test(digits)) {
-        throw new BadRequestError('کد ملی واردشده معتبر نیست (باید فقط رقم و بین ۸ تا ۱۲ کاراکتر باشد).');
+        throw adminError.invalidNationalCode;
       }
       out.nationalCode = digits;
     }
     if (raw.maxCount !== undefined && raw.maxCount !== null && String(raw.maxCount).trim() !== '') {
       const mc = Number(normalizeDigitsOnly(String(raw.maxCount)));
       if (!Number.isInteger(mc) || mc < 1 || mc > 500000) {
-        throw new BadRequestError('سقف تعداد رکورد (maxCount) باید عددی صحیح بین ۱ تا ۵۰۰٬۰۰۰ باشد.');
+        throw adminError.invalidMaxCount;
       }
       out.maxCount = mc;
     }
     if (raw.pageSize !== undefined && raw.pageSize !== null && String(raw.pageSize).trim() !== '') {
       const ps = Number(normalizeDigitsOnly(String(raw.pageSize)));
       if (!Number.isInteger(ps) || ps < 1 || ps > 200) {
-        throw new BadRequestError('اندازهٔ صفحه (pageSize) باید عددی صحیح بین ۱ تا ۲۰۰ باشد.');
+        throw adminError.invalidPageSize;
       }
       out.pageSize = ps;
     }
@@ -160,15 +160,13 @@ class AdminService {
     try {
       if (scope === 'filter_only') {
         if (!filters.requestId && !filters.uniqueKey && !filters.nationalCode) {
-          throw new BadRequestError(
-            'در حالت «بدون قید تاریخ»، حداقل یکی از فیلترهای شناسهٔ درخواست (requestId)، کلید یکتا (uniqueKey) یا کد ملی الزامی است.',
-          );
+          throw adminError.filterRequiredWithoutDate;
         }
         return { dateScope: 'filter_only', days: [] };
       }
       if (scope === 'range') {
         if (!payload.fromDay || !payload.toDay) {
-          throw new BadRequestError('بازهٔ تاریخ ناقص است؛ هر دو فیلد «از تاریخ» و «تا تاریخ» الزامیاند.');
+          throw adminError.incompleteDateRange;
         }
         const days = enumerateJalaliDays(payload.fromDay, payload.toDay, 62);
         return { dateScope: 'range', days };
@@ -179,8 +177,8 @@ class AdminService {
       enumerateJalaliDays(day, day, 1);
       return { dateScope: 'single', days: [day] };
     } catch (err) {
-      if (err instanceof BadRequestError) throw err;
-      throw new BadRequestError(err?.message ?? String(err));
+      if (err && typeof err === 'object' && err.statusCode && err.meta) throw err;
+      throw adminError.invalidDateInput(err?.message ?? String(err));
     }
   }
 
@@ -242,10 +240,10 @@ class AdminService {
     const hour = input.hour !== undefined ? Number(input.hour) : Number(current.hour ?? 2);
     const minute = input.minute !== undefined ? Number(input.minute) : Number(current.minute ?? 0);
     if (!Number.isInteger(hour) || hour < 0 || hour > 23) {
-      throw new BadRequestError('ساعت اجرای کران باید عددی صحیح بین ۰ تا ۲۳ باشد.');
+      throw adminError.invalidCronHour;
     }
     if (!Number.isInteger(minute) || minute < 0 || minute > 59) {
-      throw new BadRequestError('دقیقهٔ اجرای کران باید عددی صحیح بین ۰ تا ۵۹ باشد.');
+      throw adminError.invalidCronMinute;
     }
 
     let cronExpr = input.cron_expr !== undefined ? String(input.cron_expr).trim() : String(current.cron_expr ?? '0 2 * * *');
@@ -253,7 +251,7 @@ class AdminService {
       cronExpr = `${minute} ${hour} * * *`;
     } else {
       const validation = validateCronExpr(cronExpr);
-      if (!validation.valid) throw new BadRequestError(validation.error || 'عبارت کران معتبر نیست.');
+      if (!validation.valid) throw adminError.invalidCronExpression(validation.error);
     }
 
     const banks =
@@ -268,7 +266,7 @@ class AdminService {
         ? Number(input.target_offset_days)
         : Number(current.target_offset_days ?? 1);
     if (!Number.isInteger(targetOffsetDays) || targetOffsetDays < 0 || targetOffsetDays > 30) {
-      throw new BadRequestError('فاصلهٔ روز هدف کران (target_offset_days) باید بین ۰ تا ۳۰ روز باشد.');
+      throw adminError.invalidCronOffsetDays;
     }
 
     const rebuild = input.rebuild !== undefined ? Boolean(input.rebuild) : Boolean(current.rebuild);
@@ -429,18 +427,13 @@ class AdminService {
     const conflictStrategy = payload.conflictStrategy === 'rebuild' ? 'rebuild' : 'upsert';
 
     if (conflictStrategy === 'rebuild' && dateScope === 'filter_only') {
-      throw new BadRequestError('حالت بازسازی کامل (Rebuild) نیازمند انتخاب روز یا بازهٔ تاریخ مشخص است.');
+      throw adminError.rebuildRequiresDate;
     }
 
     if (!payload.confirmedConflict) {
       const check = await this.checkExistingData(payload);
       if (check.hasExistingData) {
-        throw new BadRequestError({
-          code: 'EXISTING_DATA_CONFLICT',
-          message:
-            'برای بانک/روز انتخابشده دادهٔ قبلی در دیتابیس وجود دارد؛ لطفاً نوع عملیات (Rebuild یا Upsert) را مشخص کنید.',
-          check,
-        });
+        throw adminError.existingDataConflict(check);
       }
     }
 
@@ -527,7 +520,7 @@ class AdminService {
           step.finishedAt = new Date().toISOString();
           job.completedSteps++;
         } catch (err) {
-          step.error = String(err?.message ?? err).slice(0, 1000);
+          step.error = String(err?.data?.message?.fa ?? err?.message ?? err).slice(0, 1000);
           step.status = 'failed';
           step.finishedAt = new Date().toISOString();
           job.failedSteps++;
@@ -581,7 +574,7 @@ class AdminService {
 
   async getJob(jobId) {
     const job = this.jobs.get(jobId);
-    if (!job) throw new NotFoundError(`جاب مورد نظر یافت نشد: ${jobId}`);
+    if (!job) throw adminError.jobNotFound(jobId);
     return this.enrichJobWithLiveProgress(job);
   }
 

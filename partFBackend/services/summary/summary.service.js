@@ -1,5 +1,7 @@
 'use strict';
 const { BANKS, config } = require('../config');
+const { error: summaryError } = require('../../controllers/summaryController/config');
+const { error: ceError } = require('../../controllers/creditEvaluationController/config');
 const { defaultRange, jalaliStampDigitsOf, normalizeDay } = require('../utils/date');
 const { newStats, bump, stampOf } = require('../evaluator/legacy/src/analyze');
 const { record, compareReviewRows, nf, SERVICE_FA } = require('../evaluator/legacy/src/common');
@@ -15,7 +17,7 @@ function rangeOf(from, to) {
 function bankTable(bankInput) {
   const key = bankInput;
   const bank = BANKS[key];
-  if (!bank) throw new Error(`بانک پشتیبانیشده نیست: ${bankInput}`);
+  if (!bank) throw summaryError.unsupportedBank(bankInput);
   return { key, table: bank.table, label: bank.label };
 }
 
@@ -632,7 +634,9 @@ class SummaryService {
       },
       signal: AbortSignal.timeout(config.requestTimeoutMs),
     });
-    if (!response.ok) throw new Error(`API اصلی پاسخ نداد: HTTP ${response.status}`);
+    if (!response.ok) {
+      throw ceError.creditEvaluationBaseServiceError({ status: response.status, requestId });
+    }
     const body = await response.json();
     const data = body?.data ?? body;
     const raw = data?.reportResults?.[0] ?? data?.reports?.[0] ?? null;
@@ -715,7 +719,8 @@ class SummaryService {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;');
-    const message = escape(String(error?.message ?? error).slice(0, 1200));
+    const rawMsg = error?.data?.message?.fa ?? error?.message ?? error;
+    const message = escape(String(rawMsg).slice(0, 1200));
     const databaseUrl = process.env.DATABASE_URL ? 'تنظیم شده' : 'تنظیم نشده';
     return `<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>داشبورد زنده در دسترس نیست</title><style>
       body{margin:0;background:#f3f6f8;color:#1a2935;font:14px/1.9 Tahoma,"Segoe UI",sans-serif;padding:40px}

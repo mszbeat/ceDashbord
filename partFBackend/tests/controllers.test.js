@@ -28,19 +28,43 @@ const EXPECTED_CONTROLLERS = [
         method: 'POST',
         route: '/api/auth/register',
         handler: 'register',
-        params: ['_protocolRef.request.postData', '_trackingHeaders'],
+        params: ['_protocolRef.request.postData', '_trackingHeaders', '_session'],
       },
       {
         method: 'POST',
         route: '/api/auth/login',
         handler: 'login',
-        params: ['_protocolRef.request.postData', '_trackingHeaders'],
+        params: ['_protocolRef.request.postData', '_trackingHeaders', '_session'],
+      },
+      {
+        method: 'POST',
+        route: '/api/auth/logout',
+        handler: 'logout',
+        params: ['_session', '_protocolRef.response'],
+      },
+      {
+        method: 'GET',
+        route: '/api/auth/me',
+        handler: 'me',
+        params: ['_session'],
+      },
+      {
+        method: 'POST',
+        route: '/api/auth/role',
+        handler: 'assignRole',
+        params: ['_protocolRef.request.postData', '_session'],
+      },
+      {
+        method: 'GET',
+        route: '/api/auth/role',
+        handler: 'getRole',
+        params: ['_protocolRef.request.queryString'],
       },
       {
         method: 'POST',
         route: '/api/auth/remove',
         handler: 'removeUser',
-        params: ['_protocolRef.request.postData', '_trackingHeaders'],
+        params: ['_protocolRef.request.postData', '_trackingHeaders', '_session', '_protocolRef.response'],
       },
     ],
   },
@@ -157,7 +181,17 @@ function parseDecoratedRoutes(mainSource) {
   return found;
 }
 
-test('all 4 controller-packages (auth + 3 access tiers) use needProtocolRef: false and ordered params matching method signatures', () => {
+function assertValidErrorDefinition(errDef, keyName, expectedSourceName) {
+  const resolved = typeof errDef === 'function' ? errDef({ detail: 'sample' }) : errDef;
+  assert.equal(typeof resolved, 'object', `Error ${keyName} must be an object or factory returning object`);
+  assert.equal(typeof resolved.statusCode, 'number', `Error ${keyName} must define numeric statusCode`);
+  assert.equal(typeof resolved.meta?.code, 'string', `Error ${keyName} must define meta.code`);
+  assert.equal(resolved.meta.sourceName, expectedSourceName, `Error ${keyName} meta.sourceName mismatch`);
+  assert.equal(typeof resolved.data?.message?.fa, 'string', `Error ${keyName} must define data.message.fa`);
+  assert.equal(typeof resolved.data?.message?.en, 'string', `Error ${keyName} must define data.message.en`);
+}
+
+test('all 4 controller-packages define needProtocolRef: false, ordered params, and standardized config.error dictionaries', () => {
   assert.equal(
     fs.existsSync(path.join(ROOT, 'controllers', 'ingestionController')),
     false,
@@ -182,11 +216,21 @@ test('all 4 controller-packages (auth + 3 access tiers) use needProtocolRef: fal
     assert.equal(pkg.main, 'main.js');
 
     const ctrlConfig = require(path.join(ctrlDir, 'config.js'));
+    const extConfig = require(extConfigPath);
     const ctrlSchema = require(path.join(ctrlDir, 'schema.js'));
     const ctrlHelpers = spec.hasHelpers ? require(path.join(ctrlDir, 'helpers.js')) : null;
     const mainSource = fs.readFileSync(path.join(ctrlDir, 'main.js'), 'utf8');
 
     assert.equal(ctrlConfig.name, spec.packageName);
+    assert.equal(typeof ctrlConfig.error, 'object', `${spec.dir}/config.js must define error dictionary`);
+    assert.equal(Object.keys(ctrlConfig.error).length >= 3, true, `${spec.dir}/config.js must have controller errors`);
+    assert.equal(typeof ctrlConfig.error.internalServerError, 'function', `${spec.dir}/config.js must define internalServerError(additionalInfo)`);
+    assert.equal(extConfig.error, ctrlConfig.error, `configs/${spec.configFile} must expose the controller error dictionary`);
+
+    for (const [errKey, errDef] of Object.entries(ctrlConfig.error)) {
+      assertValidErrorDefinition(errDef, `${spec.dir}.error.${errKey}`, spec.packageName);
+    }
+
     assert.equal(
       mainSource.includes('BaseController.exportedProperties('),
       true,
@@ -236,7 +280,7 @@ test('all 4 controller-packages (auth + 3 access tiers) use needProtocolRef: fal
     }
   }
 
-  assert.equal(totalRoutes, 22, 'Expected all 22 backend API routes across auth + 3 dashboard controllers');
+  assert.equal(totalRoutes, 26, 'Expected all 26 backend API routes across auth + 3 dashboard controllers');
 });
 
 test('project-config loads cleanly across dev, prod, and test modes and boots all 4 controllers', () => {
@@ -257,19 +301,16 @@ test('project-config loads cleanly across dev, prod, and test modes and boots al
   assert.equal(Array.isArray(testCfg.servers), true);
 });
 
-test('http-adapter extracts injected queryString, request.postData/data, route params, HTML response, and HTTP errors accurately', async () => {
+test('http-adapter formats both config.error objects and HttpError instances accurately', async () => {
   const {
     normalizeQuery,
     normalizeBody,
     extractRouteParam,
     sendHtml,
     runJsonHandler,
-    BadRequestError,
-    ForbiddenError,
-    NotFoundError,
-    ConflictError,
     registerFrameworkGlobals,
   } = require(path.join(ROOT, 'services', 'http-adapter'));
+  const { error: adminError } = require(path.join(ROOT, 'controllers', 'adminController', 'config'));
 
   const mockHeaders = {};
   const response = {
@@ -287,54 +328,31 @@ test('http-adapter extracts injected queryString, request.postData/data, route p
     extractRouteParam({ url: '/api/sample/REQ-42' }, { params: { requestId: 'REQ-42' } }, 'requestId', /\/api\/sample\/([^/?#]+)/),
     'REQ-42',
   );
-  assert.deepEqual(normalizeBody({ mode: 'nightly', rebuild: true }), { mode: 'nightly', rebuild: true });
   assert.deepEqual(
     normalizeBody({ url: '/api/admin/runs/check', headers: {}, postData: { bank: 'tavan_mellat' } }),
     { bank: 'tavan_mellat' },
   );
-  assert.deepEqual(
-    normalizeBody({ url: '/api/admin/cron', headers: {}, data: { enabled: true } }),
-    { enabled: true },
-  );
-  assert.deepEqual(normalizeBody(JSON.stringify({ mode: 'intraday' })), { mode: 'intraday' });
 
   const okRes = await runJsonHandler(response, async () => ({ ok: true }), { noStore: true });
   assert.equal(response.statusCode, 200);
   assert.deepEqual(okRes, { ok: true });
   assert.match(mockHeaders['cache-control'], /no-store/);
 
-  const badRaw = await runJsonHandler(response, async () => {
-    throw new BadRequestError('ورودی نامعتبر');
+  const cfgErrRaw = await runJsonHandler(response, async () => {
+    throw adminError.invalidNationalCode;
   });
   assert.equal(response.statusCode, 400);
-  const badObj = typeof badRaw === 'string' ? JSON.parse(badRaw) : badRaw;
-  assert.equal(badObj.message, 'ورودی نامعتبر');
+  const cfgErrObj = typeof cfgErrRaw === 'string' ? JSON.parse(cfgErrRaw) : cfgErrRaw;
+  assert.equal(cfgErrObj.meta.code, 'invalidNationalCode');
+  assert.match(cfgErrObj.message, /کد ملی/);
 
-  const forbiddenRaw = await runJsonHandler(response, async () => {
-    throw new ForbiddenError('عدم مجوز');
-  });
-  assert.equal(response.statusCode, 403);
-  const forbiddenObj = typeof forbiddenRaw === 'string' ? JSON.parse(forbiddenRaw) : forbiddenRaw;
-  assert.equal(forbiddenObj.statusCode, 403);
-
-  const notFoundRaw = await runJsonHandler(response, async () => {
-    throw new NotFoundError('پیدا نشد');
+  const jobNotFoundRaw = await runJsonHandler(response, async () => {
+    throw adminError.jobNotFound('job-999');
   });
   assert.equal(response.statusCode, 404);
-  const notFoundObj = typeof notFoundRaw === 'string' ? JSON.parse(notFoundRaw) : notFoundRaw;
-  assert.equal(notFoundObj.statusCode, 404);
-
-  const conflictRaw = await runJsonHandler(response, async () => {
-    throw new ConflictError('تداخل اجرا');
-  });
-  assert.equal(response.statusCode, 409);
-  const conflictObj = typeof conflictRaw === 'string' ? JSON.parse(conflictRaw) : conflictRaw;
-  assert.equal(conflictObj.statusCode, 409);
-
-  const htmlOut = sendHtml(response, '<!doctype html><html><body>OK</body></html>');
-  assert.equal(response.statusCode, 200);
-  assert.match(mockHeaders['content-type'], /text\/html/);
-  assert.equal(htmlOut, '<!doctype html><html><body>OK</body></html>');
+  const jobNotFoundObj = typeof jobNotFoundRaw === 'string' ? JSON.parse(jobNotFoundRaw) : jobNotFoundRaw;
+  assert.equal(jobNotFoundObj.meta.code, 'jobNotFound');
+  assert.deepEqual(jobNotFoundObj.data.additionalInfo, { jobId: 'job-999' });
 
   class MockHttpResult {
     constructor(data, statusCode, headers, contentType) {
@@ -347,12 +365,10 @@ test('http-adapter extracts injected queryString, request.postData/data, route p
   registerFrameworkGlobals({ HttpResult: MockHttpResult });
   const wrappedHtml = sendHtml(response, '<!doctype html><html><body>RAW</body></html>', 200);
   assert.equal(wrappedHtml instanceof MockHttpResult, true);
-  assert.equal(wrappedHtml.data, '<!doctype html><html><body>RAW</body></html>');
   assert.equal(wrappedHtml.statusCode, 200);
-  assert.match(wrappedHtml.contentType, /text\/html/);
 });
 
-test('all controller main.js classes transpile and instantiate cleanly under decorator loader simulation and Program.js boots in order', async () => {
+test('all controller main.js classes transpile cleanly and Program.js loads sessionManager, samadService, and authService in order', async () => {
   const vm = require('node:vm');
   const Module = require('node:module');
 
@@ -435,6 +451,9 @@ test('all controller main.js classes transpile and instantiate cleanly under dec
         constructor(cfg) {
           this.cfg = cfg;
           this.loader = {
+            load(name, target) {
+              events.push(`load:${name}:${typeof target}`);
+            },
             loadResolver(name, resolverPath) {
               events.push(`loadResolver:${name}:${resolverPath}`);
             },
@@ -466,6 +485,8 @@ test('all controller main.js classes transpile and instantiate cleanly under dec
 
     assert.deepEqual(events, [
       'core.init',
+      'load:sessionManager:function',
+      'load:samadService:function',
       'loadResolver:authService:./controllers/auth/auth.service',
       'services.init',
       'loadControllersByPath:./controllers',

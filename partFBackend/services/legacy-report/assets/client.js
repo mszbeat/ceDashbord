@@ -129,7 +129,15 @@
       ? raw.data
       : raw;
     if (!response.ok) {
-      const serverMsg = unwrapped && typeof unwrapped.message === 'string' ? unwrapped.message : null;
+      const serverMsg =
+        unwrapped &&
+        (typeof unwrapped.message === 'string'
+          ? unwrapped.message
+          : typeof unwrapped.message?.fa === 'string'
+            ? unwrapped.message.fa
+            : typeof unwrapped.data?.message?.fa === 'string'
+              ? unwrapped.data.message.fa
+              : null);
       const err = new Error(
         serverMsg ||
           (response.status === 403 || response.status === 401
