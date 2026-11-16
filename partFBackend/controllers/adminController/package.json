@@ -1,8 +1,0 @@
-{
-  "name": "admin-controller",
-  "version": "1.0.0",
-  "description": "سطح دسترسی فقط admin: پنل مدیریت، زمانبند خودکار کران شبانه و اجرای دریافت گزارشها",
-  "main": "main.js",
-  "author": "",
-  "license": "ISC"
-}

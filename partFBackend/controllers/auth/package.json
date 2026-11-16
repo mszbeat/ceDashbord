@@ -1,8 +1,0 @@
-{
-  "name": "auth-controller",
-  "version": "1.0.0",
-  "description": "کنترلر اصالت‌سنجی کاربران بر پایه partAuthenticationInterface",
-  "main": "main.js",
-  "author": "",
-  "license": "ISC"
-}
