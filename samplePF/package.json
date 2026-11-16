@@ -1,0 +1,34 @@
+{
+  "name": "management-system",
+  "version": "1.0.0-alpha.0",
+  "description": "new project with partFramework@10",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "test": "mocha ./tests/**/**.test.js",
+    "unitTest": "mocha ./tests/unitTests/**.test.js",
+    "componentTest": "mocha ./tests/componentTests/**.test.js",
+    "lint": "eslint . --ext .js,.jsx,.ts,.tsx",
+    "lint:fix": "eslint . --ext .js,.jsx,.ts,.tsx --fix"
+  },
+  "author": "",
+  "dependencies": {
+    "@babel/core": "^7.29.0",
+    "@babel/eslint-parser": "^7.28.6",
+    "@partFramework/http": "^1.0.0",
+    "@partFramework/validator": "^1.3.0-alpha.2",
+    "axios": "^1.13.2",
+    "dotenv": "^17.2.3",
+    "eslint": "^8.57.1",
+    "nock": "^14.0.11",
+    "nodemon": "^3.1.11",
+    "partAuthenticationInterface": "^11.4.0-alpha.4",
+    "partFramework": "^10.2.0",
+    "partJsonValidator": "^7.0.0-alpha.1",
+    "partProfileInterface": "^11.6.0-alpha.1",
+    "partRequest": "^2.0.1",
+    "partUtilities": "^5.13.6",
+    "rewire": "^9.0.1",
+    "sinon": "^21.0.1"
+  }
+}

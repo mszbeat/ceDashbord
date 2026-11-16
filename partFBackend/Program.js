@@ -3,6 +3,8 @@ const { getServices } = require('./services/container');
 const { config } = require('./services/config');
 const SessionManager = require('./controllers/auth/session-manager');
 const SamadService = require('./controllers/auth/samad.service');
+const PartRequest = require('partRequest');
+const pr = new PartRequest();
 
 class Program {
   #core;
@@ -17,11 +19,24 @@ class Program {
     this.#servers = this.#config.servers;
   }
 
-  #loadManualControllers() {}
+  #loadManualControllers() { }
 
   async #loadDependencies() {
     this.#core.loader.load('sessionManager', SessionManager);
-    this.#core.loader.load('samadService', SamadService);
+    this.#core.loader.load('samadService', SamadService).inject(
+      new pr({
+        defaultHttpRequestOptions: {
+          baseURL: process.env.SAMAD_SERVICE_URL ,
+          headers: {
+            user: process.env.SAMAD_USER ,
+            pass: process.env.SAMAD_PASS ,
+          },
+          timeout: 7000,
+          protocol: 'http',
+        },
+      })
+    );
+
     this.#core.loader.loadResolver(
       'authService',
       './controllers/auth/auth.service',
@@ -35,7 +50,7 @@ class Program {
     const shutdown = async () => {
       try {
         await services.close();
-      } catch {}
+      } catch { }
     };
     process.once('SIGINT', shutdown);
     process.once('SIGTERM', shutdown);

@@ -1,4 +1,4 @@
-module.exports={
+module.exports = {
   global: {
     gatewayEnable: false,
     host: 'samad-v8-dev.partdp.ir', // دامنه‌ی سرویس از طریق گیت‌وی
@@ -26,8 +26,8 @@ module.exports={
   instance: {
     cacheTtl: 60 * 60 * 1000,// مدت زمان نگهداری cache
     auth: { // نام کاربری و پسورد برای دریافت توکن از گیت‌وی
-      user: 'test',
-      pass: 'test'
+      user: 'mohammadsadeghZarei',
+      pass: 'mohammadsadeghZarei'
     }
   }
 };

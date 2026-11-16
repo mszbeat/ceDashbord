@@ -2,25 +2,10 @@ const { error: authError } = require('./config');
 
 class SamadService {
   constructor(httpClient) {
-    this.org = process.env.SAMAD_ORG || process.env.org;
-    if (httpClient) {
-      this.samadService = httpClient;
-    } else {
-      const PartRequest = require('partRequest');
-      const pr = new PartRequest();
-      this.samadService = new pr({
-        defaultHttpRequestOptions: {
-          baseURL: process.env.SAMAD_SERVICE_URL || process.env.samadServiceUrl,
-          headers: {
-            user: process.env.SAMAD_USER || process.env.user,
-            pass: process.env.SAMAD_PASS || process.env.pass,
-          },
-          timeout: 7000,
-          protocol: 'http',
-        },
-      });
-    }
+    this.org = process.env.SAMAD_ORG;
+    this.samadService = httpClient;
   }
+
 
   #rethrowSamadError(err) {
     if (err && typeof err === 'object' && err.statusCode && err.meta) {
@@ -56,7 +41,7 @@ class SamadService {
       if (createdInSamad) {
         try {
           await this.removeUser(username);
-        } catch {}
+        } catch { }
       }
       this.#rethrowSamadError(err);
     }

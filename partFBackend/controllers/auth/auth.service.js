@@ -13,25 +13,11 @@ class AuthService {
   ) {
     this.partRequest = partRequest;
     this.logger = partLogger;
-    this.partAuth = partAuthenticationInterface;
     this.partAuthenticationInterface = partAuthenticationInterface;
-    this.sessionManager =
-      typeof sessionManager === 'function' ? new sessionManager() : sessionManager;
-    this.samadService =
-      typeof samadService === 'function' ? new samadService() : samadService;
+    this.sessionManager = sessionManager
+    this.samadService = samadService
   }
 
-  #normalizeBody(body) {
-    if (!body) return {};
-    if (typeof body === 'string') {
-      try {
-        return JSON.parse(body);
-      } catch {
-        return {};
-      }
-    }
-    return typeof body === 'object' ? body : {};
-  }
 
   #rethrowUnexpected(err) {
     if (err && typeof err === 'object' && err.statusCode && err.meta) {
@@ -47,7 +33,7 @@ class AuthService {
   }
 
   async addAuthEntry(body, trackingHeaders, session) {
-    const { username, password, role } = this.#normalizeBody(body);
+    const { username, password, role } = body
     if (!username || !password) {
       throw authError.invalidAuthInput;
     }
@@ -91,7 +77,7 @@ class AuthService {
   }
 
   async authenticate(body, trackingHeaders, session) {
-    const { username, password } = this.#normalizeBody(body);
+    const { username, password } = body;
     if (!username || !password) {
       throw authError.invalidAuthInput;
     }
@@ -171,7 +157,7 @@ class AuthService {
   }
 
   async assignRole(body, session) {
-    const { username, role } = this.#normalizeBody(body);
+    const { username, role } = body;
     if (!username || !role) {
       throw authError.roleRequired;
     }
@@ -195,7 +181,7 @@ class AuthService {
   }
 
   async getUserRoles(queryOrBody) {
-    const { username } = this.#normalizeBody(queryOrBody);
+    const { username } = queryOrBody
     if (!username) {
       throw authError.usernameRequired;
     }
@@ -212,7 +198,7 @@ class AuthService {
     const parsed =
       typeof body === 'string' && !body.trim().startsWith('{')
         ? { username: body.trim() }
-        : this.#normalizeBody(body);
+        : body
     const { username } = parsed;
 
     if (!username) {
