@@ -11,6 +11,13 @@ const { config } = require('./services/config');
 const SessionManager = require('./controllers/auth/session-manager');
 const SamadService = require('./controllers/auth/samad.service');
 
+function cleanEnv(value) {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  if (!trimmed || /[\u0600-\u06FF]/.test(trimmed)) return undefined;
+  return trimmed;
+}
+
 /**
  * بوت‌استرپ بک‌اند داشبورد روی `partFramework` — الگوی `samplePF`.
  *
@@ -39,7 +46,7 @@ class Program {
   async #loadDependencies() {
     this.#core.loader.load('sessionManager', SessionManager);
 
-    const samadBaseUrl = process.env.SAMAD_SERVICE_URL || 'http://samad-v8-dev.partdp.ir';
+    const samadBaseUrl = cleanEnv(process.env.SAMAD_SERVICE_URL) || 'http://samad-v8-dev.partdp.ir';
     const samadProtocol = samadBaseUrl.startsWith('https://') ? 'https' : 'http';
 
     // کلاینت HTTP سرویس سمد (تخصیص/خواندن/حذف نقش کاربران)
@@ -48,10 +55,10 @@ class Program {
         defaultHttpRequestOptions: {
           baseURL: samadBaseUrl,
           headers: {
-            user: process.env.SAMAD_USER || 'mohammadsadeghZarei',
-            pass: process.env.SAMAD_PASS || 'mohammadsadeghZarei',
+            user: cleanEnv(process.env.SAMAD_USER) || 'mohammadsadeghZarei',
+            pass: cleanEnv(process.env.SAMAD_PASS) || 'mohammadsadeghZarei',
           },
-          timeout: Number(process.env.SAMAD_TIMEOUT_MS || 7000),
+          timeout: Number(cleanEnv(process.env.SAMAD_TIMEOUT_MS) || 7000),
           protocol: samadProtocol,
         },
       }),
