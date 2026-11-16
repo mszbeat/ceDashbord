@@ -1,11 +1,3 @@
-'use strict';
-
-/**
- * نگاشت خطاهای اصالت‌سنجی/سمد به کدهای استاندارد `config.error`.
- *
- * هم خروجی دیکشنری `config.error` (شیء با statusCode/meta/data) و هم خطاهای خام
- * پکیج‌های پارت را می‌پذیرد و همیشه یک شیء استاندارد پارت برمی‌گرداند.
- */
 module.exports = (exception) => {
   if (exception && typeof exception === 'object' && exception.statusCode && exception.meta) {
     return {
