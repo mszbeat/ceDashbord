@@ -1,0 +1,11 @@
+{
+  "name": "credit-evaluation-controller",
+  "version": "1.0.0",
+  "description": "مشاهدهٔ جزئیات گزارش اعتبارسنجی (creditEvaluation + admin)",
+  "main": "main.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC"
+}
