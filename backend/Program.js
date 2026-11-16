@@ -39,7 +39,7 @@ class Program {
   async #loadDependencies() {
     this.#core.loader.load('sessionManager', SessionManager);
 
-    const samadBaseUrl = process.env.SAMAD_SERVICE_URL || 'http://samad-v8-dev.partdp.ir';
+    const samadBaseUrl = process.env.SAMAD_SERVICE_URL ;
     const samadProtocol = samadBaseUrl.startsWith('https://') ? 'https' : 'http';
 
     // کلاینت HTTP سرویس سمد (تخصیص/خواندن/حذف نقش کاربران)
