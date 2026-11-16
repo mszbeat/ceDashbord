@@ -732,9 +732,9 @@ class SummaryService {
       <pre>${message}</pre>
       <p><b>وضعیت متغیرها:</b> <code>DATABASE_URL</code>=${escape(databaseUrl)} · بکاند روی پورت <code>${escape(config.backendPort)}</code> · API اصلی <code dir="ltr">${escape(config.apiBaseUrl)}</code></p>
       <p>چکلیست:</p><ul>
-        <li><code>cp partFBackend/.env.example partFBackend/.env</code> و تنظیم <code>DATABASE_URL</code> واقعی</li>
-        <li><code>cd partFBackend && npm run migrate</code> برای ساخت جداول</li>
-        <li><code>cd partFBackend && npm run ingest -- --bank=tavan_resalat --mode=nightly</code></li>
+        <li><code>cp backend/.env.example backend/.env</code> و تنظیم <code>DATABASE_URL</code> واقعی</li>
+        <li><code>cd backend && npm run migrate</code> برای ساخت جداول</li>
+        <li><code>cd backend && npm run ingest -- --bank=tavan_resalat --mode=nightly</code></li>
       </ul>
       <p><a href="/api/diagnostics">گزارش تشخیصی دیتابیس</a> · <a href="/admin">پنل مدیریت</a> · <a href="/">تلاش دوباره</a></p>
     </main></body></html>`;

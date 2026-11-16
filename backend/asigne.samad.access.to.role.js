@@ -3,6 +3,21 @@
 const path = require('node:path');
 const fs = require('node:fs');
 
+try {
+  const dotenv = require('dotenv');
+  const envFile = path.join(__dirname, '.env');
+  if (fs.existsSync(envFile)) dotenv.config({ path: envFile });
+} catch {
+  // dotenv در محیط تست یا اجرا الزامی نیست
+}
+
+function cleanEnv(value) {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  if (!trimmed || /[\u0600-\u06FF]/.test(trimmed)) return undefined;
+  return trimmed;
+}
+
 const args = process.argv.slice(2);
 const hasFlag = (name) => args.includes(`--${name}`);
 const argValue = (name) => {
@@ -10,10 +25,13 @@ const argValue = (name) => {
   return hit ? hit.slice(name.length + 3) : undefined;
 };
 
-const BASE_URL = 'http://samad.partdp.ir';
-const USER = 'mohammadsadeghZarei';
-const PASS = 'mohammadsadeghZarei';
-const ORG = 'mohammadsadeghZarei';
+const BASE_URL = (
+  cleanEnv(process.env.SAMAD_BASE_URL) ||
+  'http://samad.partdp.ir'
+).replace(/\/+$/, '');
+const USER = cleanEnv(process.env.SAMAD_USER) || 'mohammadsadeghZarei';
+const PASS = cleanEnv(process.env.SAMAD_PASS) || 'mohammadsadeghZarei';
+const ORG = cleanEnv(process.env.SAMAD_ORG) || cleanEnv(process.env.org) || 'mohammadsadeghZarei';
 const DRY_RUN = hasFlag('dry-run');
 const PRINT_CURL = hasFlag('print-curl');
 const PARAM_STYLE = process.env.PARAM_STYLE || 'colon'; // colon | brace | star
@@ -24,7 +42,7 @@ function extractRoutes() {
   const explicit = argValue('routes');
   const candidates = explicit
     ? [explicit]
-    : [path.join(__dirname, '..', 'pd2', 'routes.js'), path.join(process.cwd(), 'routes.js')];
+    : [path.join(__dirname, 'routes.js'), path.join(process.cwd(), 'routes.js')];
   const routesFile = candidates.find((p) => fs.existsSync(p));
   if (!routesFile) throw new Error('routes.js پیدا نشد؛ با --routes=<path> مشخص کنید.');
 
@@ -63,17 +81,37 @@ function normalizeParamStyle(resource) {
 }
 
 /* ───────────────────────── ۲) سیاست دسترسی هر نقش ───────────────────────── */
-// هر نقش = فهرست patterns؛ نقش‌های بالاتر با extend از نقش پایین‌تر ارث می‌برند.
-const PUBLIC = ['POST /api/auth/register', 'POST /api/auth/login', 'POST /api/auth/refresh', 'POST /api/auth/logout', 'GET /api/auth/me', 'GET /api/health'];
+const PUBLIC = [
+  'POST /api/auth/register',
+  'POST /api/auth/login',
+  'POST /api/auth/refresh',
+  'POST /api/auth/logout',
+  'GET /api/auth/me',
+  'GET /api/health',
+];
 const READER = [
-  'GET /api/banks', 'GET /api/specs', 'GET /api/report', 'GET /api/diagnostics',
-  'GET /api/summary', 'GET /api/list', 'GET /api/runs',
+  'GET /api/banks',
+  'GET /api/specs',
+  'GET /api/report',
+  'GET /api/diagnostics',
+  'GET /api/summary',
+  'GET /api/list',
+  'GET /api/runs',
 ];
 const ADMIN_OPS = [
-  'POST /api/auth/role', 'GET /api/auth/role', 'POST /api/auth/remove',
-  'GET /api/admin/overview', 'GET /api/admin/cron', 'PUT /api/admin/cron',
-  'POST /api/admin/cron/run-now', 'POST /api/admin/runs/check', 'POST /api/admin/runs/start',
-  'GET /api/admin/jobs', 'GET /api/admin/jobs/:id', 'POST /api/admin/runs', 'POST /api/runs',
+  'POST /api/auth/role',
+  'GET /api/auth/role',
+  'POST /api/auth/remove',
+  'GET /api/admin/overview',
+  'GET /api/admin/cron',
+  'PUT /api/admin/cron',
+  'POST /api/admin/cron/run-now',
+  'POST /api/admin/runs/check',
+  'POST /api/admin/runs/start',
+  'GET /api/admin/jobs',
+  'GET /api/admin/jobs/:id',
+  'POST /api/admin/runs',
+  'POST /api/runs',
 ];
 
 const ROLE_POLICY = {
@@ -110,7 +148,7 @@ async function assignRole(roleName, accesses) {
   }
 
   if (DRY_RUN) {
-    console.log(`[dry-run] ${roleName}: ${accesses.length} access → ${ENDPOINT}`);
+    console.log(`[dry-run] ${roleName} (org=${ORG}): ${accesses.length} access → ${ENDPOINT}`);
     return { ok: true, dryRun: true };
   }
 
@@ -126,7 +164,7 @@ async function assignRole(roleName, accesses) {
   if (!res.ok) {
     throw new Error(`سمد برای نقش ${roleName} خطا داد: HTTP ${res.status} → ${text.slice(0, 500)}`);
   }
-  console.log(`✅ ${roleName}: ${accesses.length} روت تخصیص یافت (HTTP ${res.status})`);
+  console.log(`✅ ${roleName} (org=${ORG}): ${accesses.length} روت تخصیص یافت (HTTP ${res.status})`);
   return data;
 }
 
@@ -138,7 +176,7 @@ async function assignRole(roleName, accesses) {
   }
 
   const routes = extractRoutes();
-  console.log(`ℹ️  ${routes.length} روت از routes.js استخراج شد.`);
+  console.log(`ℹ️  ${routes.length} روت از routes.js استخراج شد (org=${ORG}).`);
 
   const only = (argValue('roles') || '').split(',').map((s) => s.trim()).filter(Boolean);
   const roles = only.length ? only : Object.keys(ROLE_POLICY);

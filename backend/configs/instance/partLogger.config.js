@@ -5,7 +5,7 @@ exports.introduceToLoader = {
     instance: {
       id: 'dashboard-auth-logger',
       sourceType: 'module',        
-      sourceName: 'partFBackend',
+      sourceName: 'ce-dashboard-backend',
       viewStackTrace: true,
       console: {
         enabled: true,

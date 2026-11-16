@@ -131,7 +131,7 @@ test('auth-controller: register/login/refresh/logout/me/role/removeUser با ت�
 
   const SessionManager = require(path.join(ROOT, 'controllers', 'auth', 'session-manager'));
   const sessionManager = new SessionManager({ useMemoryOnly: true });
-  const controller = new AuthController({}, {}, authConfig, authService, sessionManager, samadService, authService);
+  const controller = new AuthController({}, {}, authConfig, authService, sessionManager, samadService);
 
   // register
   const registerOut = await invoke(controller, authConfig, 'register', {
@@ -231,6 +231,7 @@ test('summary-controller: هر ۸ هندلر با پارامترهای تزری�
   container.setServicesForTest({ summary: fakeSummaryService() });
   try {
     assert.equal((await invoke(controller, config, 'health').promise).ok, true);
+    assert.equal((await invoke(controller, config, 'health').promise).service, 'ce-dashboard-backend');
     assert.equal((await invoke(controller, config, 'banks').promise).length, 3);
     assert.equal((await invoke(controller, config, 'specs', { queryString: { bank: 'tavan_mellat' } }).promise).bank.key, 'tavan_mellat');
     assert.equal((await invoke(controller, config, 'summary', { queryString: { bank: 'tavan_mellat' } }).promise).stats.total, 2);
@@ -352,6 +353,58 @@ test('admin-controller: همهٔ ۱۰ هندلر با تزریق _session و dat
   } finally {
     container.setServicesForTest(undefined);
   }
+});
+
+test('http/result.js: نبود HttpResult در فریم‌ورک باعث بازگرداندن HTML خام می‌شود (نه LocalHttpResult) و امضاهای HttpResult درست تطبیق داده می‌شوند', () => {
+  const Module = require('node:module');
+  const httpResultMod = require(path.join(ROOT, 'services', 'http', 'result.js'));
+  const { resetHttpResultCacheForTest, sendHtml, instantiateHttpResult } = httpResultMod;
+
+  // الف) شبیه‌سازی نبودن HttpResult در هیچ پکیج پارت (رفتار واقعی @partFramework/http@1.25.0)
+  const prevLoad = Module._load;
+  Module._load = function emptyLoad(request, parent, isMain) {
+    if (request.includes('partFramework') || request.includes('partUtilities')) {
+      return {};
+    }
+    return prevLoad.call(this, request, parent, isMain);
+  };
+  resetHttpResultCacheForTest();
+  try {
+    const response = { headers: {}, statusCode: 0, setHeader(k, v) { this.headers[k] = v; } };
+    const out = sendHtml('<!doctype html><html>ok</html>', 200, response);
+    assert.equal(typeof out, 'string');
+    assert.equal(out, '<!doctype html><html>ok</html>');
+    assert.equal(response.statusCode, 200);
+    assert.match(response.headers['Content-Type'], /text\/html/);
+  } finally {
+    Module._load = prevLoad;
+    resetHttpResultCacheForTest();
+  }
+
+  // ب) تطبیق امضاهای مختلف سازندهٔ HttpResult
+  class PositionalHeaderFirst {
+    constructor(body, headers, status) {
+      this.body = body;
+      this.headers = headers;
+      this.status = status;
+    }
+  }
+  const r1 = instantiateHttpResult(PositionalHeaderFirst, '<html>a</html>', 200, { 'Content-Type': 'text/html' }, 'text/html');
+  assert.equal(r1.body, '<html>a</html>');
+  assert.equal(r1.status, 200);
+  assert.equal(r1.headers['Content-Type'], 'text/html');
+
+  class DestructuredCtor {
+    constructor({ data, statusCode, headers }) {
+      this.data = data;
+      this.statusCode = statusCode;
+      this.headers = headers;
+    }
+  }
+  const r2 = instantiateHttpResult(DestructuredCtor, '<html>b</html>', 503, { 'Content-Type': 'text/html' }, 'text/html');
+  assert.equal(r2.data, '<html>b</html>');
+  assert.equal(r2.statusCode, 503);
+  assert.equal(r2.headers['Content-Type'], 'text/html');
 });
 
 test.after(() => restore());

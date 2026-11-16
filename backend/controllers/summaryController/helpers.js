@@ -16,8 +16,8 @@ function getSummaryService() {
 exports.health = function () {
   return {
     ok: true,
-    service: 'ce-dashboard-pd2',
-    framework: 'partFramework@10.2.0',
+    service: 'ce-dashboard-backend',
+    framework: 'partFramework',
     time: new Date().toISOString(),
   };
 };
@@ -31,15 +31,15 @@ exports.specs = function (queryString) {
   return getSummaryService().specs(query.bank || 'tavan_mellat');
 };
 
-exports.report = async function (queryString) {
+exports.report = async function (queryString, response) {
   const query = readQuery(queryString);
   const bank = query.bank || 'tavan_mellat';
   const rowsCap = query.rowsCap ? Number(query.rowsCap) : 100;
   try {
     const html = await getSummaryService().report(bank, query.from || undefined, query.to || undefined, rowsCap);
-    return sendHtml(html, 200);
+    return sendHtml(html, 200, response);
   } catch (err) {
-    return sendHtml(getSummaryService().errorHtml(err), 503);
+    return sendHtml(getSummaryService().errorHtml(err), 503, response);
   }
 };
 

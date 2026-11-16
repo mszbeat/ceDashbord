@@ -10,9 +10,8 @@ exports.controller = class AuthController extends BaseController {
    * @param {AuthService} authService
    * @param {SessionManager} sessionManager
    * @param {SamadService} samadService
-   * @param {AuthenticationService} authenticationService
    */
-  constructor(core, schema, config, authService, sessionManager, samadService, authenticationService) {
+  constructor(core, schema, config, authService, sessionManager, samadService) {
     super(core, schema, config);
     this.authService = authService;
     this.sessionManager = sessionManager;

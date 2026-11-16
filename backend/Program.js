@@ -2,7 +2,8 @@
 
 const PartFramework = require('partFramework');
 const PartRequest = require('partRequest');
-const pr = new PartRequest()
+
+const pr = new PartRequest();
 
 const { getServices } = require('./services/container');
 const { config } = require('./services/config');
@@ -10,13 +11,12 @@ const { config } = require('./services/config');
 const SessionManager = require('./controllers/auth/session-manager');
 const SamadService = require('./controllers/auth/samad.service');
 
-
 /**
- * بوت‌استرپ پروژهٔ pd2 روی `partFramework@10.2.0` — الگوی `samplePF`.
+ * بوت‌استرپ بک‌اند داشبورد روی `partFramework` — الگوی `samplePF`.
  *
- * ترتیب اجرا (مثل samplePF):
+ * ترتیب اجرا:
  *   1) core.init()
- *   2) بارگذاری وابستگی‌های تزریقی (sessionManager / samadService / authenticationService)
+ *   2) بارگذاری وابستگی‌های تزریقی (sessionManager / samadService / authService)
  *      به‌همراه راه‌اندازی کانتینر سرویس‌های دامنه (DB + cron)
  *   3) loadControllersByPath('./controllers')
  *   4) loadServers(servers)  →  سرویس HTTP + خواندن مسیرها از `routes.js`
@@ -34,24 +34,27 @@ class Program {
     this.#servers = this.#config.servers;
   }
 
-  #loadManualControllers() { }
+  #loadManualControllers() {}
 
   async #loadDependencies() {
     this.#core.loader.load('sessionManager', SessionManager);
+
+    const samadBaseUrl = process.env.SAMAD_SERVICE_URL || 'http://samad-v8-dev.partdp.ir';
+    const samadProtocol = samadBaseUrl.startsWith('https://') ? 'https' : 'http';
 
     // کلاینت HTTP سرویس سمد (تخصیص/خواندن/حذف نقش کاربران)
     this.#core.loader.load('samadService', SamadService).inject(
       new pr({
         defaultHttpRequestOptions: {
-          baseURL: process.env.SAMAD_SERVICE_URL,
+          baseURL: samadBaseUrl,
           headers: {
-            user: process.env.SAMAD_USER,
-            pass: process.env.SAMAD_PASS,
+            user: process.env.SAMAD_USER || 'mohammadsadeghZarei',
+            pass: process.env.SAMAD_PASS || 'mohammadsadeghZarei',
           },
-          timeout: 7000,
-          protocol: 'http',
+          timeout: Number(process.env.SAMAD_TIMEOUT_MS || 7000),
+          protocol: samadProtocol,
         },
-      })
+      }),
     );
 
     // لایهٔ اصالت‌سنجی پارت (partAuthenticationInterface) از طریق loaderConf
@@ -99,7 +102,7 @@ class Program {
     await this.#loadServers();
     // eslint-disable-next-line no-console
     console.log(
-      `✅ pd2 (partFramework) running on http://${config.backendHost}:${config.backendPort}/api`,
+      `✅ CE Dashboard backend (partFramework) running on http://${config.backendHost}:${config.backendPort}/api`,
     );
   }
 }

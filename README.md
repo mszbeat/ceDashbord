@@ -12,15 +12,15 @@
 
 | موضوع | انتخاب |
 |---|---|
-| فرانتاند | Next.js 14 + React 18 + Tailwind ( dependencyها حفظ شد؛ `app/route.ts` صفحهٔ legacy را زنده سرو میکند ) |
-| بکاند | NestJS 10 + PostgreSQL (`pg`) |
+| فرانتاند | Next.js 14 + React 18 + Tailwind (`app/route.ts` صفحهٔ legacy را زنده سرو میکند + `/login` و `/admin`) |
+| بکاند | `partFramework` (`@partFramework/http`, `@partFramework/router`, `partSessionManager`, `partSecurity`) + PostgreSQL (`pg`) |
 | بانکها | ملت، رسالت، پستبانک — همگی از رجیستری قدیمی `banks/*.js` |
 | تجمیع | `legacy_bump`: همان `newStats()`/`bump()` قدیمی؛ SQL فقط فهرست/صفحهبندی/روزها |
-| کنترلها | نوار باریک legacy-styled: بانک / از / تا / بروزرسانی |
-| جزئیات | همان `viewer.js` در تب جدید، ولی داده از `/api/sample/{requestId}` |
-| احراز هویت | فعلاً ندارد؛ بعداً با سرویس بومی شرکت وصل میشود |
-| اجرا | `install.sh` / `start.sh` / `migrate.sh` / `ingest.sh` در ریشه و هر پوشه |
-| Push | همین ریپو، برنچ `main` با Deploy Key (بعداً انتقال به ریپوی سازمانی) |
+| کنترلها | نوار باریک legacy-styled: بانک / از / تا / بروزرسانی + وضعیت احراز هویت و ورود/خروج |
+| جزئیات | همان `viewer.js` در تب جدید، ولی داده از `/api/sample/{requestId}` (نقش `creditEvaluation` یا `admin`) |
+| احراز هویت | `partAuthenticationInterface` + سمد (`partSamadInterface` + `partSessionManager`) + رفرش‌توکن چرخشی (`auth_refresh_tokens`) |
+| اجرا | `install.sh` / `start.sh` / `dev.sh` / `migrate.sh` / `ingest.sh` در ریشه و هر پوشه |
+| Push | همین ریپو، برنچ `main` با Deploy Key |
 | Docker Compose | حذف شد |
 
 ---
@@ -28,10 +28,10 @@
 ## ساختار
 
 ```text
-ce-dashboard-server/
-├── install.sh              # نصب هر دو پوشه
+ceDashbord/
+├── install.sh              # نصب هر دو پوشه (backend + frontend)
 ├── start.sh                # اجرای بکاند :3000 + فرانتاند :3001
-├── dev.sh                  # حالت توسعه با watch
+├── dev.sh                  # حالت توسعه (node --watch در بکاند + next dev در فرانتاند)
 ├── migrate.sh              # ساخت جداول PostgreSQL
 ├── ingest.sh               # اجرای Ingestion (شبانه / میانروز / بکفیل)
 ├── backend/
@@ -39,35 +39,38 @@ ce-dashboard-server/
 │   ├── start.sh
 │   ├── .env.example
 │   ├── package.json
-│   ├── scripts/
-│   │   ├── parity-smoke.js     # تست تطبیق خروجی زنده هر سه بانک
-│   │   └── pglite-preview.js   # پیشنمایش زنده بدون PostgreSQL سرور (PGlite)
-│   └── src/
-│       ├── main.ts
-│       ├── config.ts
-│       ├── message-dict.ts
-│       ├── db/                 # schema.sql + migrate.js + DatabaseService
-│       ├── evaluator/
-│       │   ├── legacy/         # کپی banks/* و src/* قدیمی (قواعد دستنخورده)
-│       │   ├── legacy-report/  # buildAiInput.js + aiInputKeyMaps.js از report/
-│       │   ├── evaluator.service.ts  # createEvaluator برای هر سه بانک
-│       │   └── evaluator.test.ts     # تست تطبیق M0/M1
-│       ├── ingestion/         # Worker صفحهای + checkpoint + advisory lock
-│       ├── summary/           # /api/report + Web API + پروکسی جزئیات
-│       ├── legacy-report/     # render.js/charts.js/common.js/style.css/client.js/viewer.js/viewer.css
-│       │   └── report-builder.js  # buildHtml قدیمی + نوار کنترل زنده
-│       └── utils/date.ts
+│   ├── index.js            # نقطهٔ ورود (MODE=dev|prod|test)
+│   ├── Program.js          # بوت‌استرپ partFramework + تزریق وابستگی‌ها
+│   ├── routes.js           # ۲۷ روت مرکزی + validate + checkAccess
+│   ├── asigne.samad.access.to.role.js  # تخصیص دسترسی‌های routes.js در سمد
+│   ├── project-config/     # routerConf (accessControl), servers, dependencies
+│   ├── configs/            # تنظیمات global/instance پارت و error configها
+│   ├── controllers/        # auth, summaryController, creditEvaluationController, adminController
+│   ├── scripts/verify-pd2.js  # تست سرتاسری + بررسی ساختار (با PGlite در صورت نصب)
+│   ├── tests/              # تست‌های واحد و قرارداد معماری (node --test)
+│   └── services/
+│       ├── config.js
+│       ├── container.js
+│       ├── db/             # schema.sql (شامل auth_refresh_tokens) + migrate.js + DatabaseService
+│       ├── evaluator/      # legacy/* + legacy-report/* + EvaluatorService
+│       ├── http/           # request.js + result.js
+│       ├── ingestion/      # Worker صفحه‌ای + checkpoint + advisory lock + run-ingest.js
+│       ├── summary/        # SummaryService (/api/report, /api/summary, /api/list, ...)
+│       ├── admin/          # AdminService + CronSchedulerService
+│       └── legacy-report/  # render.js/charts.js/common.js/assets/* + report-builder.js
 └── frontend/
     ├── install.sh
     ├── start.sh
     ├── .env.example
+    ├── lib/auth-client.ts  # نشست، رفرش‌توکن خودکار (single-flight) و همگام‌سازی تب‌ها
     ├── app/
-    │   ├── layout.tsx         # RTL / فارسی
-    │   ├── route.ts           # صفحهٔ زنده: GET / → GET /api/report بکاند
+    │   ├── layout.tsx      # RTL / فارسی
+    │   ├── route.ts        # صفحهٔ زنده: GET / → GET /api/report بکاند
+    │   ├── login/          # پنل ورود فارسی RTL (/login)
+    │   ├── admin/          # پنل مدیریت و زمان‌بندی کران (/admin)
     │   ├── globals.css
     │   └── api.ts
-    ├── tailwind-page.tsx.bak  # نسخهٔ قبلی Tailwind، فقط بایگانی
-    ├── next.config.js         # پروکسی /api به بکاند
+    ├── next.config.js      # پروکسی /api به بکاند
     └── tailwind.config.js
 ```
 
@@ -125,13 +128,14 @@ BACKEND_PORT=3000
 ./frontend/install.sh
 ```
 
-### ۴) ساخت جداول
+### ۴) ساخت جداول و تخصیص دسترسی سمد
 
 ```bash
 ./migrate.sh
+cd backend && npm run samad:assign
 ```
 
-جداول: `day_runs`، `samples_mellat`، `samples_resalat`، `samples_postbank`، `message_dict`، `sample_access_logs`.
+جداول: `day_runs`، `samples_mellat`، `samples_resalat`، `samples_postbank`، `message_dict`، `sample_access_logs`، `cron_settings`، `ingestion_jobs`، `auth_refresh_tokens`.
 
 ### ۵) اجرا
 
@@ -152,7 +156,7 @@ BACKEND_PORT=3000
 1. `GET /` توسط `frontend/app/route.ts` به `GET /api/report?bank=&from=&to=&rowsCap=` بکاند پروکسی میشود و همان HTML را در لحظه برمیگرداند؛ هیچ فایل HTML نوشته نمیشود.
 2. بکاند ردیفهای تحلیلشده را از `samples_<bank>` با keyset pagination میخواند.
 3. گروهها، چارکها، درصدها، کراسها، کارتها و سطرهای فهرست دقیقاً با `newStats()`/`bump()` قدیمی ساخته میشوند. `percentile_cont`/SQL دیگر منبع حقیقت نیست.
-4. `src/legacy-report/render.js` همان `buildHtml` قدیمی صدا زده میشود؛ `charts.js`، `style.css`، `client.js`، `viewer.js` و `viewer.css` عیناً همان فایلهای قدیمیاند.
+4. `backend/services/legacy-report/render.js` همان `buildHtml` قدیمی صدا زده میشود؛ `charts.js`، `style.css`، `client.js`، `viewer.js` و `viewer.css` عیناً همان فایلهای قدیمیاند.
 5. فقط متنهای وابسته به «پوشهٔ reports» و «فایل خصوصی جزئیات» به API زنده تغییر کردهاند: `sid` همان `request_id` است و کلیک ردیف `fetch('/api/sample/{requestId}')` میکند و همان viewer را در تب جدید میسازد.
 6. نوار باریک بالای صفحه، بانک/از/تا/بروزرسانی را با همان متغیرهای رنگی legacy اضافه میکند.
 
@@ -189,10 +193,7 @@ BACKEND_PORT=3000
 cd backend
 npm run ingest -- --bank=tavan_mellat --day=1405-08-19 --rebuild
 
-# همان فایلهای reports/ قدیمی را (بدون خواندن دوبارهٔ API) از صفر وارد کن
-node scripts/import-legacy-reports.js /path/to/reports tavan_mellat --rebuild
-
-# یا از طریق API بکاند
+# یا از طریق API بکاند (با دسترسی admin)
 curl -X POST http://localhost:3000/api/runs \
   -H 'content-type: application/json' \
   -d '{"bank":"tavan_mellat","day":"1405-08-19","mode":"nightly","rebuild":true}'
@@ -210,12 +211,6 @@ curl -X POST http://localhost:3000/api/runs \
 - `message_dict` و `sample_access_logs` دستنخورده میمانند (پیامهای قالبی و
   لاگ دسترسی تاریخچهایاند، وابسته به یک روز نیستند).
 - خروجی موفق شامل `"rebuild": true, "deleted": N` است.
-
-تست اتوماتیک رفتار بالا (شامل ROLLBACK و لغو پیش از حذف):
-
-```bash
-cd backend && npm run test:rebuild
-```
 
 رفتار معمولی (بدون rebuild):
 
@@ -266,46 +261,24 @@ cd backend && npm run test:rebuild
 - **ملت:** `output.Credit_Basket` توان بازپرداخت (ریال) است؛ `amount_kind=repayment_capacity`.
 - **رسالت/پستبانک:** `output.suggested_tavan_bazpardakht` خوانده میشود؛ `viewer` اختصاصی، `sanitizeSample` رسالت و ستونهای `امتیاز`/`آستانهٔ نکول` از همان `banks/*.js` میآیند.
 - **نمونه کامل:** فقط با کلیک روی `request_id` و از API اصلی گرفته میشود؛ پاسخ `Cache-Control: no-store` دارد، `sourceIp` حذف میشود، کد ملی در دیتابیس جانبی ذخیره نمیشود ولی در همان پاسخ لحظهای برای viewer رسالت/پستبانک قابل نمایش است. فقط یک ردیف ممیزی در `sample_access_logs` ثبت میشود.
-- **احراز هویت:** فعلاً `POST /api/runs` و مشاهده جزئیات باز هستند. بعداً Guard سرویس بومی شرکت اضافه میشود.
+- **احراز هویت و دسترسی:** با `partAuthenticationInterface`، `partSessionManager` و سمد (`partSamadInterface`) محافظت میشود؛ همراه با رفرش‌توکن چرخشی (`POST /api/auth/refresh`) و کوکی HttpOnly `ce_refresh` در کنار توکن نشست کوتاه‌عمر.
 
 ---
 
-## تست تطبیق
+## تست تطبیق و سلامت
 
 ```bash
 cd backend
-npm test              # parity ارزیاب M0/M1
-npm run build
-npm run test:parity   # parity صفحهٔ زنده هر سه بانک
+npm test              # تست‌های واحد، قرارداد روتر، کنترلرها، لایه auth/refresh و scripts/verify-pd2.js
 ```
 
-`test:parity` بررسی میکند که:
+برای اجرای پیشنمایش محلی بدون نیاز به PostgreSQL سرور، در صورت نصب بودن `@electric-sql/pglite`، اسکریپت `npm run verify` تست سرتاسری دیتابیس + رندر HTML هر سه بانک را نیز اجرا میکند.
+
+`verify-pd2.js` بررسی میکند که:
 
 - ساختار `<!doctype html>`، استایل، `viewer.js`، `client.js`، نوار کنترل و حالت `api` وجود دارند؛
-- خبری از `__CE_DASHBOARD_PRIVATE__`، `reports/_ce-dashboard-private` و متنهای آفلاین `MAX_ROWS` نیست؛
-- `data-sid` همان `request_id` است؛
-- ترتیب بخشهای **رسالت** دقیقاً با `report.html` یکی است، شامل `features`؛
-- هر سه بانک خروجی زنده میسازند.
-
-خروجی نمونه تست ارزیاب:
-
-```text
-✅ evaluator parity test passed: { requestId: ..., flags: 10, metrics: 27, cats: 7, paths: 4, services: 5 }
-```
-
-### پیشنمایش بدون PostgreSQL سرور
-
-برای دیدن سریع صفحهٔ زنده در محیطهای بدون Postgres، PGlite (PostgreSQL در WASM) پشت همان اپ NestJS قرار میگیرد:
-
-```bash
-cd backend
-npm install
-npm run build
-npm run preview:pglite
-# سپس frontend را با BACKEND_URL=http://127.0.0.1:3000 اجرا کن
-```
-
-این فقط previews است؛ مسیر production همان PostgreSQL واقعی و `./migrate.sh` است.
+- خبری از `__CE_DASHBOARD_PRIVATE__` و فایل‌های خصوصی آفلاین نیست؛
+- `data-sid` همان `request_id` است و رفرش‌توکن/احراز هویت مطابق انتظار کار میکنند.
 
 ---
 

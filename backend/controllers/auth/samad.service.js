@@ -3,7 +3,7 @@ const { error: authError } = require('./config');
 class SamadService {
   constructor(httpClient) {
     this.httpClient = httpClient;
-    this.org = process.env.SAMAD_ORG;
+    this.org = process.env.SAMAD_ORG || process.env.org || 'mohammadsadeghZarei';
   }
 
   #assertReady() {

@@ -5,11 +5,8 @@ const path = require('node:path');
 try {
   const dotenv = require('dotenv');
   const localEnv = path.join(__dirname, '..', '.env');
-  const legacyBackendEnv = path.join(__dirname, '..', '..', 'backend', '.env');
   if (fs.existsSync(localEnv)) {
     dotenv.config({ path: localEnv });
-  } else if (fs.existsSync(legacyBackendEnv)) {
-    dotenv.config({ path: legacyBackendEnv });
   } else {
     dotenv.config();
   }

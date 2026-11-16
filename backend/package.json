@@ -1,7 +1,7 @@
 {
-  "name": "pd2",
+  "name": "ce-dashboard-backend",
   "version": "1.0.0",
-  "description": "CE Dashboard backend v2 — partFramework (controller + central router architecture)",
+  "description": "CE Dashboard backend — partFramework (controller + central router architecture)",
   "main": "index.js",
   "type": "commonjs",
   "scripts": {
@@ -9,7 +9,9 @@
     "dev": "node --watch index.js",
     "migrate": "node services/db/migrate.js",
     "ingest": "node services/ingestion/run-ingest.js",
-    "import:legacy": "node scripts/import-legacy-reports.js",
+    "ingest:mellat": "node services/ingestion/run-ingest.js --bank=tavan_mellat",
+    "samad:assign": "node asigne.samad.access.to.role.js",
+    "verify": "node scripts/verify-pd2.js",
     "test": "node --test tests/*.test.js && node scripts/verify-pd2.js"
   },
   "keywords": [],

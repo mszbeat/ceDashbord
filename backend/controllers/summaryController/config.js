@@ -13,7 +13,7 @@ module.exports = {
     health: { needProtocolRef: false, params: [] },
     banks: { needProtocolRef: false, params: [] },
     specs: { needProtocolRef: false, params: ['_protocolRef.request.queryString'] },
-    report: { needProtocolRef: false, params: ['_protocolRef.request.queryString'] },
+    report: { needProtocolRef: false, params: ['_protocolRef.request.queryString', '_protocolRef.response'] },
     diagnostics: { needProtocolRef: false, params: [] },
     summary: { needProtocolRef: false, params: ['_protocolRef.request.queryString'] },
     list: { needProtocolRef: false, params: ['_protocolRef.request.queryString'] },

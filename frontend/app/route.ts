@@ -17,7 +17,8 @@ const errorPage = (title: string, detail: string, status?: number) => `<!doctype
 <p>اگر روی سیستم خودتان اجرا میکنید: <code>backend/.env</code>، <code>./migrate.sh</code>، <code>./ingest.sh</code> و <code>BACKEND_URL</code> در <code>frontend/.env.local</code> را بررسی کنید.</p>
 </main></body></html>`;
 
-function extractHtmlDocument(rawBody: string): string | null {
+function extractHtmlDocument(rawBody: string, depth = 0): string | null {
+  if (depth > 4 || typeof rawBody !== 'string') return null;
   const trimmed = rawBody.trimStart();
   if (/^<!doctype\s+html\b|^<html\b/i.test(trimmed)) {
     return rawBody;
@@ -26,8 +27,18 @@ function extractHtmlDocument(rawBody: string): string | null {
     try {
       const parsed = JSON.parse(trimmed);
       for (const candidate of [parsed?.data, parsed?.result, parsed?.body, parsed?.html]) {
-        if (typeof candidate === 'string' && /<!doctype\s+html\b|<html\b/i.test(candidate)) {
-          return candidate;
+        if (typeof candidate === 'string') {
+          if (/<!doctype\s+html\b|<html\b/i.test(candidate)) {
+            return candidate;
+          }
+          const nested = extractHtmlDocument(candidate, depth + 1);
+          if (nested !== null) return nested;
+        } else if (candidate && typeof candidate === 'object') {
+          for (const inner of [candidate.data, candidate.result, candidate.body, candidate.html]) {
+            if (typeof inner === 'string' && /<!doctype\s+html\b|<html\b/i.test(inner)) {
+              return inner;
+            }
+          }
         }
       }
     } catch {
@@ -58,7 +69,9 @@ function appendSetCookieHeaders(source: Headers, dest: Headers) {
 export async function GET(request: NextRequest) {
   const backendUrl = process.env.BACKEND_URL || 'http://127.0.0.1:3000';
   const target = new URL('/api/report', backendUrl);
-  request.nextUrl.searchParams.forEach((value, key) => target.searchParams.set(key, value));
+  request.nextUrl.searchParams.forEach((value, key) => {
+    if (value !== '') target.searchParams.set(key, value);
+  });
   const headers = new Headers({
     'content-type': 'text/html; charset=utf-8',
     'cache-control': 'no-store, no-cache, must-revalidate',
@@ -98,8 +111,16 @@ export async function GET(request: NextRequest) {
       return new Response(body, { status: response.status, headers });
     }
 
+    const hintTitle =
+      response.status === 401 || response.status === 403
+        ? 'دسترسی به داشبورد مجاز نیست'
+        : 'پاسخ بکاند معتبر نیست';
     return new Response(
-      errorPage('پاسخ بکاند معتبر نیست', `پاسخ ${target.origin}/api/report بهجای HTML، ${contentType || 'بدون Content-Type'} بود.\n${body.slice(0, 1200)}`, response.status),
+      errorPage(
+        hintTitle,
+        `پاسخ ${target.origin}/api/report بهجای HTML، ${contentType || 'بدون Content-Type'} بود.\n${body.slice(0, 1200)}`,
+        response.status,
+      ),
       { status: response.status, headers },
     );
   } catch (error) {

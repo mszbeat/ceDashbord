@@ -37,8 +37,8 @@ exports.controller = class SummaryController extends BaseController {
   }
 
   /** GET /api/report?bank=...&from=...&to=... (HTML) */
-  report(queryString) {
-    return helpers.report(queryString);
+  report(queryString, response) {
+    return helpers.report(queryString, response);
   }
 
   /** GET /api/diagnostics */

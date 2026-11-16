@@ -4,8 +4,8 @@ set -e
 cd "$(dirname "$0")"
 mkdir -p logs
 
-echo "▶ بکاند NestJS  → http://localhost:3000/api"
-echo "▶ فرانتاند Next → http://localhost:3001"
+echo "▶ بکاند partFramework → http://localhost:3000/api"
+echo "▶ فرانتاند Next.js    → http://localhost:3001"
 echo "▶ لاگها: logs/backend.log و logs/frontend.log"
 
 ./backend/start.sh > logs/backend.log 2>&1 &

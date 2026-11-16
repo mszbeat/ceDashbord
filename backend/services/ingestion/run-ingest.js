@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/* CLI اجرای Ingestion روی partFBackend:
+/* CLI اجرای Ingestion روی backend (partFramework):
    npm run ingest -- --bank=tavan_mellat --mode=nightly
    npm run ingest -- --mode=intraday
    npm run ingest -- --days=7

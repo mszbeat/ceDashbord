@@ -9,7 +9,7 @@ function createErrorInfo(packageJson = {}) {
       code,
       version: packageJson.version || '1.0.0',
       sourceType: 'controller',
-      sourceName: packageJson.name || 'partFBackend',
+      sourceName: packageJson.name || 'ce-dashboard-backend',
     };
   };
 }
