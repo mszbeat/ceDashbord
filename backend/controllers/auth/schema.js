@@ -51,10 +51,22 @@ exports.login = {
     properties: {
       username: usernameSchema,
       password: passwordSchema,
+      rememberMe: {
+        type: 'boolean',
+        errorMessages: {
+          type: 'rememberMe must be a boolean',
+        },
+      },
     },
     required: ['username', 'password'],
     additionalProperties: false,
   },
+};
+
+exports.refresh = {
+  header: {},
+  params: {},
+  queryString: {},
 };
 
 exports.logout = {

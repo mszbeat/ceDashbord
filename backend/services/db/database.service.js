@@ -1,9 +1,9 @@
 'use strict';
-const { Pool } = require('pg');
 const { config } = require('../config');
 
 class DatabaseService {
   constructor(customConnectionString) {
+    const { Pool } = require('pg');
     this.pool = new Pool({
       connectionString: customConnectionString || config.databaseUrl,
       max: 10,

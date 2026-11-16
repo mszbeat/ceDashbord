@@ -1,6 +1,16 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  applyTheme,
+  authFetch,
+  AuthSessionState,
+  ensureAuthenticated,
+  formatRolesFa,
+  getSavedTheme,
+  logoutSession,
+  startSessionKeepalive,
+} from '@/lib/auth-client';
 import './admin.css';
 
 type BankKey = 'tavan_mellat' | 'tavan_resalat' | 'tavan_postbank';
@@ -133,7 +143,7 @@ function unwrapPartEnvelope(raw: any): any {
 }
 
 async function apiFetch<T = any>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, {
+  const res = await authFetch(path, {
     ...init,
     cache: 'no-store',
     headers: {
@@ -167,6 +177,8 @@ async function apiFetch<T = any>(path: string, init?: RequestInit): Promise<T> {
 
 export default function AdminPage() {
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
+  const [authUser, setAuthUser] = useState<AuthSessionState | null>(null);
+  const [redirectingToLogin, setRedirectingToLogin] = useState(false);
   const [overview, setOverview] = useState<OverviewPayload | null>(null);
   const [loadingOverview, setLoadingOverview] = useState(true);
   const [accessDeniedMsg, setAccessDeniedMsg] = useState<string | null>(null);
@@ -209,20 +221,34 @@ export default function AdminPage() {
   const initializedDatesRef = useRef(false);
 
   useEffect(() => {
-    const saved = typeof window !== 'undefined' ? window.localStorage.getItem('ce-theme') : null;
-    if (saved === 'dark' || saved === 'light') {
-      setTheme(saved);
-      document.documentElement.setAttribute('data-theme', saved);
-    }
+    const saved = getSavedTheme();
+    setTheme(saved);
+    applyTheme(saved);
+
+    return startSessionKeepalive(
+      (state) => {
+        setAuthUser(state);
+      },
+      () => {
+        setRedirectingToLogin(true);
+        if (typeof window !== 'undefined') {
+          window.location.replace('/login?next=%2Fadmin&reason=expired');
+        }
+      },
+    );
   }, []);
 
   const toggleTheme = () => {
     const next = theme === 'light' ? 'dark' : 'light';
     setTheme(next);
-    document.documentElement.setAttribute('data-theme', next);
-    try {
-      window.localStorage.setItem('ce-theme', next);
-    } catch {}
+    applyTheme(next);
+  };
+
+  const handleLogout = async () => {
+    await logoutSession();
+    if (typeof window !== 'undefined') {
+      window.location.assign('/login?next=%2Fadmin');
+    }
   };
 
   const syncCronFormFromServer = useCallback((c: CronState) => {
@@ -255,6 +281,15 @@ export default function AdminPage() {
         }
       } catch (err: any) {
         if (err?.status === 401 || err?.status === 403) {
+          const authState = await ensureAuthenticated().catch(() => null);
+          if (authState) setAuthUser(authState);
+          if (!authState || !authState.authenticated) {
+            setRedirectingToLogin(true);
+            if (typeof window !== 'undefined') {
+              window.location.replace('/login?next=%2Fadmin');
+            }
+            return;
+          }
           setAccessDeniedMsg(
             err?.message || 'ورود به پنل مدیریت فقط برای کاربران دارای نقش admin مجاز است.',
           );
@@ -444,13 +479,36 @@ export default function AdminPage() {
     window.scrollTo({ top: 240, behavior: 'smooth' });
   };
 
+  if (redirectingToLogin) {
+    return (
+      <div className="adm-root" dir="rtl">
+        <div className="adm-container" style={{ maxWidth: 640, paddingTop: 72 }}>
+          <section className="adm-card" style={{ padding: '32px 36px', textAlign: 'center' }}>
+            <h1 style={{ fontSize: 20, margin: '0 0 10px' }}>نیاز به ورود به حساب کاربری</h1>
+            <p style={{ margin: '0 0 20px', color: 'var(--adm-muted)' }}>
+              در حال انتقال به صفحهٔ ورود به سامانه…
+            </p>
+            <a className="adm-btn adm-btn-primary" href="/login?next=%2Fadmin">
+              ورود به پنل کاربری
+            </a>
+          </section>
+        </div>
+      </div>
+    );
+  }
+
   if (accessDeniedMsg) {
     return (
       <div className="adm-root" dir="rtl">
         <div className="adm-container" style={{ maxWidth: 680, paddingTop: 64 }}>
           <section className="adm-card" style={{ padding: '32px 36px' }}>
-            <div style={{ marginBottom: 12 }}>
+            <div style={{ marginBottom: 12, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
               <span className="adm-badge err">HTTP ۴۰۳ · عدم دسترسی</span>
+              {authUser?.authenticated && (
+                <span className="adm-badge muted">
+                  کاربر فعلی: {authUser.username} ({formatRolesFa(authUser.roles)})
+                </span>
+              )}
             </div>
             <h1 style={{ fontSize: 22, margin: '0 0 12px' }}>عدم مجوز ورود به پنل مدیریت</h1>
             <p style={{ lineHeight: 1.9, margin: '0 0 22px', opacity: 0.88 }}>{accessDeniedMsg}</p>
@@ -458,6 +516,14 @@ export default function AdminPage() {
               <a className="adm-btn adm-btn-primary" href="/">
                 ← بازگشت به صفحهٔ اول داشبورد
               </a>
+              <a className="adm-btn" href="/login?next=%2Fadmin">
+                ورود با حساب مدیر دیگر
+              </a>
+              {authUser?.authenticated && (
+                <button type="button" className="adm-btn" onClick={() => void handleLogout()}>
+                  خروج از این حساب
+                </button>
+              )}
               <button type="button" className="adm-btn" onClick={toggleTheme}>
                 {theme === 'light' ? '☾ حالت تیره' : '☀ حالت روشن'}
               </button>
@@ -482,6 +548,12 @@ export default function AdminPage() {
           </div>
 
           <div className="adm-top-actions">
+            {authUser?.authenticated && (
+              <span className="adm-user-chip" title={formatRolesFa(authUser.roles)}>
+                <span>👤 {authUser.username}</span>
+                <small>· {formatRolesFa(authUser.roles)}</small>
+              </span>
+            )}
             <a className="adm-btn" href="/">
               ← بازگشت به داشبورد زنده
             </a>
@@ -493,6 +565,15 @@ export default function AdminPage() {
             >
               {loadingOverview ? 'در حال بروزرسانی...' : '⟳ بروزرسانی وضعیت'}
             </button>
+            {authUser?.authenticated ? (
+              <button type="button" className="adm-btn" onClick={() => void handleLogout()}>
+                خروج
+              </button>
+            ) : (
+              <a className="adm-btn" href="/login?next=%2Fadmin">
+                ورود
+              </a>
+            )}
             <button type="button" className="adm-btn" onClick={toggleTheme}>
               {theme === 'light' ? '☾ حالت تیره' : '☀ حالت روشن'}
             </button>

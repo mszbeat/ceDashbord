@@ -176,7 +176,7 @@ async function waitForJob(adminConfig, adminHelpers, jobId, timeoutMs = 8000) {
     },
   };
   require(path.join(ROOT, 'routes.js'))(router);
-  assert.equal(recorded.length, 26, 'routes.js must register 26 routes');
+  assert.equal(recorded.length, 27, 'routes.js must register 27 routes');
 
   const controllers = {
     'auth-controller': 'auth',
@@ -418,6 +418,16 @@ async function waitForJob(adminConfig, adminHelpers, jobId, timeoutMs = 8000) {
     const doneCronJob = await waitForJob(adminConfig, adminHelpers, cronNowJob.id);
     assert.equal(doneCronJob.status, 'completed');
     console.log('  ✓ ۵. پنل admin، محافظ تداخل داده، کران تهران و حفاظت کدملی تایید شدند');
+
+    // ── ۶. رفرش‌توکن در دیتابیس (PGlite) ──
+    const { RefreshTokenService } = require(path.join(ROOT, 'controllers', 'auth', 'refresh-token.service'));
+    const rtService = new RefreshTokenService({ db });
+    const issuedRt = await rtService.issue({ username: 'verify-admin', roles: ['admin'], rememberMe: true });
+    assert.equal((await rtService.peek(issuedRt.rawToken)).valid, true);
+    const rotatedRt = await rtService.rotate(issuedRt.rawToken, { roles: ['admin'] });
+    assert.notEqual(rotatedRt.rawToken, issuedRt.rawToken);
+    await assert.rejects(() => rtService.rotate(issuedRt.rawToken), (err) => err.statusCode === 401);
+    console.log('  ✓ ۶. رفرش‌توکن، چرخش یکبارمصرف و تشخیص سوءاستفاده در دیتابیس تایید شدند');
   } finally {
     global.fetch = originalFetch;
     await services.close();

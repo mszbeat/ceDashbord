@@ -34,6 +34,8 @@ const config = {
   redactNationalCode: (process.env.CE_REDACT_NATIONAL_CODE || 'true') === 'true',
   requestTimeoutMs: Number(process.env.CE_API_TIMEOUT_MS || 20000),
   retryCount: Number(process.env.CE_API_RETRY || 3),
+  refreshTokenTtlMs: Number(process.env.REFRESH_TOKEN_TTL_MS || 24 * 60 * 60 * 1000),
+  refreshTokenRememberTtlMs: Number(process.env.REFRESH_TOKEN_REMEMBER_TTL_MS || 14 * 24 * 60 * 60 * 1000),
 };
 
 const BANKS = {

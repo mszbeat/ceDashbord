@@ -181,3 +181,25 @@ INSERT INTO cron_configs (
   'nightly_default', false, 'daily', 2, 0, '0 2 * * *', 'Asia/Tehran',
   ARRAY['tavan_mellat', 'tavan_resalat', 'tavan_postbank'], 1, true
 ) ON CONFLICT (id) DO NOTHING;
+
+-- ذخیرهٔ امن رفرش‌توکن‌ها (فقط هش SHA-256، با چرخش یکبارمصرف و تشخیص سوءاستفاده)
+CREATE TABLE IF NOT EXISTS auth_refresh_tokens (
+  id BIGSERIAL PRIMARY KEY,
+  token_hash TEXT NOT NULL UNIQUE,
+  family_id TEXT NOT NULL,
+  username TEXT NOT NULL,
+  roles JSONB NOT NULL DEFAULT '["visitor"]'::jsonb,
+  remember_me BOOLEAN NOT NULL DEFAULT false,
+  expires_at TIMESTAMPTZ NOT NULL,
+  rotated_at TIMESTAMPTZ,
+  revoked_at TIMESTAMPTZ,
+  replaced_by_hash TEXT,
+  ip TEXT,
+  user_agent TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_used_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_auth_refresh_tokens_username ON auth_refresh_tokens(username);
+CREATE INDEX IF NOT EXISTS idx_auth_refresh_tokens_family ON auth_refresh_tokens(family_id);
+CREATE INDEX IF NOT EXISTS idx_auth_refresh_tokens_expires ON auth_refresh_tokens(expires_at);
+

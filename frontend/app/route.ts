@@ -13,14 +13,10 @@ const errorPage = (title: string, detail: string, status?: number) => `<!doctype
   a{color:#087b72;font-weight:700}code{background:#f7f9fa;border-radius:6px;padding:2px 6px}
 </style></head><body><main><h1>${escapeHtml(title)}</h1><p>${escapeHtml(detail)}</p>
 <pre>${escapeHtml(status ? `HTTP ${status}\n` : '')}${escapeHtml(detail)}</pre>
-<p>بررسی سریع: <a href="/api/diagnostics">گزارش تشخیصی دیتابیس</a> · <a href="/">تلاش دوباره</a></p>
-<p>اگر روی سیستم خودتان اجرا میکنید: <code>partFBackend/.env</code> (یا <code>backend/.env</code>)، <code>./migrate.sh</code>، <code>./ingest.sh</code> و <code>BACKEND_URL</code> در <code>frontend/.env.local</code> را بررسی کنید.</p>
+<p>بررسی سریع: <a href="/api/diagnostics">گزارش تشخیصی دیتابیس</a> · <a href="/login">ورود به سامانه</a> · <a href="/">تلاش دوباره</a></p>
+<p>اگر روی سیستم خودتان اجرا میکنید: <code>backend/.env</code>، <code>./migrate.sh</code>، <code>./ingest.sh</code> و <code>BACKEND_URL</code> در <code>frontend/.env.local</code> را بررسی کنید.</p>
 </main></body></html>`;
 
-/**
- * استخراج رشتهٔ HTML در صورتی که پاسخ بکاند در پوشش استاندارد partFramework
- * مثل {"data":"<!doctype html>..."} یا {"result":"<!doctype html>..."} قرار گرفته باشد.
- */
 function extractHtmlDocument(rawBody: string): string | null {
   const trimmed = rawBody.trimStart();
   if (/^<!doctype\s+html\b|^<html\b/i.test(trimmed)) {
@@ -41,15 +37,32 @@ function extractHtmlDocument(rawBody: string): string | null {
   return null;
 }
 
+function appendSetCookieHeaders(source: Headers, dest: Headers) {
+  const getSetCookie = (source as any).getSetCookie;
+  if (typeof getSetCookie === 'function') {
+    for (const cookie of getSetCookie.call(source) as string[]) {
+      dest.append('set-cookie', cookie);
+    }
+    return;
+  }
+  const single = source.get('set-cookie');
+  if (single) {
+    dest.append('set-cookie', single);
+  }
+}
+
 /**
  * صفحهٔ زنده داشبورد: همان HTML قدیمی (render.js + style.css + client.js)
- * در لحظه از بکاند گرفته میشود؛ هیچ فایل HTML برای دانلود تولید نمیشود.
+ * در لحظه از بکاند گرفته میشود و کوکی‌های نشست/رفرش‌توکن بکاند را حفظ میکند.
  */
 export async function GET(request: NextRequest) {
   const backendUrl = process.env.BACKEND_URL || 'http://127.0.0.1:3000';
   const target = new URL('/api/report', backendUrl);
   request.nextUrl.searchParams.forEach((value, key) => target.searchParams.set(key, value));
-  const headers = { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store, no-cache, must-revalidate' };
+  const headers = new Headers({
+    'content-type': 'text/html; charset=utf-8',
+    'cache-control': 'no-store, no-cache, must-revalidate',
+  });
 
   try {
     const forwardHeaders: Record<string, string> = {};
@@ -71,6 +84,8 @@ export async function GET(request: NextRequest) {
       cache: 'no-store',
       headers: forwardHeaders,
     });
+    appendSetCookieHeaders(response.headers, headers);
+
     const body = await response.text();
     const contentType = response.headers.get('content-type') || '';
 
@@ -79,12 +94,10 @@ export async function GET(request: NextRequest) {
       return new Response(extractedHtml, { status: response.status, headers });
     }
 
-    // اگر بکاند پاسخ HTML غیرمعمول ولی واقعاً text/html غیر JSON فرستاده باشد
     if (contentType.includes('text/html') && !body.trimStart().startsWith('{')) {
       return new Response(body, { status: response.status, headers });
     }
 
-    // جلوی نمایش JSON خام در مرورگر گرفته میشود.
     return new Response(
       errorPage('پاسخ بکاند معتبر نیست', `پاسخ ${target.origin}/api/report بهجای HTML، ${contentType || 'بدون Content-Type'} بود.\n${body.slice(0, 1200)}`, response.status),
       { status: response.status, headers },

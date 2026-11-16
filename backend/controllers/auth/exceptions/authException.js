@@ -42,6 +42,19 @@ module.exports = (exception) => {
     };
   }
 
+  if (statusCode === 429 || ['tooManyFailedLogins', 'maxFailedLogins', 'tooManyRequests', 'loginBlocked'].includes(code)) {
+    return {
+      statusCode: 429,
+      meta: { code: 'tooManyLoginAttempts', sourceType: 'controller', sourceName: 'auth-controller' },
+      data: {
+        message: {
+          fa: 'تعداد تلاش‌های ناموفق بیش از حد مجاز است؛ لطفا چند لحظه صبر کرده و دوباره تلاش کنید',
+          en: 'too many failed login attempts',
+        },
+      },
+    };
+  }
+
   if (code === 'authEntryAlreadyExists') {
     return {
       statusCode: 409,

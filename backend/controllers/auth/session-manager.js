@@ -1,15 +1,58 @@
 'use strict';
 
 const { error: authError } = require('./config');
+const { RefreshTokenService, REFRESH_COOKIE_NAME } = require('./refresh-token.service');
+
+function parseCookies(request) {
+  const rawCookie = request?.headers?.cookie || request?.header?.cookie || '';
+  if (!rawCookie || typeof rawCookie !== 'string') return {};
+  const out = {};
+  for (const part of rawCookie.split(';')) {
+    const eqIndex = part.indexOf('=');
+    if (eqIndex <= 0) continue;
+    const key = part.slice(0, eqIndex).trim();
+    const val = part.slice(eqIndex + 1).trim();
+    if (!key) continue;
+    try {
+      out[key] = decodeURIComponent(val);
+    } catch {
+      out[key] = val;
+    }
+  }
+  return out;
+}
+
+function isSecureRequest(request) {
+  if (process.env.COOKIE_SECURE === 'true') return true;
+  if (process.env.COOKIE_SECURE === 'false') return false;
+  const proto = request?.headers?.['x-forwarded-proto'] || request?.protocol || '';
+  return String(proto).toLowerCase().split(',')[0].trim() === 'https';
+}
+
+function appendSetCookies(response, newCookies) {
+  if (!response || typeof response.setHeader !== 'function') return;
+  const existingRaw = typeof response.getHeader === 'function' ? response.getHeader('Set-Cookie') : undefined;
+  const existing = Array.isArray(existingRaw)
+    ? existingRaw.map(String)
+    : existingRaw
+      ? [String(existingRaw)]
+      : [];
+  const next = [...existing, ...newCookies.map(String)];
+  response.setHeader('Set-Cookie', next);
+}
 
 /**
- * مدیریت سشن کاربر (Promise-based روی session فریم‌ورک).
+ * مدیریت سشن کاربر (Promise-based روی session فریم‌ورک) + مدیریت رفرش‌توکن (HttpOnly Cookie).
  *
  * در `partFramework@10.2.0` با `checkAccess(true)` روی روت، نمونهٔ سشن به‌عنوان
  * `_session` به هندلر تزریق می‌شود؛ همان قراردادی که `samplePF/utils/sessionManager`
  * استفاده می‌کند: `session.get / session.set / session.remove` با callback.
  */
 class SessionManager {
+  constructor(options = {}) {
+    this.refreshTokens = options.refreshTokenService || new RefreshTokenService(options);
+  }
+
   setSession = async (session, body, roles) => {
     const normalizedRoles = Array.isArray(roles) && roles.length ? roles : ['visitor'];
     const payload = { samadUsername: body.username, roles: normalizedRoles };
@@ -39,8 +82,12 @@ class SessionManager {
     });
   };
 
-  removeSession = async (session, response) => {
-    this.#clearCookie(response);
+  removeSession = async (session, response, request) => {
+    const rawRefresh = this.extractRefreshToken(request);
+    if (rawRefresh) {
+      await this.refreshTokens.revoke(rawRefresh).catch(() => {});
+    }
+    this.#clearCookie(response, request);
     if (!session || typeof session.remove !== 'function') {
       return [];
     }
@@ -53,7 +100,7 @@ class SessionManager {
   };
 
   /**
-   * اطلاعات سشن به همراه پرچم authenticated برای پاسخ `/api/auth/me`.
+   * اطلاعات پایهٔ سشن (سازگار با تست‌های واحد).
    */
   getSessionInfo = async (session) => {
     const info = await this.getSession(session);
@@ -67,13 +114,112 @@ class SessionManager {
     };
   };
 
-  #clearCookie(response) {
+  /**
+   * اطلاعات کامل سشن به همراه وضعیت رفرش‌توکن و زمان‌های انقضای Access Token برای کلاینت.
+   */
+  getSessionStatus = async (session, request) => {
+    const base = await this.getSessionInfo(session);
+    const timings = this.refreshTokens.getTimings();
+    const rawRefresh = this.extractRefreshToken(request);
+    const peeked = rawRefresh ? await this.refreshTokens.peek(rawRefresh).catch(() => ({ valid: false })) : { valid: false };
+    return {
+      ...base,
+      canRefresh: Boolean(peeked.valid),
+      refreshExpiresAt: peeked.valid && peeked.expiresAt ? peeked.expiresAt.toISOString() : null,
+      accessExpireMs: timings.accessExpireMs,
+      idleExpireMs: timings.idleExpireMs,
+    };
+  };
+
+  extractRefreshToken(request, bodyPayload) {
+    const cookies = parseCookies(request);
+    if (cookies[REFRESH_COOKIE_NAME]) return cookies[REFRESH_COOKIE_NAME];
+    if (typeof bodyPayload?.refreshToken === 'string' && bodyPayload.refreshToken.trim()) {
+      return bodyPayload.refreshToken.trim();
+    }
+    return null;
+  }
+
+  getTokenTimings(issued) {
+    const timings = this.refreshTokens.getTimings();
+    return {
+      accessExpireMs: timings.accessExpireMs,
+      idleExpireMs: timings.idleExpireMs,
+      refreshExpiresAt: issued?.expiresAt ? new Date(issued.expiresAt).toISOString() : null,
+    };
+  }
+
+  async issueRefreshToken(details, response, request) {
+    const issued = await this.refreshTokens.issue(details);
+    this.#setRefreshCookie(response, request, issued.rawToken, issued.ttlMs, issued.expiresAt);
+    return issued;
+  }
+
+  async peekRefreshToken(rawToken) {
+    return this.refreshTokens.peek(rawToken);
+  }
+
+  async rotateRefreshToken(rawToken, options, response, request) {
+    try {
+      const rotated = await this.refreshTokens.rotate(rawToken, options);
+      this.#setRefreshCookie(response, request, rotated.rawToken, rotated.ttlMs, rotated.expiresAt);
+      return rotated;
+    } catch (err) {
+      this.clearRefreshCookie(response, request);
+      throw err;
+    }
+  }
+
+  async revokeRefreshToken(rawToken, response, request) {
+    if (rawToken) {
+      await this.refreshTokens.revoke(rawToken).catch(() => {});
+    }
+    this.clearRefreshCookie(response, request);
+  }
+
+  async revokeUserRefreshTokens(username) {
+    await this.refreshTokens.revokeUser(username).catch(() => {});
+  }
+
+  #setRefreshCookie(response, request, rawToken, ttlMs, expiresAt) {
+    if (!response || typeof response.setHeader !== 'function') return;
+    const maxAgeSec = Math.max(1, Math.floor(Number(ttlMs) / 1000));
+    const securePart = isSecureRequest(request) ? ' Secure;' : '';
+    const domainEnv = process.env.COOKIE_DOMAIN ? ` Domain=${process.env.COOKIE_DOMAIN};` : '';
+    const expiresPart = expiresAt ? ` Expires=${new Date(expiresAt).toUTCString()};` : '';
+    const cookie = `${REFRESH_COOKIE_NAME}=${encodeURIComponent(rawToken)}; Path=/;${domainEnv} Max-Age=${maxAgeSec};${expiresPart} HttpOnly; SameSite=Lax;${securePart}`;
+    appendSetCookies(response, [cookie]);
+  }
+
+  clearRefreshCookie(response, request) {
+    if (!response || typeof response.setHeader !== 'function') return;
+    const securePart = isSecureRequest(request) ? ' Secure;' : '';
+    const cookies = [
+      `${REFRESH_COOKIE_NAME}=; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Lax;${securePart}`,
+    ];
+    if (process.env.COOKIE_DOMAIN) {
+      cookies.push(
+        `${REFRESH_COOKIE_NAME}=; Path=/; Domain=${process.env.COOKIE_DOMAIN}; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Lax;${securePart}`,
+      );
+    }
+    appendSetCookies(response, cookies);
+  }
+
+  #clearCookie(response, request) {
     if (!response || typeof response.setHeader !== 'function') return;
     const domain = process.env.COOKIE_DOMAIN || 'localhost';
-    response.setHeader('Set-Cookie', [
+    const securePart = isSecureRequest(request) ? ' Secure;' : '';
+    const cookies = [
       'token=; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly;',
       `token=; Path=/; Domain=${domain}; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly;`,
-    ]);
+      `${REFRESH_COOKIE_NAME}=; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Lax;${securePart}`,
+    ];
+    if (process.env.COOKIE_DOMAIN) {
+      cookies.push(
+        `${REFRESH_COOKIE_NAME}=; Path=/; Domain=${process.env.COOKIE_DOMAIN}; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Lax;${securePart}`,
+      );
+    }
+    appendSetCookies(response, cookies);
   }
 }
 

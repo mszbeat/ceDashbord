@@ -118,6 +118,25 @@
   align-items: center;
 }
 
+.adm-user-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  min-height: 38px;
+  border: 1px solid var(--adm-line);
+  border-radius: 10px;
+  background: var(--adm-surface-2);
+  color: var(--adm-ink);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.adm-user-chip small {
+  color: var(--adm-muted);
+  font-weight: 400;
+}
+
 .adm-btn {
   border: 1px solid var(--adm-line);
   border-radius: 10px;

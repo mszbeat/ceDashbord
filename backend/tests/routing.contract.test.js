@@ -18,6 +18,7 @@ const EXPECTED_ROUTES = [
   // auth
   { verb: 'POST', url: '/api/auth/register', target: 'auth-controller.register', validate: true, checkAccess: true },
   { verb: 'POST', url: '/api/auth/login', target: 'auth-controller.login', validate: true, checkAccess: true },
+  { verb: 'POST', url: '/api/auth/refresh', target: 'auth-controller.refresh', validate: false, checkAccess: true },
   { verb: 'POST', url: '/api/auth/logout', target: 'auth-controller.logout', validate: false, checkAccess: true },
   { verb: 'GET', url: '/api/auth/me', target: 'auth-controller.me', validate: false, checkAccess: true },
   { verb: 'POST', url: '/api/auth/role', target: 'auth-controller.assignRole', validate: true, checkAccess: true },
@@ -89,7 +90,7 @@ function recordRoutes() {
 test('pd2 routes.js registers every expected route with the right verb/validate/checkAccess flags', () => {
   const recorded = recordRoutes();
 
-  assert.equal(recorded.length, 26, 'pd2 must expose all 26 API routes');
+  assert.equal(recorded.length, 27, 'pd2 must expose all 27 API routes');
   assert.deepEqual(
     recorded.map(({ verb, url, target, validate, checkAccess }) => ({ verb, url, target, validate, checkAccess })),
     EXPECTED_ROUTES,

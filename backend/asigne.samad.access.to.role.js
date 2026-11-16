@@ -64,7 +64,7 @@ function normalizeParamStyle(resource) {
 
 /* ───────────────────────── ۲) سیاست دسترسی هر نقش ───────────────────────── */
 // هر نقش = فهرست patterns؛ نقش‌های بالاتر با extend از نقش پایین‌تر ارث می‌برند.
-const PUBLIC = ['POST /api/auth/register', 'POST /api/auth/login', 'POST /api/auth/logout', 'GET /api/auth/me', 'GET /api/health'];
+const PUBLIC = ['POST /api/auth/register', 'POST /api/auth/login', 'POST /api/auth/refresh', 'POST /api/auth/logout', 'GET /api/auth/me', 'GET /api/health'];
 const READER = [
   'GET /api/banks', 'GET /api/specs', 'GET /api/report', 'GET /api/diagnostics',
   'GET /api/summary', 'GET /api/list', 'GET /api/runs',

@@ -22,15 +22,19 @@ module.exports = {
     },
     login: {
       needProtocolRef: false,
-      params: ['_protocolRef.request.data', '_trackingHeaders', '_session'],
+      params: ['_protocolRef.request.data', '_trackingHeaders', '_session', '_protocolRef.request', '_protocolRef.response'],
+    },
+    refresh: {
+      needProtocolRef: false,
+      params: ['_protocolRef.request.data', '_session', '_protocolRef.request', '_protocolRef.response'],
     },
     logout: {
       needProtocolRef: false,
-      params: ['_session', '_protocolRef.response'],
+      params: ['_session', '_protocolRef.response', '_protocolRef.request'],
     },
     me: {
       needProtocolRef: false,
-      params: ['_session'],
+      params: ['_session', '_protocolRef.request'],
     },
     assignRole: {
       needProtocolRef: false,
@@ -115,6 +119,56 @@ module.exports = {
         },
       },
       statusCode: 401,
+    },
+    refreshTokenRequired: {
+      meta: errorInfo('refreshTokenRequired'),
+      data: {
+        message: {
+          fa: 'توکن تمدید نشست یافت نشد؛ لطفا دوباره وارد شوید',
+          en: 'refresh token is required',
+        },
+      },
+      statusCode: 401,
+    },
+    invalidRefreshToken: {
+      meta: errorInfo('invalidRefreshToken'),
+      data: {
+        message: {
+          fa: 'توکن تمدید نشست نامعتبر است؛ لطفا دوباره وارد شوید',
+          en: 'invalid refresh token',
+        },
+      },
+      statusCode: 401,
+    },
+    refreshTokenExpired: {
+      meta: errorInfo('refreshTokenExpired'),
+      data: {
+        message: {
+          fa: 'مدت اعتبار نشست شما به پایان رسیده است؛ لطفا دوباره وارد شوید',
+          en: 'refresh token expired',
+        },
+      },
+      statusCode: 401,
+    },
+    refreshTokenRevoked: {
+      meta: errorInfo('refreshTokenRevoked'),
+      data: {
+        message: {
+          fa: 'نشست کاربری لغو شده است؛ لطفا دوباره وارد شوید',
+          en: 'refresh token revoked',
+        },
+      },
+      statusCode: 401,
+    },
+    tooManyLoginAttempts: {
+      meta: errorInfo('tooManyLoginAttempts'),
+      data: {
+        message: {
+          fa: 'تعداد تلاش‌های ناموفق بیش از حد مجاز است؛ لطفا چند لحظه صبر کرده و دوباره تلاش کنید',
+          en: 'too many failed login attempts',
+        },
+      },
+      statusCode: 429,
     },
     userAccountInactive: {
       meta: errorInfo('userAccountInactive'),

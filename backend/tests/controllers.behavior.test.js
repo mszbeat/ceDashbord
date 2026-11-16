@@ -19,17 +19,21 @@ const container = require(path.join(ROOT, 'services', 'container'));
  * مقدار هر توکن config.params را می‌سازد و هندلر را مثل فریم‌ورک صدا می‌زند.
  */
 function invoke(controller, config, handlerName, input = {}) {
-  const { url = '/', queryString = {}, params = {}, data = {} } = input;
+  const { url = '/', queryString = {}, params = {}, data = {}, headers = {} } = input;
   const session = input.session || { samadUsername: 'admin-user', roles: ['admin'] };
 
-  const response = { headers: {}, setHeader(k, v) { this.headers[k.toLowerCase()] = v; } };
+  const response = {
+    headers: {},
+    getHeader(k) { return this.headers[String(k).toLowerCase()]; },
+    setHeader(k, v) { this.headers[String(k).toLowerCase()] = v; },
+  };
   const request = {
     url,
     queryString,
     params,
     data,
     postData: data,
-    headers: { 'user-agent': 'pd2-test' },
+    headers: { 'user-agent': 'pd2-test', ...headers },
     ip: '127.0.0.1',
   };
   const inputData = { header: request.headers, params, queryString, data };
@@ -52,6 +56,15 @@ function invoke(controller, config, handlerName, input = {}) {
   // فراخوانی ناهمگام تا خطاهای همگام هندلر هم به‌صورت reject ظاهر شوند
   const promise = (async () => controller[handlerName](...args))();
   return { promise, response };
+}
+
+function extractRefreshCookieValue(response) {
+  const setCookie = response.headers['set-cookie'];
+  const list = Array.isArray(setCookie) ? setCookie : setCookie ? [setCookie] : [];
+  const hit = list.find((item) => String(item).startsWith('ce_refresh='));
+  if (!hit) return null;
+  const raw = String(hit).split(';')[0].slice('ce_refresh='.length);
+  return decodeURIComponent(raw);
 }
 
 function fakeSummaryService(overrides = {}) {
@@ -91,7 +104,7 @@ function fakeAdminService(overrides = {}) {
   };
 }
 
-test('auth-controller: register/login/logout/me/role/removeUser با تزریق _session و config.params', async () => {
+test('auth-controller: register/login/refresh/logout/me/role/removeUser با تزریق _session و رفرش‌توکن', async () => {
   const { controller: AuthController } = require(path.join(ROOT, 'controllers', 'auth', 'main.js'));
   const authConfig = require(path.join(ROOT, 'controllers', 'auth', 'config.js'));
 
@@ -117,7 +130,8 @@ test('auth-controller: register/login/logout/me/role/removeUser با تزریق 
   };
 
   const SessionManager = require(path.join(ROOT, 'controllers', 'auth', 'session-manager'));
-  const controller = new AuthController({}, {}, authConfig, authService, new SessionManager(), samadService, authService);
+  const sessionManager = new SessionManager({ useMemoryOnly: true });
+  const controller = new AuthController({}, {}, authConfig, authService, sessionManager, samadService, authService);
 
   // register
   const registerOut = await invoke(controller, authConfig, 'register', {
@@ -146,21 +160,60 @@ test('auth-controller: register/login/logout/me/role/removeUser با تزریق 
   const getRoleOut = await invoke(controller, authConfig, 'getRole', { queryString: { username: 'ali' } }).promise;
   assert.deepEqual(getRoleOut, { username: 'ali', roles: ['admin'] });
 
-  // login
-  const loginOut = await invoke(controller, authConfig, 'login', {
-    data: { username: 'ali', password: 'p1' },
+  // login → صدور کوکی رفرش‌توکن
+  const loginCall = invoke(controller, authConfig, 'login', {
+    data: { username: 'ali', password: 'p1', rememberMe: true },
     session,
-  }).promise;
+  });
+  const loginOut = await loginCall.promise;
   assert.deepEqual(loginOut.roles, ['admin']);
+  assert.equal(loginOut.authenticated, true);
+  const refreshToken1 = extractRefreshCookieValue(loginCall.response);
+  assert.ok(refreshToken1 && refreshToken1.length > 20);
 
-  // logout → پاک‌سازی سشن و کوکی
-  const logoutCall = invoke(controller, authConfig, 'logout', { session });
+  // شبیه‌سازی انقضای سشن کوتاه‌مدت (تبدیل شدن سشن به visitor)
+  sessionStore.samadUsername = 'visitor';
+  sessionStore.roles = ['visitor'];
+  const expiredMe = await invoke(controller, authConfig, 'me', {
+    session,
+    headers: { cookie: `ce_refresh=${encodeURIComponent(refreshToken1)}` },
+  }).promise;
+  assert.equal(expiredMe.authenticated, false);
+  assert.equal(expiredMe.canRefresh, true);
+
+  // refresh → بازیابی سشن کاربر و چرخش رفرش‌توکن
+  const refreshCall = invoke(controller, authConfig, 'refresh', {
+    session,
+    headers: { cookie: `ce_refresh=${encodeURIComponent(refreshToken1)}` },
+  });
+  const refreshOut = await refreshCall.promise;
+  assert.equal(refreshOut.authenticated, true);
+  assert.equal(refreshOut.username, 'ali');
+  assert.deepEqual(refreshOut.roles, ['admin']);
+  assert.equal(sessionStore.samadUsername, 'ali');
+  const refreshToken2 = extractRefreshCookieValue(refreshCall.response);
+  assert.ok(refreshToken2 && refreshToken2 !== refreshToken1);
+
+  // استفادهٔ مجدد از رفرش‌توکن قبلی باید خطای 401 بدهد و خانواده را باطل کند
+  await assert.rejects(
+    () => invoke(controller, authConfig, 'refresh', {
+      session,
+      headers: { cookie: `ce_refresh=${encodeURIComponent(refreshToken1)}` },
+    }).promise,
+    (err) => err.statusCode === 401,
+  );
+
+  // logout → پاک‌سازی سشن و هر دو کوکی
+  const logoutCall = invoke(controller, authConfig, 'logout', {
+    session,
+    headers: { cookie: `ce_refresh=${encodeURIComponent(refreshToken2)}` },
+  });
   const logoutOut = await logoutCall.promise;
   assert.deepEqual(logoutOut, { status: 'ok' });
   assert.match(String(logoutCall.response.headers['set-cookie'][0]), /Max-Age=0/);
   assert.equal((await invoke(controller, authConfig, 'me', { session }).promise).authenticated, false);
 
-  // remove → حذف از اصالت‌سنجی و سمد
+  // remove → حذف از اصالت‌سنجی، سمد و ابطال رفرش‌توکن‌ها
   const removeOut = await invoke(controller, authConfig, 'removeUser', {
     data: { username: 'ali' },
     session,

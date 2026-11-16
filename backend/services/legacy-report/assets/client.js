@@ -10,7 +10,234 @@
   const topbar = document.querySelector('.topbar');
   const slot = document.querySelector('.scope-slot');
   const scopebar = document.querySelector('.scopebar');
-  let privatePromise = null;
+
+  const ROLE_FA = {
+    admin: 'مدیر سیستم',
+    creditEvaluation: 'ارزیاب اعتبار',
+    visitor: 'بازدیدکننده',
+  };
+
+  let authState = null;
+  let refreshInFlight = null;
+  let keepaliveTimer = null;
+  const authChannel = typeof BroadcastChannel === 'function' ? new BroadcastChannel('ce-auth') : null;
+
+  function unwrapEnvelope(raw) {
+    if (
+      raw &&
+      typeof raw === 'object' &&
+      !Array.isArray(raw) &&
+      raw.data !== undefined &&
+      !raw.sample &&
+      typeof raw.data === 'object'
+    ) {
+      return raw.data;
+    }
+    return raw;
+  }
+
+  async function fetchAuthMe() {
+    try {
+      const res = await fetch('/api/auth/me', {
+        cache: 'no-store',
+        credentials: 'include',
+        headers: { accept: 'application/json' },
+      });
+      if (!res.ok) return null;
+      const raw = await res.json().catch(() => null);
+      return unwrapEnvelope(raw);
+    } catch {
+      return null;
+    }
+  }
+
+  async function executeSingleFlightRefresh() {
+    const run = async () => {
+      const current = await fetchAuthMe();
+      if (current && current.authenticated) {
+        authState = current;
+        return true;
+      }
+      if (current && current.canRefresh === false) {
+        authState = current;
+        return false;
+      }
+      const res = await fetch('/api/auth/refresh', {
+        method: 'POST',
+        cache: 'no-store',
+        credentials: 'include',
+        headers: {
+          'content-type': 'application/json',
+          accept: 'application/json',
+        },
+        body: '{}',
+      });
+      if (!res.ok) {
+        authState = { authenticated: false, username: 'visitor', roles: ['visitor'], canRefresh: false };
+        return false;
+      }
+      const raw = await res.json().catch(() => null);
+      const data = unwrapEnvelope(raw);
+      if (data && data.authenticated) {
+        authState = data;
+        try {
+          authChannel?.postMessage({ type: 'refreshed', auth: data });
+        } catch {
+          // ignore
+        }
+        return true;
+      }
+      return false;
+    };
+
+    if (navigator.locks && typeof navigator.locks.request === 'function') {
+      return navigator.locks.request('ce-auth-refresh', run);
+    }
+    return run();
+  }
+
+  function refreshSession() {
+    if (!refreshInFlight) {
+      refreshInFlight = executeSingleFlightRefresh().finally(() => {
+        refreshInFlight = null;
+      });
+    }
+    return refreshInFlight;
+  }
+
+  function renderAuthBar(state) {
+    const container = document.getElementById('ce-auth-slot');
+    const adminLink = document.getElementById('ce-admin-nav-link');
+    if (!container) return;
+
+    const roles = Array.isArray(state?.roles) ? state.roles : ['visitor'];
+    const isAdmin = roles.includes('admin');
+    if (adminLink) {
+      if (state?.authenticated && !isAdmin) {
+        adminLink.style.display = 'none';
+      } else {
+        adminLink.style.display = '';
+        adminLink.href = state?.authenticated ? '/admin' : '/login?next=%2Fadmin';
+      }
+    }
+
+    container.replaceChildren();
+    const nextUrl = encodeURIComponent(window.location.pathname + window.location.search);
+
+    if (state && state.authenticated) {
+      const chip = document.createElement('span');
+      chip.className = 'ce-user-chip';
+      const userLabel = document.createElement('span');
+      userLabel.textContent = `👤 ${state.username || state.samadUsername || ''}`;
+      const badge = document.createElement('span');
+      badge.className = 'ce-role-badge';
+      badge.textContent = roles.map((r) => ROLE_FA[r] || r).join('، ');
+      chip.append(userLabel, badge);
+
+      const logoutBtn = document.createElement('button');
+      logoutBtn.type = 'button';
+      logoutBtn.className = 'ce-logout-btn';
+      logoutBtn.textContent = 'خروج';
+      logoutBtn.addEventListener('click', async () => {
+        logoutBtn.disabled = true;
+        try {
+          await fetch('/api/auth/logout', {
+            method: 'POST',
+            cache: 'no-store',
+            credentials: 'include',
+            headers: { 'content-type': 'application/json' },
+            body: '{}',
+          });
+        } catch {
+          // ignore
+        }
+        authState = { authenticated: false, username: 'visitor', roles: ['visitor'], canRefresh: false };
+        stopKeepalive();
+        renderAuthBar(authState);
+        try {
+          authChannel?.postMessage({ type: 'logout' });
+        } catch {
+          // ignore
+        }
+      });
+
+      container.append(chip, logoutBtn);
+    } else {
+      const loginLink = document.createElement('a');
+      loginLink.href = `/login?next=${nextUrl}`;
+      loginLink.className = 'ce-auth-link ce-auth-link-primary';
+      loginLink.textContent = '🔑 ورود به حساب';
+      container.append(loginLink);
+    }
+  }
+
+  function stopKeepalive() {
+    if (keepaliveTimer) {
+      window.clearInterval(keepaliveTimer);
+      keepaliveTimer = null;
+    }
+  }
+
+  function scheduleKeepalive(state) {
+    stopKeepalive();
+    if (!state || !state.authenticated) return;
+    const idleMs = Number(state.idleExpireMs || 20000);
+    const accessMs = Number(state.accessExpireMs || 120000);
+    const intervalMs = Math.max(10000, Math.min(60000, Math.floor(Math.min(idleMs, accessMs) * 0.65)));
+
+    keepaliveTimer = window.setInterval(async () => {
+      if (document.visibilityState !== 'visible') return;
+      await syncAuthState();
+    }, intervalMs);
+  }
+
+  async function syncAuthState() {
+    let me = await fetchAuthMe();
+    if (me && !me.authenticated && me.canRefresh) {
+      const refreshed = await refreshSession();
+      if (refreshed) {
+        me = authState || (await fetchAuthMe());
+      }
+    }
+    if (me) {
+      authState = me;
+      renderAuthBar(me);
+      if (me.authenticated) {
+        scheduleKeepalive(me);
+      } else {
+        stopKeepalive();
+      }
+    }
+    return authState;
+  }
+
+  if (authChannel) {
+    authChannel.addEventListener('message', (event) => {
+      const msg = event.data;
+      if (!msg || typeof msg !== 'object') return;
+      if (msg.type === 'logout') {
+        authState = { authenticated: false, username: 'visitor', roles: ['visitor'], canRefresh: false };
+        stopKeepalive();
+        renderAuthBar(authState);
+      } else if (msg.type === 'refreshed' || msg.type === 'login') {
+        if (msg.auth) {
+          authState = msg.auth;
+          renderAuthBar(msg.auth);
+          scheduleKeepalive(msg.auth);
+        } else {
+          void syncAuthState();
+        }
+      }
+    });
+  }
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      void syncAuthState();
+    }
+  });
+
+  void syncAuthState();
 
   function show(topicId, updateHash = true) {
     if (!panels.some((panel) => panel.id === `panel-${topicId}`)) return;
@@ -118,16 +345,29 @@
 
   async function loadSample(requestId) {
     const url = `/api/sample/${encodeURIComponent(requestId)}`;
-    const response = await fetch(url, { cache: 'no-store', headers: { accept: 'application/json' } });
+    const doFetch = () => fetch(url, {
+      cache: 'no-store',
+      credentials: 'include',
+      headers: { accept: 'application/json' },
+    });
+
+    let response = await doFetch();
+    if (response.status === 401 || response.status === 403) {
+      const refreshed = await refreshSession();
+      if (refreshed) {
+        renderAuthBar(authState);
+        scheduleKeepalive(authState);
+        response = await doFetch();
+      }
+    }
+
     let raw = null;
     try {
       raw = await response.json();
     } catch {
       raw = null;
     }
-    const unwrapped = (raw && typeof raw === 'object' && !Array.isArray(raw) && raw.data && !raw.sample && typeof raw.data === 'object')
-      ? raw.data
-      : raw;
+    const unwrapped = unwrapEnvelope(raw);
     if (!response.ok) {
       const serverMsg =
         unwrapped &&
@@ -163,13 +403,20 @@
       win.document.open(); win.document.write(html); win.document.close();
     } catch (error) {
       const isForbidden = error && (error.status === 403 || error.status === 401);
+      const origin = window.location.origin && window.location.origin !== 'null' ? window.location.origin : '';
+      const escAttr = (s) => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const loginHref = escAttr(`${origin}/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`);
+      const homeHref = escAttr(`${origin}/`);
       win.document.open();
       win.document.write(`<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><title>${isForbidden ? 'عدم دسترسی به جزئیات گزارش' : 'خطا در نمایش گزارش'}</title><style>
         body{margin:0;background:#f3f6f8;color:#1a2935;font:14px/1.9 Tahoma,"Segoe UI",sans-serif;padding:44px}
         main{max-width:640px;margin:auto;background:#fff;border:1px solid #dfe7e9;border-radius:16px;padding:28px 32px;box-shadow:0 14px 36px rgba(20,52,64,.06)}
         .badge{display:inline-block;background:${isForbidden ? '#fdecec' : '#fff5e3'};color:${isForbidden ? '#b42318' : '#af711e'};border-radius:8px;padding:3px 10px;font-size:12px;font-weight:700}
-        h1{font-size:20px;margin:12px 0 8px;color:#1a2935}p{color:#526575;margin:0}
-      </style></head><body><main><span class="badge">${isForbidden ? 'HTTP 403 · محدودیت سطح دسترسی' : 'خطا'}</span><h1>${isForbidden ? 'عدم مجوز مشاهدهٔ جزئیات گزارش' : 'مشاهدهٔ جزئیات ممکن نیست'}</h1><p id="err-msg"></p></main></body></html>`);
+        h1{font-size:20px;margin:12px 0 8px;color:#1a2935}p{color:#526575;margin:0 0 18px}
+        .actions{display:flex;gap:10px;flex-wrap:wrap}
+        .btn{display:inline-flex;align-items:center;border-radius:10px;padding:8px 16px;text-decoration:none;font-weight:700;font-size:13px;border:1px solid #dfe7e9;color:#1a2935;background:#f7f9fa}
+        .btn-primary{background:#087b72;border-color:#087b72;color:#fff}
+      </style></head><body><main><span class="badge">${isForbidden ? 'HTTP 403 · محدودیت سطح دسترسی' : 'خطا'}</span><h1>${isForbidden ? 'عدم مجوز مشاهدهٔ جزئیات گزارش' : 'مشاهدهٔ جزئیات ممکن نیست'}</h1><p id="err-msg"></p>${isForbidden ? `<div class="actions"><a class="btn btn-primary" href="${loginHref}">ورود با حساب مجاز</a><a class="btn" href="${homeHref}">بازگشت به داشبورد</a></div>` : ''}</main></body></html>`);
       win.document.close();
       const msgEl = win.document.getElementById('err-msg');
       if (msgEl) msgEl.textContent = error.message || 'خطای نامشخص';
@@ -202,12 +449,18 @@
   });
   const theme = document.getElementById('themeToggle');
   if (theme) {
-    try { if (localStorage.getItem('bank-ce-dashboard-theme') === 'dark') document.documentElement.dataset.theme = 'dark'; } catch { /* file:// */ }
+    try {
+      const savedTheme = localStorage.getItem('bank-ce-dashboard-theme') || localStorage.getItem('ce-theme');
+      if (savedTheme === 'dark') document.documentElement.dataset.theme = 'dark';
+    } catch { /* file:// */ }
     theme.addEventListener('click', () => {
       const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
       document.documentElement.dataset.theme = next;
       theme.setAttribute('aria-label', next === 'dark' ? 'فعال کردن حالت روشن' : 'فعال کردن حالت تیره');
-      try { localStorage.setItem('bank-ce-dashboard-theme', next); } catch { /* file:// */ }
+      try {
+        localStorage.setItem('bank-ce-dashboard-theme', next);
+        localStorage.setItem('ce-theme', next);
+      } catch { /* file:// */ }
     });
   }
   document.getElementById('printReport')?.addEventListener('click', () => window.print());

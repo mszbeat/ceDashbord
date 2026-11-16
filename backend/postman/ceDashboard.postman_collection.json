@@ -12,6 +12,34 @@
   ],
   "item": [
     {
+      "name": "0. Auth & Session (authController)",
+      "item": [
+        {
+          "name": "POST /api/auth/login",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"admin\",\n  \"password\": \"secret\",\n  \"rememberMe\": true\n}"
+            },
+            "url": "{{baseUrl}}/api/auth/login"
+          }
+        },
+        {
+          "name": "POST /api/auth/refresh",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{}" },
+            "url": "{{baseUrl}}/api/auth/refresh"
+          }
+        },
+        { "name": "GET /api/auth/me", "request": { "method": "GET", "url": "{{baseUrl}}/api/auth/me" } },
+        { "name": "POST /api/auth/logout", "request": { "method": "POST", "url": "{{baseUrl}}/api/auth/logout" } }
+      ]
+    },
+    {
       "name": "1. Public / Normal User (summaryController)",
       "item": [
         { "name": "GET /api/health", "request": { "method": "GET", "url": "{{baseUrl}}/api/health" } },

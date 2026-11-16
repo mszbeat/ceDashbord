@@ -1,5 +1,5 @@
 const BaseController = require('@partFramework/baseController');
-const { readBody, readQuery } = require('../../services/http/request');
+const { readBody, readQuery, readClientMeta } = require('../../services/http/request');
 const { error: authError } = require('./config');
 
 exports.controller = class AuthController extends BaseController {
@@ -51,7 +51,7 @@ exports.controller = class AuthController extends BaseController {
     }
   }
 
-  async login(body, trackingHeaders, session) {
+  async login(body, trackingHeaders, session, request, response) {
     const payload = readBody(body);
     if (!payload.username || !payload.password) throw authError.invalidAuthInput;
 
@@ -69,15 +69,93 @@ exports.controller = class AuthController extends BaseController {
     if (this.sessionManager) {
       await this.sessionManager.setSession(session, { username: payload.username }, roles);
     }
-    return { status: 'ok', username: payload.username, roles };
+
+    let timings = {};
+    if (this.sessionManager && typeof this.sessionManager.issueRefreshToken === 'function') {
+      const meta = readClientMeta(request);
+      const issued = await this.sessionManager.issueRefreshToken(
+        {
+          username: payload.username,
+          roles,
+          rememberMe: payload.rememberMe === true,
+          ip: meta.ip,
+          userAgent: meta.headers?.['user-agent'],
+        },
+        response,
+        request,
+      );
+      timings = this.sessionManager.getTokenTimings(issued);
+    }
+
+    return {
+      status: 'ok',
+      authenticated: true,
+      username: payload.username,
+      samadUsername: payload.username,
+      roles,
+      ...timings,
+    };
   }
 
-  async logout(session, response) {
-    await this.sessionManager.removeSession(session, response);
+  async refresh(body, session, request, response) {
+    const payload = readBody(body);
+    const rawRefresh = this.sessionManager.extractRefreshToken(request, payload);
+    if (!rawRefresh) {
+      this.sessionManager.clearRefreshCookie(response, request);
+      throw authError.refreshTokenRequired;
+    }
+
+    const peeked = await this.sessionManager.peekRefreshToken(rawRefresh);
+    let roles = peeked.valid ? peeked.roles : null;
+
+    if (peeked.valid && this.samadService) {
+      try {
+        const samadRoles = await this.samadService.getRole(peeked.username);
+        roles = Array.isArray(samadRoles) && samadRoles.length ? samadRoles : ['visitor'];
+      } catch (err) {
+        if (err?.statusCode === 404 || err?.statusCode === 403) {
+          await this.sessionManager.revokeRefreshToken(rawRefresh, response, request);
+          throw authError.invalidRefreshToken;
+        }
+        // اگر سرویس سمد موقتاً 503 داد، از نقش ذخیره‌شدهٔ همین سشن استفاده می‌کنیم
+        if (err?.statusCode !== 503) throw err;
+      }
+    }
+
+    const meta = readClientMeta(request);
+    const rotated = await this.sessionManager.rotateRefreshToken(
+      rawRefresh,
+      {
+        roles,
+        ip: meta.ip,
+        userAgent: meta.headers?.['user-agent'],
+      },
+      response,
+      request,
+    );
+
+    const activeRoles = Array.isArray(rotated.roles) && rotated.roles.length ? rotated.roles : ['visitor'];
+    await this.sessionManager.setSession(session, { username: rotated.username }, activeRoles);
+
+    return {
+      status: 'ok',
+      authenticated: true,
+      username: rotated.username,
+      samadUsername: rotated.username,
+      roles: activeRoles,
+      ...this.sessionManager.getTokenTimings(rotated),
+    };
+  }
+
+  async logout(session, response, request) {
+    await this.sessionManager.removeSession(session, response, request);
     return { status: 'ok' };
   }
 
-  async me(session) {
+  async me(session, request) {
+    if (typeof this.sessionManager.getSessionStatus === 'function') {
+      return this.sessionManager.getSessionStatus(session, request);
+    }
     return this.sessionManager.getSessionInfo(session);
   }
 
@@ -117,6 +195,10 @@ exports.controller = class AuthController extends BaseController {
       } catch (err) {
         if (err?.statusCode !== 404) throw err;
       }
+    }
+
+    if (this.sessionManager && typeof this.sessionManager.revokeUserRefreshTokens === 'function') {
+      await this.sessionManager.revokeUserRefreshTokens(payload.username);
     }
 
     if (session && this.sessionManager) {

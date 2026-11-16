@@ -1,21 +1,21 @@
-export async function api<T = any>(path: string): Promise<T> {
-  const response = await fetch(`/api${path}`, { cache: 'no-store' });
+import { authFetch, extractPartErrorMessage, unwrapPartPayload } from '@/lib/auth-client';
+
+export async function api<T = any>(path: string, init?: RequestInit): Promise<T> {
+  const response = await authFetch(`/api${path}`, {
+    ...init,
+    cache: 'no-store',
+  });
+  const text = await response.text().catch(() => '');
+  let parsed: any = null;
+  try {
+    parsed = text ? unwrapPartPayload(JSON.parse(text)) : null;
+  } catch {
+    parsed = null;
+  }
   if (!response.ok) {
-    const text = await response.text().catch(() => '');
-    throw new Error(`خطا در ارتباط با بکاند (${response.status}): ${text.slice(0, 200)}`);
+    throw new Error(extractPartErrorMessage(parsed, response.status));
   }
-  const json = await response.json();
-  if (
-    json &&
-    typeof json === 'object' &&
-    !Array.isArray(json) &&
-    'data' in json &&
-    json.data !== undefined &&
-    Object.keys(json).every((k) => ['data', 'meta', 'status', 'statusCode', 'success'].includes(k))
-  ) {
-    return json.data as T;
-  }
-  return json as T;
+  return parsed as T;
 }
 
 export function qs(params: Record<string, string | number | undefined | null>) {

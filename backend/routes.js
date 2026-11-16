@@ -13,6 +13,11 @@ module.exports = (router) => {
     .checkAccess(true);
 
   router
+    .setRoute('/api/auth/refresh', 'auth-controller.refresh')
+    .method('POST')
+    .checkAccess(true);
+
+  router
     .setRoute('/api/auth/logout', 'auth-controller.logout')
     .method('POST')
     .checkAccess(true);

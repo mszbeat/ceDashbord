@@ -16,17 +16,23 @@ const ASSETS = {
 
 const CONTROL_CSS = `
 <style id="ce-live-controls-style">
-.ce-live-bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:0 0 16px;padding:10px 14px;border:1px solid var(--line);border-radius:12px;background:var(--surface);box-shadow:var(--shadow);font-size:12px;color:var(--muted)}
-.ce-live-bar form{display:flex;flex-wrap:wrap;align-items:center;gap:8px;width:100%}
+.ce-live-bar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin:0 0 16px;padding:10px 14px;border:1px solid var(--line);border-radius:12px;background:var(--surface);box-shadow:var(--shadow);font-size:12px;color:var(--muted)}
+.ce-live-bar form{display:flex;flex-wrap:wrap;align-items:center;gap:8px;flex:1 1 auto}
 .ce-live-bar label{display:inline-flex;align-items:center;gap:5px;white-space:nowrap;font-weight:700;color:var(--ink)}
 .ce-live-bar select,.ce-live-bar input{border:1px solid var(--line);border-radius:8px;background:var(--surface-2);color:var(--ink);padding:5px 8px;min-height:32px;font:inherit}
 .ce-live-bar input{direction:ltr;text-align:left;width:112px}
 .ce-live-bar button{border:1px solid var(--line);border-radius:8px;background:var(--accent-soft);color:var(--accent-strong);padding:5px 12px;min-height:32px;font:inherit;font-weight:700;cursor:pointer}
 .ce-live-bar button:hover{background:var(--accent);color:#fff}
-.ce-admin-link{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);border-radius:8px;background:var(--surface-2);color:var(--ink);padding:5px 12px;min-height:32px;text-decoration:none;font-weight:700;transition:all .15s}
-.ce-admin-link:hover{border-color:var(--accent);color:var(--accent-strong);background:var(--accent-soft)}
+.ce-admin-link,.ce-auth-link{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);border-radius:8px;background:var(--surface-2);color:var(--ink);padding:5px 12px;min-height:32px;text-decoration:none;font-weight:700;transition:all .15s;white-space:nowrap}
+.ce-admin-link:hover,.ce-auth-link:hover{border-color:var(--accent);color:var(--accent-strong);background:var(--accent-soft)}
+.ce-auth-link-primary{background:var(--accent-soft);border-color:var(--accent);color:var(--accent-strong)}
+.ce-auth-slot{display:inline-flex;flex-wrap:wrap;align-items:center;gap:7px}
+.ce-user-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:8px;background:var(--surface-2);color:var(--ink);padding:4px 10px;min-height:32px;font-weight:700}
+.ce-role-badge{display:inline-flex;align-items:center;border-radius:999px;background:var(--accent-soft);color:var(--accent-strong);padding:1px 8px;font-size:11px;font-weight:700}
+.ce-live-bar .ce-logout-btn{background:var(--surface-2);color:var(--ink);border-color:var(--line)}
+.ce-live-bar .ce-logout-btn:hover{background:#c23636;border-color:#c23636;color:#fff}
 .ce-live-status{margin-inline-start:auto;color:var(--subtle);font-size:11px}
-@media (max-width:720px){.ce-live-status{width:100%;margin-inline-start:0}}
+@media (max-width:720px){.ce-live-status{width:100%;margin-inline-start:0}.ce-auth-slot{width:100%;justify-content:flex-end}}
 </style>`;
 
 function controlsHtml(controls = {}) {
@@ -48,9 +54,9 @@ function controlsHtml(controls = {}) {
     <label for="ce-to">تا روز</label><input id="ce-to" name="to" value="${h(to)}" placeholder="1405-08-19" inputmode="numeric" maxlength="10">
     <input type="hidden" name="rowsCap" value="${h(rowsCap)}">
     <button type="submit">⟳ بروزرسانی</button>
-    <a href="/admin" class="ce-admin-link">⚙ پنل مدیریت</a>
+    <a href="/admin" class="ce-admin-link" id="ce-admin-nav-link">⚙ پنل مدیریت</a>
     ${note ? `<span class="ce-live-status">${note}</span>` : ''}
-  </form></div>`;
+  </form><div class="ce-auth-slot" id="ce-auth-slot"><a href="/login" class="ce-auth-link ce-auth-link-primary">ورود به حساب</a></div></div>`;
 }
 
 function inject(html, controls) {
