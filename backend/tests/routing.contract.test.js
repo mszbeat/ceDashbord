@@ -189,3 +189,28 @@ test('every controller config ships an exception.handler that maps to a part-sta
     }
   }
 });
+
+test('partSamadInterfaceConfig does not auto-enable gateway mode from SAMAD_SERVICE_URL', () => {
+  const cfgPath = path.join(ROOT, 'project-config', 'dev', 'dependencies', 'partSamadInterfaceConfig.js');
+  const prevUrl = process.env.SAMAD_SERVICE_URL;
+  const prevHost = process.env.SAMAD_HOST;
+  const prevGw = process.env.SAMAD_GATEWAY_ENABLE;
+  try {
+    process.env.SAMAD_SERVICE_URL = 'http://samad.partdp.ir/service/samad@8';
+    delete process.env.SAMAD_HOST;
+    delete process.env.SAMAD_GATEWAY_ENABLE;
+    delete require.cache[require.resolve(cfgPath)];
+    const cfg = require(cfgPath);
+    assert.equal(cfg.global.gatewayEnable, false);
+    assert.equal(cfg.global.host, 'samad-v8-dev.partdp.ir');
+    assert.equal(cfg.global.port, 80);
+  } finally {
+    if (prevUrl === undefined) delete process.env.SAMAD_SERVICE_URL;
+    else process.env.SAMAD_SERVICE_URL = prevUrl;
+    if (prevHost === undefined) delete process.env.SAMAD_HOST;
+    else process.env.SAMAD_HOST = prevHost;
+    if (prevGw === undefined) delete process.env.SAMAD_GATEWAY_ENABLE;
+    else process.env.SAMAD_GATEWAY_ENABLE = prevGw;
+    delete require.cache[require.resolve(cfgPath)];
+  }
+});

@@ -5,40 +5,17 @@ function cleanEnv(value) {
   return trimmed;
 }
 
-let parsedUrl = null;
-const rawServiceUrl = cleanEnv(process.env.SAMAD_SERVICE_URL);
-if (rawServiceUrl) {
-  try {
-    parsedUrl = new URL(rawServiceUrl);
-  } catch {
-    parsedUrl = null;
-  }
-}
-
-const protocol =
-  cleanEnv(process.env.SAMAD_PROTOCOL) ||
-  (parsedUrl ? parsedUrl.protocol.replace(/:$/, '') : 'http');
-
-const host =
-  cleanEnv(process.env.SAMAD_HOST) ||
-  parsedUrl?.hostname ||
-  'samad-v8-dev.partdp.ir';
-
+const protocol = cleanEnv(process.env.SAMAD_PROTOCOL) || 'http';
+const host = cleanEnv(process.env.SAMAD_HOST) || 'samad-v8-dev.partdp.ir';
 const port = Number(
-  cleanEnv(process.env.SAMAD_PORT) ||
-  parsedUrl?.port ||
-  (protocol === 'https' ? 443 : 80),
+  cleanEnv(process.env.SAMAD_PORT) || (protocol === 'https' ? 443 : 80),
 );
-
-const gatewayEnv = cleanEnv(process.env.SAMAD_GATEWAY_ENABLE);
-const gatewayEnable = gatewayEnv
-  ? gatewayEnv === 'true'
-  : Boolean(parsedUrl && parsedUrl.pathname && parsedUrl.pathname.includes('/service/'));
+const gatewayEnable = cleanEnv(process.env.SAMAD_GATEWAY_ENABLE) === 'true';
 
 module.exports = {
   global: {
     gatewayEnable,
-    host, // دامنه‌ی سرویس (مستقیم یا از طریق گیت‌وی)
+    host, // دامنه‌ی مستقیم سرویس سمد (پیش‌فرض: samad-v8-dev.partdp.ir بدون نیاز به gateway token)
     protocol,
     port,
     partLoggerConfig: require('./partLoggerConfig'),
