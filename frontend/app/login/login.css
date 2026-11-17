@@ -106,7 +106,7 @@
   height: 100%;
   display: block;
   object-fit: cover;
-  object-position: 22% center;
+  object-position: left center;
 }
 
 .lgn-form-pane {
@@ -548,7 +548,7 @@
   }
 
   .lgn-visual-img {
-    object-position: 28% center;
+    object-position: left center;
   }
 
   .lgn-form-pane {
