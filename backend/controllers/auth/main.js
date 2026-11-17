@@ -278,6 +278,28 @@ exports.controller = class AuthController extends BaseController {
     );
   }
 
+  /**
+   * GET /api/auth/refresh/peek
+   * فقط اعتبار کوکی رفرش را گزارش می‌کند و توکن را نمی‌چرخاند. لایهٔ BFF پیش از
+   * تمدید واقعی از این مسیر استفاده می‌کند تا توکنِ باطل/چرخیده ارسال نشود
+   * (چرخش دوبارهٔ توکنِ مصرف‌شده باعث ابطال کل خانوادهٔ توکن می‌شود).
+   */
+  async refreshPeek(body, session, request) {
+    const rawRefresh = this.sessionManager.extractRefreshToken(request);
+    if (!rawRefresh) {
+      return { status: 'ok', valid: false, reason: 'missing', authenticated: false };
+    }
+    const peeked = await this.sessionManager.peekRefreshToken(rawRefresh);
+    return {
+      status: 'ok',
+      valid: peeked.valid === true,
+      reason: peeked.valid ? null : peeked.reason || 'invalid',
+      authenticated: session ? Boolean(session.authenticated) : false,
+      username: peeked.valid ? peeked.username : null,
+      expiresAt: peeked.valid && peeked.expiresAt ? new Date(peeked.expiresAt).toISOString() : null,
+    };
+  }
+
   async logout(session, response, request) {
     if (this.sessionManager && typeof this.sessionManager.ensureResponseCookieNormalization === 'function') {
       this.sessionManager.ensureResponseCookieNormalization(response, request);

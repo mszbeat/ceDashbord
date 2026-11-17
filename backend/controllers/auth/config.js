@@ -28,6 +28,10 @@ module.exports = {
       needProtocolRef: false,
       params: ['_protocolRef.request.data', '_session', '_protocolRef.request', '_protocolRef.response'],
     },
+    refreshPeek: {
+      needProtocolRef: false,
+      params: ['_protocolRef.request.data', '_session', '_protocolRef.request'],
+    },
     logout: {
       needProtocolRef: false,
       params: ['_session', '_protocolRef.response', '_protocolRef.request'],

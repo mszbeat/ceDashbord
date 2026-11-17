@@ -117,6 +117,22 @@ function statusBadge(status?: string | null) {
   }
 }
 
+/**
+ * ورودی متنی فرم را به عدد امن تبدیل می‌کند (ارقام فارسی/عربی هم پذیرفته می‌شوند).
+ * برای فیلترهای عددی الزامی است؛ رشتهٔ عددی باعث رد شدن در اعتبارسنجی بک‌اند می‌شود.
+ */
+function toSafeNumber(raw: string | number | null | undefined): number | null {
+  if (raw === null || raw === undefined) return null;
+  const normalized = String(raw)
+    .trim()
+    .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)))
+    .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
+    .replace(/[,٬،\s]/g, '');
+  if (!normalized) return null;
+  const value = Number(normalized);
+  return Number.isFinite(value) ? value : null;
+}
+
 function unwrapPartEnvelope(raw: any): any {
   let cur = raw;
   if (
@@ -393,8 +409,11 @@ export default function AdminClient({ initialAuth, initialOverview }: AdminClien
     if (filterRequestId.trim()) filters.requestId = filterRequestId.trim();
     if (filterUniqueKey.trim()) filters.uniqueKey = filterUniqueKey.trim();
     if (filterNationalCode.trim()) filters.nationalCode = filterNationalCode.trim();
-    if (filterMaxCount.trim()) filters.maxCount = filterMaxCount.trim();
-    if (filterPageSize.trim()) filters.pageSize = filterPageSize.trim();
+    // این دو فیلتر در اسکیمای بک‌اند عددی‌اند؛ ارسال رشته باعث خطای اعتبارسنجی (۴۰۰) می‌شد.
+    const maxCountNum = toSafeNumber(filterMaxCount);
+    if (maxCountNum !== null) filters.maxCount = maxCountNum;
+    const pageSizeNum = toSafeNumber(filterPageSize);
+    if (pageSizeNum !== null) filters.pageSize = pageSizeNum;
 
     return {
       banks: selectedBanks,

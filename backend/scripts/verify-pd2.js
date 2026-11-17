@@ -176,7 +176,7 @@ async function waitForJob(adminConfig, adminHelpers, jobId, timeoutMs = 8000) {
     },
   };
   require(path.join(ROOT, 'routes.js'))(router);
-  assert.equal(recorded.length, 27, 'routes.js must register 27 routes');
+  assert.equal(recorded.length, 28, 'routes.js must register 28 routes');
 
   const controllers = {
     'auth-controller': 'auth',

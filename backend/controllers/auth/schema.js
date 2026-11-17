@@ -80,6 +80,12 @@ exports.refresh = {
   queryString: {},
 };
 
+exports.refreshPeek = {
+  header: {},
+  params: {},
+  queryString: {},
+};
+
 exports.logout = {
   header: {},
   params: {},

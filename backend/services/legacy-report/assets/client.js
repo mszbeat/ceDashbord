@@ -28,6 +28,8 @@
 
   let authState = null;
   let refreshInFlight = null;
+  let sessionUnconfirmed = 0;
+  let refreshTimer = null;
   let keepaliveTimer = null;
   let redirectingToLogin = false;
   const authChannel = typeof BroadcastChannel === 'function' ? new BroadcastChannel('ce-auth') : null;
@@ -120,6 +122,11 @@
   }
 
   function refreshSession() {
+    if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
+      // در تبِ پنهان تمدید نکنیم؛ چرخش توکن در تب پنهان باعث می‌شود تب فعال با
+      // توکنِ کهنه درخواست بدهد. پس از مرئی‌شدن، visibilitychange تمدید می‌کند.
+      return Promise.resolve(false);
+    }
     if (!refreshInFlight) {
       refreshInFlight = executeSingleFlightRefresh().finally(() => {
         refreshInFlight = null;
@@ -200,6 +207,10 @@
       window.clearInterval(keepaliveTimer);
       keepaliveTimer = null;
     }
+    if (refreshTimer) {
+      window.clearTimeout(refreshTimer);
+      refreshTimer = null;
+    }
   }
 
   function scheduleKeepalive(state) {
@@ -213,27 +224,58 @@
       if (document.visibilityState !== 'visible') return;
       await syncAuthState();
     }, intervalMs);
+
+    // تمدید پیش‌دستانه: پیش از انقضای اکسس توکن، رفرش توکن را در پس‌زمینه می‌چرخانیم
+    // تا کاربر هنگام کلیک روی گزارش به «نشست منقضی» نخورد.
+    const delay = Math.max(15000, Math.floor(accessMs * 0.6));
+    refreshTimer = window.setTimeout(async () => {
+      if (document.visibilityState !== 'visible') return;
+      const refreshed = await refreshSession();
+      if (refreshed && authState && authState.authenticated) {
+        scheduleKeepalive(authState);
+      }
+    }, delay);
   }
 
   async function syncAuthState() {
-    let me = await fetchAuthMe();
-    if (!me || me._httpError || !me.authenticated) {
-      const refreshed = await refreshSession();
-      if (refreshed) {
-        me = authState || (await fetchAuthMe());
-      } else if (me?._httpError === 401 || me?._httpError === 403) {
-        me = { authenticated: false, username: 'visitor', roles: ['visitor'], canRefresh: false };
+    // دست‌کم دو بار تلاش می‌کنیم؛ خطای موقت (502/شبکه) نباید کاربر را به صفحهٔ ورود بفرستد.
+    let me = null;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      me = await fetchAuthMe();
+      if (me && !me._httpError && me.authenticated) break;
+      if (me && me.authenticated) break;
+      if (attempt === 0) {
+        const refreshed = await refreshSession();
+        if (refreshed) {
+          me = authState || (await fetchAuthMe());
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 400));
       }
     }
-    if (me && !me._httpError) {
+
+    if (me && !me._httpError && me.authenticated) {
+      sessionUnconfirmed = 0;
       authState = me;
       renderAuthBar(me);
-      if (me.authenticated) {
-        scheduleKeepalive(me);
-      } else {
-        stopKeepalive();
-        redirectToLogin('expired');
-      }
+      scheduleKeepalive(me);
+      return authState;
+    }
+
+    // احراز نشده: تنها وقتی به لاگین می‌رویم که سرویس نشست با اطمینان (پاسخ معتبر 2xx)
+    // بگوید نشستی وجود ندارد؛ خطای HTTP/شبکه فقط نادیده گرفته می‌شود.
+    if (me && !me._httpError && me.authenticated === false) {
+      authState = me;
+      renderAuthBar(me);
+      stopKeepalive();
+      redirectToLogin('expired');
+      return authState;
+    }
+
+    sessionUnconfirmed += 1;
+    if (sessionUnconfirmed >= 3) {
+      sessionUnconfirmed = 0;
+      redirectToLogin('expired');
     }
     return authState;
   }

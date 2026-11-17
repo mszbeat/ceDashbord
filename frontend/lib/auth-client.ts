@@ -497,15 +497,12 @@ export async function authFetch(input: string, init?: RequestInit): Promise<Resp
     });
 
   const res = await doFetch();
-  if (res.status === 401 || res.status === 403) {
-    const before = await getAuthStatus().catch(() => null);
-    // اگر سشن واقعاً احرازنشده است با رفرش تمدید و فقط در آن صورت درخواست تکرار شود؛
-    // اگر کاربر لاگین است و خطای سطح دسترسی (۴۰۱/۴۰۳ نقش) گرفته، دوباره تکرار نشود.
-    if (!before?.authenticated) {
-      const refreshed = await refreshSession();
-      if (refreshed && refreshed.authenticated) {
-        return doFetch();
-      }
+  if (res.status === 401) {
+    // ۴۰۱ برای داده یعنی اکسس توکن منقضی شده است؛ یک بار تمدید و تکرار همان درخواست.
+    // سمت سرور، تمدیدهای هم‌زمان ادغام می‌شوند و توکنِ چرخیده دوباره ارسال نمی‌شود.
+    const refreshed = await refreshSession().catch(() => null);
+    if (refreshed?.authenticated) {
+      return doFetch();
     }
   }
   return res;
@@ -518,8 +515,41 @@ export function startSessionKeepalive(
 ): () => void {
   let stopped = false;
   let timerId: number | null = null;
+  let refreshTimerId: number | null = null;
   let lastAuthenticated = false;
+  let unconfirmed = 0;
   const requireSession = Boolean(options.requireSession);
+
+  const clearRefreshTimer = () => {
+    if (refreshTimerId !== null) {
+      window.clearTimeout(refreshTimerId);
+      refreshTimerId = null;
+    }
+  };
+
+  /**
+   * تمدید پیش‌دستانه: پیش از انقضای اکسس توکن، رفرش توکن را در پس‌زمینه می‌چرخانیم
+   * تا کاربر هیچ‌وقت به «نشست منقضی» نخورد. فاصله با تلورانس انتخاب می‌شود تا اگر
+   * مرورگر در حالت بیکار تایمر را عقب انداخت، هنوز فرصت تمدید باشد.
+   */
+  const schedulePreemptiveRefresh = (state: AuthSessionState) => {
+    clearRefreshTimer();
+    if (stopped || !state.authenticated) return;
+    const accessMs = Number(state.accessExpireMs || 120000);
+    const delay = Math.max(15000, Math.floor(accessMs * 0.6));
+    refreshTimerId = window.setTimeout(() => {
+      if (stopped) return;
+      void (async () => {
+        const refreshed = await refreshSession().catch(() => null);
+        if (refreshed?.authenticated) {
+          unconfirmed = 0;
+          lastAuthenticated = true;
+          onUpdate(refreshed);
+          scheduleNext(refreshed);
+        }
+      })();
+    }, delay);
+  };
 
   const scheduleNext = (state: AuthSessionState) => {
     if (timerId !== null) {
@@ -541,16 +571,28 @@ export function startSessionKeepalive(
   const sync = async () => {
     if (stopped) return;
     const state = await ensureAuthenticated().catch(() => null);
-    if (stopped || !state) return;
+    if (stopped) return;
+    if (!state) {
+      // خطای موقت (شبکه/۵xx): فقط پس از چند بار تلاش پیاپی، نشست را منقضی می‌دانیم.
+      unconfirmed += 1;
+      if (unconfirmed >= 3 && (lastAuthenticated || requireSession)) {
+        unconfirmed = 0;
+        onExpired?.();
+      }
+      return;
+    }
     onUpdate(state);
     if (state.authenticated) {
+      unconfirmed = 0;
       lastAuthenticated = true;
       scheduleNext(state);
+      schedulePreemptiveRefresh(state);
     } else {
       if (timerId !== null) {
         window.clearInterval(timerId);
         timerId = null;
       }
+      clearRefreshTimer();
       if (lastAuthenticated || requireSession) {
         lastAuthenticated = false;
         onExpired?.();
@@ -570,10 +612,12 @@ export function startSessionKeepalive(
     if (!msg || typeof msg !== 'object') return;
     if (msg.type === 'logout') {
       lastAuthenticated = false;
+      unconfirmed = 0;
       if (timerId !== null) {
         window.clearInterval(timerId);
         timerId = null;
       }
+      clearRefreshTimer();
       const visitorState: AuthSessionState = {
         authenticated: false,
         username: 'visitor',
@@ -585,8 +629,10 @@ export function startSessionKeepalive(
       onExpired?.();
     } else if ((msg.type === 'login' || msg.type === 'refreshed') && msg.auth) {
       lastAuthenticated = true;
+      unconfirmed = 0;
       onUpdate(msg.auth);
       scheduleNext(msg.auth);
+      schedulePreemptiveRefresh(msg.auth);
     }
   };
 
@@ -597,6 +643,7 @@ export function startSessionKeepalive(
   return () => {
     stopped = true;
     if (timerId !== null) window.clearInterval(timerId);
+    clearRefreshTimer();
     document.removeEventListener('visibilitychange', onVisibility);
     channel?.removeEventListener('message', onChannelMessage);
     channel?.close();

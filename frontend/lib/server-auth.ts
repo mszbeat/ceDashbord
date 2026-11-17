@@ -26,7 +26,41 @@ const CREDENTIAL_ERROR_CODES = new Set([
 ]);
 
 const refreshFlights = new Map<string, Promise<RefreshOutcome>>();
+/**
+ * توکن‌هایی که بک‌اند صریحاً نامعتبر اعلام کرده است. تا وقتی همین کوکی در درخواست
+ * حاضر باشد، تمدید دوباره تلاش نمی‌شود (چرخش توکنِ باطل، خانوادهٔ توکن را باطل می‌کند).
+ */
+const invalidRefreshTokens = new Map<string, number>();
+const INVALID_TOKEN_TTL_MS = 30_000;
 const recentRefreshCache = new Map<string, { at: number; outcome: RefreshOutcome }>();
+
+export function refreshTokenFingerprint(cookieHeader: string): string {
+  return getCookieValue(cookieHeader, 'ce_refresh');
+}
+
+export function isRefreshTokenKnownInvalid(cookieHeader: string): boolean {
+  const token = refreshTokenFingerprint(cookieHeader);
+  if (!token) return false;
+  const at = invalidRefreshTokens.get(token);
+  if (!at) return false;
+  if (Date.now() - at > INVALID_TOKEN_TTL_MS) {
+    invalidRefreshTokens.delete(token);
+    return false;
+  }
+  return true;
+}
+
+export function markRefreshTokenInvalid(cookieHeader: string): void {
+  const token = refreshTokenFingerprint(cookieHeader);
+  if (!token) return;
+  invalidRefreshTokens.set(token, Date.now());
+  if (invalidRefreshTokens.size > 300) {
+    const cutoff = Date.now() - INVALID_TOKEN_TTL_MS;
+    for (const [key, at] of Array.from(invalidRefreshTokens.entries())) {
+      if (at < cutoff) invalidRefreshTokens.delete(key);
+    }
+  }
+}
 
 export function resolveBackendOrigin(): string {
   return (process.env.BACKEND_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://127.0.0.1:3000').replace(/\/+$/, '');
@@ -545,6 +579,23 @@ async function executeRefreshWithRecovery(
 ): Promise<RefreshOutcome> {
   const isHttps = isRequestHttps(incomingHeaders);
 
+  if (isRefreshTokenKnownInvalid(incomingCookieHeader)) {
+    return {
+      ok: false,
+      status: 401,
+      rawText: JSON.stringify({
+        status: 'error',
+        authenticated: false,
+        canRefresh: false,
+        message: { fa: 'نشست شما منقضی شده است.', en: 'Refresh token is known to be invalid.' },
+      }),
+      rawJson: null,
+      data: { authenticated: false, canRefresh: false },
+      cookieHeader: incomingCookieHeader,
+      setCookies: [],
+    };
+  }
+
   const probe =
     existingProbe ??
     (await probeSessionWithCleanRecovery(backendUrl, incomingHeaders, incomingCookieHeader, {
@@ -639,6 +690,10 @@ async function executeRefreshWithRecovery(
       isHttps,
     });
   } else {
+    const metaCode = extractPartMetaCode(attempt.rawJson);
+    if (REFRESH_TOKEN_ERROR_CODES.has(metaCode) || attempt.res.status === 401 || attempt.res.status === 403) {
+      markRefreshTokenInvalid(incomingCookieHeader);
+    }
     finalCookies = normalizeBrowserSetCookies(
       [
         ...allSetCookies,
@@ -661,6 +716,33 @@ async function executeRefreshWithRecovery(
     cookieHeader: liveCookies,
     setCookies: finalCookies,
   };
+}
+
+/**
+ * فقط «اعتبار» کوکی رفرش را می‌سنجد، بدون چرخش (rotate) آن.
+ * مرورگرها هنگام رفرش هم‌زمان چند درخواست می‌فرستند؛ اگر همه بخواهند توکن را
+ * بچرخانند، توکن‌های بعدی «چرخیده» محسوب و خانوادهٔ توکن باطل می‌شود.
+ * با این پیش‌بررسی فقط یک درخواست واقعاً توکن را می‌چرخاند.
+ */
+export async function peekRefreshToken(
+  backendUrl: string,
+  incomingHeaders: Headers,
+  incomingCookieHeader: string,
+): Promise<{ ok: boolean; valid: boolean; rawText: string; rawJson: any } | null> {
+  try {
+    const res = await fetch(new URL('/api/auth/refresh/peek', backendUrl).toString(), {
+      method: 'GET',
+      cache: 'no-store',
+      headers: buildForwardClientHeaders(incomingHeaders, incomingCookieHeader),
+    });
+    const rawText = await res.text().catch(() => '');
+    const rawJson = safeParseJson(rawText);
+    const data = unwrapAuthPayload(rawJson) as any;
+    if (!res.ok || !data) return null;
+    return { ok: true, valid: data.valid === true, rawText, rawJson };
+  } catch {
+    return null;
+  }
 }
 
 export async function performRefreshWithRecovery(

@@ -738,3 +738,16 @@ test('gateway-client & per-bank HOST_NAME: هاست گزارش هر بانک + �
 });
 
 test.after(() => restore());
+
+test('admin-controller: payload «بررسی پیش از اجرا» با mode و فیلترهای عددی پذیرفته می‌شود (رگرسیون خطای اعتبارسنجی)', () => {
+  const schema = require(path.join(ROOT, 'controllers', 'adminController', 'schema.js'));
+  const checkProps = schema.checkExisting.body.properties;
+  // کلاینت همان payload اجرای تحلیل را برای بررسی می‌فرستد و mode هم در آن هست؛
+  // با additionalProperties:false، نبودِ mode در اسکیما خطای «داده های ورودی نامعتبرند» می‌داد.
+  assert.ok(checkProps.mode, 'checkExisting schema must accept mode');
+  assert.deepEqual(checkProps.mode.enum, ['nightly', 'intraday']);
+  // فیلترهای عددی باید number باشند و کلاینت آن‌ها را به عدد تبدیل می‌کند.
+  assert.equal(schema.checkExisting.body.properties.filters.properties.maxCount.type, 'number');
+  assert.equal(schema.checkExisting.body.properties.filters.properties.pageSize.type, 'number');
+  assert.equal(schema.checkExisting.body.additionalProperties, false);
+});

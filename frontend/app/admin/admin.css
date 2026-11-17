@@ -256,17 +256,28 @@
 }
 
 .adm-clock-chip {
-  background: rgba(235, 246, 255, 0.09);
-  border: 1px solid rgba(126, 232, 250, 0.28);
-  border-radius: 12px;
-  padding: 8px 14px;
-  min-width: 126px;
+  /* این چیپ‌ها روی هیروی تیره می‌نشینند؛ پس‌زمینهٔ شیشه‌ایِ روشنِ پنل اینجا خوانایی را
+     از بین می‌برد، پس لایهٔ ماتِ تیره با کنتراست کافی می‌گیرند. */
+  background: rgba(1, 20, 60, 0.78);
+  border: 1px solid rgba(126, 232, 250, 0.38);
+  border-radius: 14px;
+  padding: 9px 15px;
+  min-width: 136px;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: 0 10px 24px rgba(0, 10, 40, 0.32), inset 0 1px 0 rgba(126, 232, 250, 0.16);
+}
+:root[data-theme="dark"] .adm-clock-chip,
+:root:not([data-theme="light"]) .adm-clock-chip {
+  background: rgba(3, 24, 66, 0.82);
+  border-color: rgba(126, 232, 250, 0.4);
 }
 
 .adm-clock-chip span {
   display: block;
   font-size: 11px;
-  color: #9ed8ff;
+  color: #bfe9ff;
+  letter-spacing: 0.01em;
 }
 
 .adm-clock-chip strong {
@@ -887,10 +898,44 @@
 .adm-select:focus {
   background: var(--glass-panel);
 }
-.adm-btn-primary {
-  background: linear-gradient(135deg, rgba(0, 62, 164, 0.94), rgba(11, 94, 215, 0.92) 58%, rgba(14, 165, 233, 0.94));
+/* چیپ‌های ساعت (روی هیروی تیره) از بلوک شیشه‌ای روشنِ پنل مستثنی هستند */
+.adm-clock-chip {
+  background: rgba(1, 20, 60, 0.78);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+:root[data-theme="dark"] .adm-clock-chip {
+  background: rgba(3, 24, 66, 0.82);
+}
+.adm-btn-primary,
+.adm-btn.adm-btn-primary {
+  /* مثل دکمهٔ ورود: دکمهٔ اصلی در همهٔ حالت‌ها (از جمله hover/focus) آبی می‌ماند و
+     قاعدهٔ عمومی .adm-btn:hover نباید پس‌زمینه را روشن و متن را ناخوانا کند. */
+  background: linear-gradient(135deg, rgba(0, 62, 164, 0.96), rgba(11, 94, 215, 0.94) 58%, rgba(14, 165, 233, 0.96));
   border-color: rgba(126, 232, 250, 0.34);
+  color: #ffffff;
   box-shadow: 0 16px 34px rgba(6, 70, 170, 0.26), inset 0 1px 0 rgba(255, 255, 255, 0.24);
+}
+.adm-btn-primary:hover:not(:disabled),
+.adm-btn.adm-btn-primary:hover:not(:disabled),
+.adm-btn-primary:focus-visible:not(:disabled),
+.adm-btn.adm-btn-primary:focus-visible:not(:disabled) {
+  background: linear-gradient(135deg, rgba(0, 47, 130, 0.98), rgba(8, 78, 190, 0.96) 58%, rgba(2, 132, 199, 0.98));
+  border-color: rgba(126, 232, 250, 0.55);
+  color: #ffffff;
+  filter: brightness(1.05) saturate(1.04);
+  box-shadow: 0 18px 38px rgba(6, 70, 170, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.28);
+}
+:root[data-theme="dark"] .adm-btn-primary,
+:root[data-theme="dark"] .adm-btn.adm-btn-primary {
+  background: linear-gradient(135deg, rgba(11, 94, 215, 0.94), rgba(14, 165, 233, 0.9) 60%, rgba(34, 211, 238, 0.92));
+  color: #02142f;
+  border-color: rgba(126, 232, 250, 0.42);
+}
+:root[data-theme="dark"] .adm-btn-primary:hover:not(:disabled),
+:root[data-theme="dark"] .adm-btn.adm-btn-primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, rgba(22, 119, 255, 0.96), rgba(56, 189, 248, 0.94) 60%, rgba(103, 232, 249, 0.96));
+  color: #02142f;
 }
 .adm-table {
   background: transparent;

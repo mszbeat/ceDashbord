@@ -68,6 +68,14 @@ exports.checkExisting = {
       day: daySchema,
       fromDay: daySchema,
       toDay: daySchema,
+      // کلاینت همان payload اجرای تحلیل را برای «بررسی پیش از اجرا» می‌فرستد و
+      // `mode` هم در آن هست؛ چون additionalProperties:false است، نبودِ این کلید
+      // در اسکیمای بررسی باعث خطای «داده های ورودی نامعتبرند» می‌شد.
+      mode: {
+        type: 'string',
+        enum: ['nightly', 'intraday'],
+        errorMessages: { type: 'mode must be nightly or intraday' },
+      },
       filters: filtersSchema,
     },
     additionalProperties: false,

@@ -28,5 +28,7 @@ test('client auth layers do not bail out on canRefresh:false from /me', () => {
   const report = read('../backend/services/legacy-report/assets/client.js');
   assert.doesNotMatch(report, /canRefresh === false/);
   assert.doesNotMatch(report, /canRefresh !== false/);
-  assert.match(report, /if \(!me \|\| me\._httpError \|\| !me\.authenticated\)/);
+  // حالت syncAuthState بازنویسی شده است: تلاش دوباره، بررسی me.authenticated و شکست فقط با پاسخ معتبر
+  assert.match(report, /for \(let attempt = 0; attempt < 2; attempt \+= 1\)/);
+  assert.match(report, /me\.authenticated === false/);
 });
