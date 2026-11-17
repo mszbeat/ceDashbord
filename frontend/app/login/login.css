@@ -95,8 +95,8 @@
   inset: 0;
   pointer-events: none;
   background:
-    linear-gradient(90deg, rgba(0, 16, 66, 0) 76%, rgba(0, 16, 66, 0.36) 100%),
-    radial-gradient(circle at 22% 14%, rgba(34, 211, 238, 0.12), transparent 42%);
+    linear-gradient(90deg, rgba(0, 16, 66, 0) 80%, rgba(0, 16, 66, 0.14) 100%),
+    radial-gradient(circle at 78% 36%, rgba(34, 211, 238, 0.08), transparent 46%);
 }
 
 .lgn-visual-img {
@@ -106,7 +106,7 @@
   height: 100%;
   display: block;
   object-fit: cover;
-  object-position: left center;
+  object-position: right center;
 }
 
 .lgn-form-pane {
@@ -548,7 +548,7 @@
   }
 
   .lgn-visual-img {
-    object-position: left center;
+    object-position: right center;
   }
 
   .lgn-form-pane {

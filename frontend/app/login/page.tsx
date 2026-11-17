@@ -286,7 +286,7 @@ export default function LoginPage() {
       <div className="lgn-split">
         <aside className="lgn-visual" aria-label="نمایه داشبورد تحلیل داده‌های سرویس اعتبارسنجی">
           <img
-            src="/images/login-hero.png"
+            src="/images/login-hero.png?v=2"
             alt="داشبورد تحلیل داده‌های سرویس اعتبارسنجی — پردازش اطلاعات مالی پارت"
             className="lgn-visual-img"
           />
