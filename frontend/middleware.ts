@@ -57,6 +57,7 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/api/') ||
     pathname.startsWith('/_next/') ||
     pathname.startsWith('/images/') ||
+    pathname.startsWith('/fonts/') ||
     pathname === '/favicon.ico' ||
     PUBLIC_ASSET_RE.test(pathname)
   ) {
@@ -142,6 +143,6 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!api/|_next/static|_next/image|images/|favicon\\.ico|login(?:/|$)|.*\\.(?:png|jpe?g|svg|webp|gif|ico|css|js|woff2?|map)$).*)',
+    '/((?!api/|_next/static|_next/image|images/|fonts/|favicon\\.ico|login(?:/|$)|.*\\.(?:png|jpe?g|svg|webp|gif|ico|css|js|woff2?|map)$).*)',
   ],
 };

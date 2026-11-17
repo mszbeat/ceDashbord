@@ -1,6 +1,8 @@
 const BaseController = require('@partFramework/baseController');
 const { readBody, readQuery, readClientMeta } = require('../../services/http/request');
 const { requireAuthenticatedSession } = require('../../services/http/session-guard');
+const { getActionLogger } = require('../../services/logger/action-logger.service');
+const { updateAuditContext } = require('../../services/logger/http-audit');
 const { error: authError } = require('./config');
 
 function isBffBridgeRequest(request) {
@@ -88,15 +90,35 @@ exports.controller = class AuthController extends BaseController {
           }
         }
       }
+      updateAuditContext({ actor: payload.username, roles: [role] });
+      getActionLogger().info({
+        category: 'auth',
+        action: 'auth.register.success',
+        actor: payload.username,
+        roles: [role],
+        statusCode: 200,
+        meta: { autoLogin: shouldAutoLogin, rememberMe: payload.rememberMe === true },
+      });
       return withBffBridgedCookies({ status: 'ok', username: payload.username, roles: [role] }, request, response);
     } catch (err) {
+      let rolledBack = false;
       if (typeof rollback === 'function') {
         try {
           await rollback();
+          rolledBack = true;
         } catch {
           // rollback بهترین‌تلاش
         }
       }
+      getActionLogger().warn({
+        category: 'auth',
+        action: 'auth.register.failed',
+        actor: payload.username || null,
+        errorCode: err?.meta?.code || err?.code || 'REGISTER_FAILED',
+        statusCode: Number(err?.statusCode) || 500,
+        message: err?.data?.message?.en || err?.message || 'Registration failed',
+        meta: { rolledBack },
+      });
       throw err;
     }
   }
@@ -108,10 +130,22 @@ exports.controller = class AuthController extends BaseController {
     const payload = readBody(body);
     if (!payload.username || !payload.password) throw authError.invalidAuthInput;
 
-    await this.authService.authenticate(
-      { username: payload.username, password: payload.password },
-      trackingHeaders,
-    );
+    try {
+      await this.authService.authenticate(
+        { username: payload.username, password: payload.password },
+        trackingHeaders,
+      );
+    } catch (err) {
+      getActionLogger().warn({
+        category: 'auth',
+        action: 'auth.login.failed',
+        actor: payload.username,
+        errorCode: err?.meta?.code || err?.code || 'LOGIN_FAILED',
+        statusCode: Number(err?.statusCode) || 401,
+        message: err?.data?.message?.en || err?.message || 'Authentication failed',
+      });
+      throw err;
+    }
 
     let roles = ['visitor'];
     if (this.samadService) {
@@ -140,6 +174,16 @@ exports.controller = class AuthController extends BaseController {
       timings = this.sessionManager.getTokenTimings(issued);
     }
 
+    updateAuditContext({ actor: payload.username, roles });
+    getActionLogger().info({
+      category: 'auth',
+      action: 'auth.login.success',
+      actor: payload.username,
+      roles,
+      statusCode: 200,
+      meta: { rememberMe: payload.rememberMe === true },
+    });
+
     return withBffBridgedCookies(
       {
         status: 'ok',
@@ -162,6 +206,13 @@ exports.controller = class AuthController extends BaseController {
     const rawRefresh = this.sessionManager.extractRefreshToken(request, payload);
     if (!rawRefresh) {
       this.sessionManager.clearRefreshCookie(response, request);
+      getActionLogger().warn({
+        category: 'auth',
+        action: 'auth.refresh.missing',
+        statusCode: 401,
+        errorCode: 'refreshTokenRequired',
+        message: 'Refresh token cookie missing',
+      });
       throw authError.refreshTokenRequired;
     }
 
@@ -175,6 +226,14 @@ exports.controller = class AuthController extends BaseController {
       } catch (err) {
         if (err?.statusCode === 404 || err?.statusCode === 403) {
           await this.sessionManager.revokeRefreshToken(rawRefresh, response, request);
+          getActionLogger().warn({
+            category: 'auth',
+            action: 'auth.refresh.user_revoked',
+            actor: peeked.username,
+            statusCode: 401,
+            errorCode: 'invalidRefreshToken',
+            message: 'Refresh token revoked because Samad user missing or denied',
+          });
           throw authError.invalidRefreshToken;
         }
         // در خطاهای موقت سمد (503/5xx/شبکه)، از نقش ذخیره‌شدهٔ همین سشن استفاده می‌کنیم
@@ -196,6 +255,15 @@ exports.controller = class AuthController extends BaseController {
     const activeRoles = Array.isArray(rotated.roles) && rotated.roles.length ? rotated.roles : ['visitor'];
     await this.sessionManager.setSession(session, { username: rotated.username }, activeRoles);
 
+    updateAuditContext({ actor: rotated.username, roles: activeRoles });
+    getActionLogger().info({
+      category: 'auth',
+      action: 'auth.refresh.success',
+      actor: rotated.username,
+      roles: activeRoles,
+      statusCode: 200,
+    });
+
     return withBffBridgedCookies(
       {
         status: 'ok',
@@ -214,7 +282,18 @@ exports.controller = class AuthController extends BaseController {
     if (this.sessionManager && typeof this.sessionManager.ensureResponseCookieNormalization === 'function') {
       this.sessionManager.ensureResponseCookieNormalization(response, request);
     }
+    const before = await this.sessionManager.getSessionInfo(session).catch(() => null);
     await this.sessionManager.removeSession(session, response, request);
+    if (before?.authenticated) {
+      updateAuditContext({ actor: before.username, roles: before.roles });
+    }
+    getActionLogger().info({
+      category: 'auth',
+      action: 'auth.logout',
+      actor: before?.authenticated ? before.username : 'visitor',
+      roles: before?.roles || ['visitor'],
+      statusCode: 200,
+    });
     return withBffBridgedCookies({ status: 'ok' }, request, response);
   }
 
@@ -222,14 +301,18 @@ exports.controller = class AuthController extends BaseController {
     if (this.sessionManager && typeof this.sessionManager.ensureResponseCookieNormalization === 'function') {
       this.sessionManager.ensureResponseCookieNormalization(response, request);
     }
-    if (typeof this.sessionManager.getSessionStatus === 'function') {
-      return this.sessionManager.getSessionStatus(session, request);
+    const status =
+      typeof this.sessionManager.getSessionStatus === 'function'
+        ? await this.sessionManager.getSessionStatus(session, request)
+        : await this.sessionManager.getSessionInfo(session);
+    if (status?.authenticated) {
+      updateAuditContext({ actor: status.username, roles: status.roles });
     }
-    return this.sessionManager.getSessionInfo(session);
+    return status;
   }
 
   async assignRole(body, session) {
-    await requireAuthenticatedSession(session, () => authError.unauthorizedSession);
+    const actor = await requireAuthenticatedSession(session, () => authError.unauthorizedSession);
     const payload = readBody(body);
     if (!payload.username || !payload.role) throw authError.roleRequired;
 
@@ -243,19 +326,35 @@ exports.controller = class AuthController extends BaseController {
         await this.sessionManager.setSession(session, { username: payload.username }, roles);
       }
     }
+    getActionLogger().info({
+      category: 'auth',
+      action: 'auth.role.assign',
+      actor: actor.username,
+      roles: actor.roles,
+      statusCode: 200,
+      meta: { targetUsername: payload.username, assignedRoles: roles },
+    });
     return { status: 'ok', username: payload.username, roles };
   }
 
   async getRole(queryString, session) {
-    await requireAuthenticatedSession(session, () => authError.unauthorizedSession);
+    const actor = await requireAuthenticatedSession(session, () => authError.unauthorizedSession);
     const query = readQuery(queryString);
     if (!query.username) throw authError.usernameRequired;
     const roles = await this.samadService.getRole(query.username);
+    getActionLogger().info({
+      category: 'auth',
+      action: 'auth.role.read',
+      actor: actor.username,
+      roles: actor.roles,
+      statusCode: 200,
+      meta: { targetUsername: query.username, roles },
+    });
     return { username: query.username, roles };
   }
 
   async removeUser(body, trackingHeaders, session, response) {
-    await requireAuthenticatedSession(session, () => authError.unauthorizedSession);
+    const actor = await requireAuthenticatedSession(session, () => authError.unauthorizedSession);
     const payload = readBody(body);
     if (!payload.username) throw authError.usernameRequired;
 
@@ -279,6 +378,14 @@ exports.controller = class AuthController extends BaseController {
         await this.sessionManager.removeSession(session, response);
       }
     }
+    getActionLogger().info({
+      category: 'auth',
+      action: 'auth.user.remove',
+      actor: actor.username,
+      roles: actor.roles,
+      statusCode: 200,
+      meta: { removedUsername: payload.username },
+    });
     return { status: 'ok', username: payload.username };
   }
 };

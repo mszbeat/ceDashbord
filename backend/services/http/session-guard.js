@@ -1,5 +1,8 @@
 'use strict';
 
+const { getActionLogger } = require('../logger/action-logger.service');
+const { updateAuditContext } = require('../logger/http-audit');
+
 /**
  * استخراج وضعیت سشن از `_session` (پشتیبانی از سشن callback-based
  * فریم‌ورک `partSessionManager` و آبجکت ساده در تست‌ها).
@@ -25,11 +28,15 @@ async function readSessionState(session) {
         ? raw.samadUsername.trim()
         : 'visitor';
     const roles = Array.isArray(raw?.roles) && raw.roles.length ? raw.roles : ['visitor'];
-    return {
+    const state = {
       authenticated: username !== 'visitor',
       username,
       roles,
     };
+    if (state.authenticated) {
+      updateAuditContext({ actor: state.username, roles: state.roles });
+    }
+    return state;
   }
 
   const username =
@@ -37,11 +44,15 @@ async function readSessionState(session) {
       ? session.samadUsername.trim()
       : 'visitor';
   const roles = Array.isArray(session.roles) && session.roles.length ? session.roles : ['visitor'];
-  return {
+  const state = {
     authenticated: username !== 'visitor',
     username,
     roles,
   };
+  if (state.authenticated) {
+    updateAuditContext({ actor: state.username, roles: state.roles });
+  }
+  return state;
 }
 
 /**
@@ -52,10 +63,25 @@ async function requireAuthenticatedSession(session, errorFactory) {
   let state;
   try {
     state = await readSessionState(session);
-  } catch {
+  } catch (err) {
+    getActionLogger().warn({
+      category: 'auth',
+      action: 'auth.session_read_failed',
+      errorCode: 'SESSION_READ_ERROR',
+      message: err?.message || 'Failed to read session',
+    });
     throw typeof errorFactory === 'function' ? errorFactory() : errorFactory;
   }
   if (!state.authenticated) {
+    getActionLogger().warn({
+      category: 'auth',
+      action: 'auth.session_denied',
+      actor: state.username,
+      roles: state.roles,
+      statusCode: 401,
+      errorCode: 'sessionRequired',
+      message: 'Unauthenticated visitor session rejected',
+    });
     throw typeof errorFactory === 'function' ? errorFactory() : errorFactory;
   }
   return state;

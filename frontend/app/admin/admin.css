@@ -51,7 +51,7 @@
     radial-gradient(ellipse at 10% 42%, rgba(0, 48, 135, 0.06), transparent 30rem),
     var(--adm-bg);
   color: var(--adm-ink);
-  font: 400 14px/1.85 Tahoma, "Segoe UI", sans-serif;
+  font: 400 14px/1.85 'Vazirmatn', Tahoma, "Segoe UI", sans-serif;
   padding-bottom: 56px;
 }
 

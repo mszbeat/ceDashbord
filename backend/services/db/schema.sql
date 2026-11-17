@@ -203,3 +203,28 @@ CREATE INDEX IF NOT EXISTS idx_auth_refresh_tokens_username ON auth_refresh_toke
 CREATE INDEX IF NOT EXISTS idx_auth_refresh_tokens_family ON auth_refresh_tokens(family_id);
 CREATE INDEX IF NOT EXISTS idx_auth_refresh_tokens_expires ON auth_refresh_tokens(expires_at);
 
+-- لاگ یکپارچهٔ تمام رخدادها، درخواست‌ها و خطاهای بک‌اند (بدون دادهٔ حساس)
+CREATE TABLE IF NOT EXISTS backend_action_logs (
+  id BIGSERIAL PRIMARY KEY,
+  occurred_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  level TEXT NOT NULL,
+  category TEXT NOT NULL,
+  action TEXT NOT NULL,
+  actor TEXT,
+  roles JSONB NOT NULL DEFAULT '[]'::jsonb,
+  method TEXT,
+  path TEXT,
+  status_code INTEGER,
+  duration_ms INTEGER,
+  request_id TEXT,
+  ip TEXT,
+  user_agent TEXT,
+  error_code TEXT,
+  message TEXT,
+  meta JSONB NOT NULL DEFAULT '{}'::jsonb
+);
+CREATE INDEX IF NOT EXISTS idx_backend_action_logs_occurred ON backend_action_logs(occurred_at DESC);
+CREATE INDEX IF NOT EXISTS idx_backend_action_logs_action ON backend_action_logs(action, occurred_at DESC);
+CREATE INDEX IF NOT EXISTS idx_backend_action_logs_level ON backend_action_logs(level, occurred_at DESC);
+CREATE INDEX IF NOT EXISTS idx_backend_action_logs_actor ON backend_action_logs(actor, occurred_at DESC);
+

@@ -283,11 +283,25 @@ export async function loginWithPassword(params: {
 }): Promise<AuthSessionState> {
   let parsed = await postLoginRequest(params);
 
-  // اطمینان از اینکه نشست در بک‌اند/کوکی مرورگر واقعاً فعال شده است
-  // (اگر توکن بازدیدکننده قبلی منقضی بوده، یک بار با رفرش یا درخواست مجدد تثبیت می‌شود).
-  let verified = await getAuthStatus().catch(() => null);
+  // BFF ورود (performLoginWithRecovery) نشست و کوکی را سمت سرور راستی‌آزمایی کرده است؛
+  // در صورت دریافت authenticated: true نیازی به رفت‌وبرگشت اضافه نیست و انتقال سریع‌تر انجام می‌شود.
+  let verified: AuthSessionState | null =
+    parsed?.authenticated === true
+      ? {
+          authenticated: true,
+          username: String(parsed.username || parsed.samadUsername || params.username.trim()),
+          samadUsername: String(parsed.samadUsername || parsed.username || params.username.trim()),
+          roles: Array.isArray(parsed.roles) && parsed.roles.length ? parsed.roles : ['visitor'],
+          canRefresh: true,
+          refreshExpiresAt: parsed.refreshExpiresAt || null,
+          accessExpireMs: typeof parsed.accessExpireMs === 'number' ? parsed.accessExpireMs : undefined,
+          idleExpireMs: typeof parsed.idleExpireMs === 'number' ? parsed.idleExpireMs : undefined,
+        }
+      : null;
+
   if (!verified?.authenticated) {
-    if (verified?.canRefresh) {
+    verified = await getAuthStatus().catch(() => null);
+    if (!verified?.authenticated && verified?.canRefresh) {
       const refreshed = await refreshSession().catch(() => null);
       if (refreshed?.authenticated) {
         verified = refreshed;

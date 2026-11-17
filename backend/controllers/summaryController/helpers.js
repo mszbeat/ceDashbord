@@ -4,6 +4,7 @@ const { getServices } = require('../../services/container');
 const { sendHtml } = require('../../services/http/result');
 const { readQuery } = require('../../services/http/request');
 const { requireAuthenticatedSession } = require('../../services/http/session-guard');
+const { getActionLogger } = require('../../services/logger/action-logger.service');
 const { error: summaryError } = require('./config');
 
 /**
@@ -36,14 +37,33 @@ exports.specs = async function (queryString, session) {
 };
 
 exports.report = async function (queryString, response, session) {
-  await requireAuthenticatedSession(session, () => summaryError.sessionRequired);
+  const actor = await requireAuthenticatedSession(session, () => summaryError.sessionRequired);
   const query = readQuery(queryString);
   const bank = query.bank || 'tavan_mellat';
   const rowsCap = query.rowsCap ? Number(query.rowsCap) : 100;
   try {
     const html = await getSummaryService().report(bank, query.from || undefined, query.to || undefined, rowsCap);
+    getActionLogger().info({
+      category: 'summary',
+      action: 'summary.report.rendered',
+      actor: actor.username,
+      roles: actor.roles,
+      statusCode: 200,
+      meta: { bank, from: query.from || null, to: query.to || null, rowsCap },
+    });
     return sendHtml(html, 200, response);
   } catch (err) {
+    getActionLogger().error({
+      category: 'summary',
+      action: 'summary.report.failed',
+      actor: actor.username,
+      roles: actor.roles,
+      statusCode: 503,
+      errorCode: err?.meta?.code || err?.code || 'REPORT_RENDER_FAILED',
+      message: err?.data?.message?.fa || err?.message || 'Report build failed',
+      meta: { bank, from: query.from || null, to: query.to || null },
+      stack: err?.stack,
+    });
     return sendHtml(getSummaryService().errorHtml(err), 503, response);
   }
 };

@@ -2,6 +2,7 @@
 
 const crypto = require('node:crypto');
 const { config, parseDurationMs } = require('../../services/config');
+const { getActionLogger } = require('../../services/logger/action-logger.service');
 const { error: authError } = require('./config');
 
 const REFRESH_COOKIE_NAME = 'ce_refresh';
@@ -270,6 +271,15 @@ class RefreshTokenService {
             item.revokedAt = new Date();
           }
         }
+        getActionLogger().warn({
+          category: 'auth',
+          action: 'auth.refresh.reuse_detected',
+          actor: entry.username,
+          statusCode: 401,
+          errorCode: 'refreshTokenRevoked',
+          message: 'Rotated refresh token reuse detected; token family revoked',
+          meta: { familyId: entry.familyId },
+        });
         throw authError.refreshTokenRevoked;
       }
       if (entry.revokedAt) throw authError.refreshTokenRevoked;
@@ -340,6 +350,14 @@ class RefreshTokenService {
             WHERE family_id = $1`,
           [existing.family_id],
         );
+        getActionLogger().warn({
+          category: 'auth',
+          action: 'auth.refresh.reuse_detected',
+          statusCode: 401,
+          errorCode: 'refreshTokenRevoked',
+          message: 'Rotated refresh token reuse detected; DB token family revoked',
+          meta: { familyId: existing.family_id },
+        });
         throw authError.refreshTokenRevoked;
       }
       if (existing.revoked_at) throw authError.refreshTokenRevoked;
@@ -415,6 +433,11 @@ class RefreshTokenService {
 
   async revokeUser(username) {
     if (!username) return;
+    getActionLogger().info({
+      category: 'auth',
+      action: 'auth.refresh.revoked_user',
+      meta: { targetUsername: username },
+    });
     const db = this.#resolveDb();
     if (!db) {
       const now = new Date();

@@ -162,7 +162,7 @@
     const raw = safeScript(sample);
     // این فایل داخل <script> گزارش جاسازی می‌شود؛ پایان تگ script نباید به‌صورت متوالی در متن آن ظاهر شود.
     const scriptEnd = '</' + 'script>';
-    return `<!doctype html><html lang="fa" dir="rtl" data-theme="${activeTheme === 'dark' ? 'dark' : 'light'}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>جزئیات گزارش — ${escapeHtml(meta.bank || '')}</title><style>${window.__VIEWER_CSS || ''}</style></head><body><div class="viewer">
+    return `<!doctype html><html lang="fa" dir="rtl" data-theme="${activeTheme === 'dark' ? 'dark' : 'light'}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>جزئیات گزارش — ${escapeHtml(meta.bank || '')}</title><style>${window.__CE_FONT_CSS || ''}${window.__VIEWER_CSS || ''}</style></head><body><div class="viewer">
       <header class="detail-topbar"><strong>◈ جزئیات گزارش</strong><div class="detail-actions"><button id="detailThemeToggle" type="button" aria-label="تغییر حالت روشن و تیره">◐ <span>تغییر تم</span></button><button id="detailPrint" type="button">⎙ <span>چاپ گزارش</span></button></div></header>
       <div class="hero"><p class="eyebrow">گزارش کیفیت داده / جزئیات</p><h1>دادهٔ کامل گزارش — ${escapeHtml(meta.bank || '')}</h1><div class="chips">${chips}</div></div>
       ${creditAlertHtml(meta.creditAlerts)}${cardsHtml(cards)}${messages.length ? `<div class="note"><div class="label">پیام خروجی</div>${messages.map((text) => `<span class="message-line" dir="auto">${escapeHtml(text)}</span>`).join('')}</div>` : ''}

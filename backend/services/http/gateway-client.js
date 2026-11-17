@@ -5,6 +5,7 @@ const {
   bankUsesGateway,
   resolveBankGatewayConfig,
 } = require('../config');
+const { getActionLogger } = require('../logger/action-logger.service');
 
 function isGatewayInvalidTokenResponse(status, body) {
   const meta = body && typeof body === 'object' ? body.meta : null;
@@ -116,8 +117,22 @@ class GatewayTokenManager {
         body?.data?.message?.en ||
         body?.message ||
         `HTTP ${response.status} ${response.statusText || ''}`.trim();
+      getActionLogger().error({
+        category: 'gateway',
+        action: 'gateway.token.failed',
+        statusCode: response.status || 502,
+        errorCode: 'GATEWAY_TOKEN_FAILED',
+        message: `Gateway token fetch failed for ${bankKey}: ${detail}`,
+        meta: { bankKey },
+      });
       throw new Error(`دریافت توکن گیت‌وی برای ${bankKey} ناموفق بود: ${detail}`);
     }
+    getActionLogger().info({
+      category: 'gateway',
+      action: 'gateway.token.refreshed',
+      statusCode: 200,
+      meta: { bankKey },
+    });
     return token.trim();
   }
 }
@@ -173,11 +188,26 @@ async function fetchBankJson(bankKey, url, options = {}) {
     } catch (error) {
       lastError = error;
       if (attempt < retryCount) {
+        getActionLogger().warn({
+          category: 'gateway',
+          action: 'gateway.upstream.retry',
+          statusCode: Number(error?.statusCode) || 502,
+          message: error?.message || 'Upstream request retry',
+          meta: { bankKey, attempt, retryCount },
+        });
         await new Promise((resolve) => setTimeout(resolve, 500 * 2 ** (attempt - 1)));
       }
     }
   }
 
+  getActionLogger().error({
+    category: 'gateway',
+    action: 'gateway.upstream.failed',
+    statusCode: Number(lastError?.statusCode) || 502,
+    errorCode: 'UPSTREAM_FETCH_FAILED',
+    message: lastError?.message || 'Upstream request failed after retries',
+    meta: { bankKey, retryCount },
+  });
   throw lastError;
 }
 

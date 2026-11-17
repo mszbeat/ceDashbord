@@ -3,6 +3,7 @@
 const { getServices } = require('../../services/container');
 const { readRouteParam, readQuery, readClientMeta } = require('../../services/http/request');
 const { requireAuthenticatedSession } = require('../../services/http/session-guard');
+const { getActionLogger } = require('../../services/logger/action-logger.service');
 const { error: ceError } = require('./config');
 
 /**
@@ -10,9 +11,18 @@ const { error: ceError } = require('./config');
  * مشاهدهٔ جزئیات کامل یک گزارش اعتبارسنجی.
  */
 exports.sample = async function (request, inputData, session) {
-  await requireAuthenticatedSession(session, () => ceError.sessionRequired);
+  const actor = await requireAuthenticatedSession(session, () => ceError.sessionRequired);
   const requestId = readRouteParam(request, inputData, 'requestId', /\/api\/sample\/([^/?#]+)/);
   if (!requestId) throw ceError.requestIdRequired;
   const query = readQuery(request, inputData);
-  return getServices().summary.sample(requestId, readClientMeta(request), query.bank);
+  const res = await getServices().summary.sample(requestId, readClientMeta(request), query.bank);
+  getActionLogger().info({
+    category: 'detail',
+    action: res?.found ? 'detail.sample.viewed' : 'detail.sample.not_found',
+    actor: actor.username,
+    roles: actor.roles,
+    statusCode: 200,
+    meta: { sampleRequestId: requestId, bank: res?.meta?.methodKey || query.bank || null, found: Boolean(res?.found) },
+  });
+  return res;
 };

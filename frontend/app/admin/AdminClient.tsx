@@ -11,7 +11,6 @@ import {
   logoutSession,
   startSessionKeepalive,
 } from '@/lib/auth-client';
-import AdminAccessDenied from './AdminAccessDenied';
 import './admin.css';
 
 export type BankKey = 'tavan_mellat' | 'tavan_resalat' | 'tavan_postbank';
@@ -185,9 +184,9 @@ export default function AdminClient({ initialAuth, initialOverview }: AdminClien
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [authUser, setAuthUser] = useState<AuthSessionState | null>(initialAuth);
   const [redirectingToLogin, setRedirectingToLogin] = useState(false);
+  const [redirectingToDashboard, setRedirectingToDashboard] = useState(false);
   const [overview, setOverview] = useState<OverviewPayload | null>(initialOverview);
   const [loadingOverview, setLoadingOverview] = useState(!initialOverview);
-  const [accessDeniedMsg, setAccessDeniedMsg] = useState<string | null>(null);
   const [toast, setToast] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
 
   // Manual run form state
@@ -239,9 +238,10 @@ export default function AdminClient({ initialAuth, initialOverview }: AdminClien
       (state) => {
         setAuthUser(state);
         if (state.authenticated && !state.roles?.includes('admin')) {
-          setAccessDeniedMsg(
-            `شما با حساب «${state.username}» (${formatRolesFa(state.roles)}) وارد شده‌اید؛ ورود به پنل مدیریت فقط برای نقش مدیر سیستم (admin) مجاز است.`,
-          );
+          setRedirectingToDashboard(true);
+          if (typeof window !== 'undefined') {
+            window.location.replace('/');
+          }
         }
       },
       () => {
@@ -293,14 +293,14 @@ export default function AdminClient({ initialAuth, initialOverview }: AdminClien
           return;
         }
         if (!authCheck.roles?.includes('admin')) {
-          setAccessDeniedMsg(
-            `شما با حساب «${authCheck.username}» (${formatRolesFa(authCheck.roles)}) وارد شده‌اید؛ ورود به پنل مدیریت فقط برای نقش مدیر سیستم (admin) مجاز است.`,
-          );
+          setRedirectingToDashboard(true);
+          if (typeof window !== 'undefined') {
+            window.location.replace('/');
+          }
           return;
         }
 
         const data = await apiFetch<OverviewPayload>('/api/admin/overview');
-        setAccessDeniedMsg(null);
         setOverview(data);
         if (!initializedDatesRef.current && data.serverClock) {
           initializedDatesRef.current = true;
@@ -322,9 +322,10 @@ export default function AdminClient({ initialAuth, initialOverview }: AdminClien
             }
             return;
           }
-          setAccessDeniedMsg(
-            `شما با حساب «${authState.username}» (${formatRolesFa(authState.roles)}) وارد شده‌اید؛ ورود به پنل مدیریت فقط برای نقش مدیر سیستم (admin) مجاز است.`,
-          );
+          setRedirectingToDashboard(true);
+          if (typeof window !== 'undefined') {
+            window.location.replace('/');
+          }
           return;
         }
         if (!silent) {
@@ -352,13 +353,13 @@ export default function AdminClient({ initialAuth, initialOverview }: AdminClien
 
   // رفرش خودکار سریع هنگام اجرای جابها (هر ۲ ثانیه) و معمولی در حالت سکون (هر ۱۵ ثانیه)
   useEffect(() => {
-    if (accessDeniedMsg || !overview) return;
+    if (redirectingToDashboard || !overview) return;
     const intervalMs = hasRunningJobs ? 2000 : 15000;
     const id = window.setInterval(() => {
       void fetchOverview(true);
     }, intervalMs);
     return () => window.clearInterval(id);
-  }, [hasRunningJobs, fetchOverview, accessDeniedMsg, overview]);
+  }, [hasRunningJobs, fetchOverview, redirectingToDashboard, overview]);
 
   // بستن مودال با کلید Escape
   useEffect(() => {
@@ -528,8 +529,18 @@ export default function AdminClient({ initialAuth, initialOverview }: AdminClien
     );
   }
 
-  if (accessDeniedMsg) {
-    return <AdminAccessDenied authUser={authUser} reason={accessDeniedMsg} />;
+  if (redirectingToDashboard) {
+    return (
+      <div className="adm-root" dir="rtl">
+        <div className="adm-gate-wrap">
+          <div className="adm-gate-card">
+            <div className="adm-spinner" aria-hidden="true" />
+            <h1>در حال انتقال به داشبورد…</h1>
+            <p>در حال هدایت به صفحهٔ اصلی داشبورد…</p>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   // گیت اجباری: پیش از تأیید دسترسی و دریافت داده از بک‌اند، محتوای پنل مدیریت نمایش داده نمی‌شود

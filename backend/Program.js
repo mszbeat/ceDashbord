@@ -11,6 +11,8 @@ const { config } = require('./services/config');
 const SessionManager = require('./controllers/auth/session-manager');
 const SamadService = require('./controllers/auth/samad.service');
 const { installHttpCookiePathNormalizer } = require('./services/http/cookie-normalize');
+const { installHttpAuditLogger } = require('./services/logger/http-audit');
+const { getActionLogger } = require('./services/logger/action-logger.service');
 
 function cleanEnv(value) {
   if (typeof value !== 'string') return undefined;
@@ -76,15 +78,20 @@ class Program {
     const services = getServices();
     await services.init();
 
-    const shutdown = async () => {
+    const shutdown = async (signal) => {
       try {
+        getActionLogger().info({
+          category: 'system',
+          action: 'system.shutdown',
+          message: `Received ${signal || 'shutdown signal'}`,
+        });
         await services.close();
       } catch {
         // خاموشی امن؛ خطای بستن اتصال نباید فرآیند را متوقف کند
       }
     };
-    process.once('SIGINT', shutdown);
-    process.once('SIGTERM', shutdown);
+    process.once('SIGINT', () => void shutdown('SIGINT'));
+    process.once('SIGTERM', () => void shutdown('SIGTERM'));
   }
 
   async #loadControllers() {
@@ -103,12 +110,19 @@ class Program {
 
   async run() {
     installHttpCookiePathNormalizer();
+    installHttpAuditLogger();
     await this.#core.init();
     await this.#loadDependencies();
     await this.#loadControllers();
     await this.#loadControllerPackages();
     this.#loadManualControllers();
     await this.#loadServers();
+    getActionLogger().info({
+      category: 'system',
+      action: 'system.startup.ready',
+      message: `CE Dashboard backend listening on http://${config.backendHost}:${config.backendPort}/api`,
+      meta: { host: config.backendHost, port: config.backendPort },
+    });
     // eslint-disable-next-line no-console
     console.log(
       `✅ CE Dashboard backend (partFramework) running on http://${config.backendHost}:${config.backendPort}/api`,

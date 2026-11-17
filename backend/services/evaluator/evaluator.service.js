@@ -13,6 +13,7 @@ const { SERVICE_FA, nf, messageOf } = require('./legacy/src/common');
 const BuildAiInput = require('./legacy-report/buildAiInput');
 const { messageKeyOf, sanitizeMessageTemplate } = require('../message-dict');
 const { jalaliStampDigitsOf } = require('../utils/date');
+const { getActionLogger } = require('../logger/action-logger.service');
 
 const SUCCESS_MESSAGES = [
   'You currently have overdue debt.please improve your credit behavior and try again.',
@@ -27,7 +28,12 @@ const tryCall = (fn, name, fallback = null) => {
     const value = fn();
     return value === undefined || value === null ? fallback : value;
   } catch (error) {
-    console.warn(`[evaluator] ${name}: ${error?.message ?? error}`);
+    getActionLogger().warn({
+      category: 'evaluator',
+      action: 'evaluator.callback_error',
+      message: error?.message ?? String(error),
+      meta: { name },
+    });
     return fallback;
   }
 };
@@ -96,7 +102,12 @@ class EvaluatorService {
     for (const [key, bank] of Object.entries(banks)) {
       const selectedServices = [...new Set([...bank.expectedServices, ...Object.keys(SERVICE_FA)])].sort();
       const analyzeOne = createEvaluator(bank, selectedServices, (name, error) =>
-        console.warn(`[evaluator:${key}] ${name}: ${error?.message ?? error}`),
+        getActionLogger().warn({
+          category: 'evaluator',
+          action: 'evaluator.metric_error',
+          message: error?.message ?? String(error),
+          meta: { bank: key, name },
+        }),
       );
       this.runtimes[key] = {
         key,

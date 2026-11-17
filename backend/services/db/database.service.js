@@ -1,5 +1,6 @@
 'use strict';
 const { config } = require('../config');
+const { getActionLogger } = require('../logger/action-logger.service');
 
 class DatabaseService {
   constructor(customConnectionString) {
@@ -8,7 +9,15 @@ class DatabaseService {
       connectionString: customConnectionString || config.databaseUrl,
       max: 10,
     });
-    this.pool.on('error', (error) => console.error('PostgreSQL pool error:', error.message));
+    this.pool.on('error', (error) => {
+      getActionLogger().error({
+        category: 'db',
+        action: 'db.pool.error',
+        errorCode: error?.code || 'PG_POOL_ERROR',
+        message: error?.message || 'PostgreSQL pool error',
+        stack: error?.stack,
+      });
+    });
   }
 
   query(text, params) {

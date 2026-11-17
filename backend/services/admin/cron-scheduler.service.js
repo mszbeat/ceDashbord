@@ -1,5 +1,7 @@
 'use strict';
 
+const { getActionLogger } = require('../logger/action-logger.service');
+
 class CronSchedulerService {
   constructor(admin) {
     this.admin = admin;
@@ -30,12 +32,23 @@ class CronSchedulerService {
     try {
       const started = await this.admin.tickScheduledCron(new Date());
       if (started) {
-        console.log(
-          `[cron] جاب شبانهٔ خودکار آغاز شد: ${started.id} (${started.banks.join(', ')} -> ${started.days.join(', ')})`,
-        );
+        getActionLogger().info({
+          category: 'cron',
+          action: 'cron.tick_started',
+          actor: 'cron',
+          message: `Scheduled nightly cron started: ${started.id}`,
+          meta: { jobId: started.id, banks: started.banks, days: started.days },
+        });
       }
     } catch (err) {
-      console.error('[cron] خطا در بررسی زمانبند کران:', err?.message ?? err);
+      getActionLogger().error({
+        category: 'cron',
+        action: 'cron.tick_error',
+        actor: 'cron',
+        errorCode: err?.code || 'CRON_TICK_ERROR',
+        message: err?.message ?? String(err),
+        stack: err?.stack,
+      });
     } finally {
       this.ticking = false;
     }

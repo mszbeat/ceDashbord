@@ -2,6 +2,14 @@
 @tailwind components;
 @tailwind utilities;
 
+@font-face {
+  font-family: 'Vazirmatn';
+  src: url('/fonts/Vazirmatn-Variable.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   color-scheme: light;
   --ce-bg: #eef4fb;
@@ -21,11 +29,19 @@ html.dark,
   --ce-accent: #38bdf8;
 }
 
+html,
 body {
-  font-family: Vazir, Tahoma, Arial, sans-serif;
+  font-family: 'Vazirmatn', Tahoma, "Segoe UI", Arial, sans-serif;
   background: var(--ce-bg);
   color: var(--ce-ink);
   min-height: 100vh;
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
 }
 
 .card {

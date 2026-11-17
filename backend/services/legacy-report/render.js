@@ -2,6 +2,7 @@
 const { own } = require('./_helpers');
 const {facilityCountChart,modelChart,dailyChart,depositTypeChart,categoryChart}=require('./charts');
 const { h, toText, safeJson, nf, pct, compareReviewRows, safeId, COMMON_TOPICS, KIND_FA, SERVICE_FA } = require('./common');
+const { getVazirmatnFontCss } = require('./font-face');
 
 const empty = (text = 'داده‌ای برای نمایش وجود ندارد.') => `<p class="empty-state">${h(text)}</p>`;
 const serviceLabel = (key) => own(SERVICE_FA, key) ? SERVICE_FA[key] : key;
@@ -386,10 +387,12 @@ function dailyContent(ctx) {
 
 function renderEmpty(scan, assets) {
   const errors = scan.errors;
-  return `<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>گزارش کیفیت داده</title><style>${assets.css}</style></head><body><div class="page"><div class="empty-report"><span class="brand-mark">◈</span><p class="eyebrow">داشبورد کنترل کیفیت داده</p><h1>گزارش معتبری یافت نشد</h1><p>تعداد کل ورودی‌ها: ${nf(scan.totalSamples)} · گزارش‌های نامعتبر: ${nf(scan.invalidSamples)} · فایل‌های خوانده‌نشده: ${nf(errors.length)}</p>${errors.length ? table(errors.map((_, index) => ({ 'فایل ورودی': index + 1, 'وضعیت': 'خواندن فایل ممکن نبود' }))) : ''}</div></div></body></html>`;
+  const fontCss = getVazirmatnFontCss();
+  return `<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>گزارش کیفیت داده</title><style>${fontCss}${assets.css}</style></head><body><div class="page"><div class="empty-report"><span class="brand-mark">◈</span><p class="eyebrow">داشبورد کنترل کیفیت داده</p><h1>گزارش معتبری یافت نشد</h1><p>تعداد کل ورودی‌ها: ${nf(scan.totalSamples)} · گزارش‌های نامعتبر: ${nf(scan.invalidSamples)} · فایل‌های خوانده‌نشده: ${nf(errors.length)}</p>${errors.length ? table(errors.map((_, index) => ({ 'فایل ورودی': index + 1, 'وضعیت': 'خواندن فایل ممکن نبود' }))) : ''}</div></div></body></html>`;
 }
 function buildHtml(scan, data, options, assets) {
   if (!scan.bank) return renderEmpty(scan, assets);
+  const fontCss = getVazirmatnFontCss();
   const ctx = { scan, data, options }, { bank, selectedDays } = scan;
   const total = data.groups.ALL?.total || 0, ok = data.groups.ALL?.byStatus.success || 0;
   const failed = data.groups.ALL?.byStatus.fail || 0;
@@ -416,7 +419,7 @@ function buildHtml(scan, data, options, assets) {
   const logo = '<svg viewBox="0 0 40 40" fill="none" aria-hidden="true"><path d="M20 3 37 20 20 37 3 20 20 3Z" stroke="currentColor" stroke-width="1.5"/><path d="M20 10 30 20 20 30 10 20 20 10Z" fill="currentColor"/></svg>';
   const circumference = 2 * Math.PI * 76;
   const circle = `<svg class="donut" viewBox="0 0 220 220" aria-hidden="true"><circle cx="110" cy="110" r="76" fill="none" stroke="rgba(126,232,250,.18)" stroke-width="17"/><circle cx="110" cy="110" r="76" fill="none" stroke="#22d3ee" stroke-width="17" stroke-linecap="round" stroke-dasharray="${(circumference * ok / (total || 1)).toFixed(2)} ${circumference.toFixed(2)}" transform="rotate(-90 110 110)"/></svg>`;
-  return `<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><title>گزارش کنترل کیفیت داده — ${h(bank.label)}</title><style>${assets.css}</style></head>
+  return `<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><title>گزارش کنترل کیفیت داده — ${h(bank.label)}</title><style id="ce-font-vazirmatn">${fontCss}</style><style>${assets.css}</style></head>
 <body data-scope="ALL" data-bank="${h(bank.key)}"><div class="page">
   <header class="topbar"><div class="brand"><span class="brand-mark">${logo}</span><span><strong>نــمـا</strong><small>پایش داده‌های اعتبارسنجی</small></span></div><div class="top-actions"><span class="report-type">گزارش تحلیلی / ${h(bank.label)}</span><button id="themeToggle" class="icon-button" type="button" aria-label="تغییر حالت روشن و تیره">◐ <span>نمایش</span></button><button id="printReport" class="icon-button print-button" type="button">⎙ <span>چاپ گزارش</span></button></div></header>
   <section class="hero" aria-labelledby="page-title"><div class="hero-text"><p class="eyebrow"><span class="live-dot"></span> داشبورد زنده · تحلیل کیفیت داده</p><h1 id="page-title">تصویر روشن از داده‌های <em>سرویس اعتبارسنجی بانک ${h(bank.label)}</em></h1><p class="hero-lead">بررسی وضعیت گزارش‌ها، صحت سرویس‌های ورودی و شاخص‌های اعتبارسنجی در یک نمای متمرکز.</p><div class="hero-tags"><span>متد: <bdi dir="ltr">${h(bank.id)}</bdi></span><span>بازهٔ روزانه: ${selectedDays.length ? `<bdi dir="ltr">${h(selectedDays[0])}</bdi> <bdi class="date-divider">تا</bdi> <bdi dir="ltr">${h(selectedDays.at(-1))}</bdi>` : '—'}</span></div></div><div class="hero-chart">${circle}<div class="donut-label"><small>نرخ موفقیت</small><strong dir="ltr">${pct(ok, total)}</strong><span>از کل گزارش‌ها</span></div></div></section>
@@ -427,6 +430,6 @@ function buildHtml(scan, data, options, assets) {
     <main class="main-content"><div class="scope-slot"><div class="scopebar"><div class="scope-intro"><span class="scope-dot"></span><div><b>محدودهٔ نمایش</b><small>گزارش‌ها را بر اساس وضعیت مقایسه کنید</small></div></div><div class="scope-buttons" role="group" aria-label="فیلتر وضعیت"><button type="button" data-scope="ALL" aria-pressed="true">همه <span>${nf(total)}</span></button><button type="button" data-scope="success" aria-pressed="false">موفق <span>${nf(ok)}</span></button><button type="button" data-scope="fail" aria-pressed="false">ناموفق <span>${nf(failed)}</span></button></div><p>بخش بدهی و چک فقط گزارش‌های موفق را نشان می‌دهد؛ فهرست ویژه و روند روزانه مستقل از این فیلتر هستند.</p></div></div>${panels}</main></div>
   ${errors.length ? `<section class="errors"><h2>فایل‌های خوانده‌نشده <small>${nf(errors.length)} مورد</small></h2>${table(errors.map((_, index) => ({ 'فایل ورودی': index + 1, 'وضعیت': 'خواندن یا پردازش فایل ممکن نبود' })))}</section>` : ''}
   <footer class="footer"><span>نــمـا / گزارش تحلیل داده — نسخهٔ ${h(require('../../package.json').version)}</span><span>پایش و تحلیل کیفیت داده‌های اعتبارسنجی</span></footer>
-</div><script>window.__CE_DASHBOARD_PUBLIC__=${safeJson(options.api || { mode: 'api' })};window.__VIEWER_CSS=${safeJson(assets.viewerCss)};</script><script>${assets.viewerJs}</script><script>${assets.client}</script></body></html>`;
+</div><script>window.__CE_DASHBOARD_PUBLIC__=${safeJson(options.api || { mode: 'api' })};window.__CE_FONT_CSS=${safeJson(fontCss)};window.__VIEWER_CSS=${safeJson(assets.viewerCss)};</script><script>${assets.viewerJs}</script><script>${assets.client}</script></body></html>`;
 }
 module.exports = { buildHtml, table, quantile, selectedRows };

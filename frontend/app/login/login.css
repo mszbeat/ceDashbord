@@ -56,7 +56,7 @@
   padding: 0;
   background: var(--login-surface);
   color: var(--login-ink);
-  font: 400 14px/1.85 Tahoma, "Segoe UI", sans-serif;
+  font: 400 14px/1.85 'Vazirmatn', Tahoma, "Segoe UI", sans-serif;
   display: flex;
   flex-direction: column;
 }

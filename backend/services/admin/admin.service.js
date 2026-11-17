@@ -2,6 +2,7 @@
 const { randomUUID } = require('node:crypto');
 const { BANKS } = require('../config');
 const { hasNarrowingFilters } = require('../ingestion/ingestion.service');
+const { getActionLogger } = require('../logger/action-logger.service');
 const { error: adminError } = require('../../controllers/adminController/config');
 const {
   enumerateJalaliDays,
@@ -52,10 +53,13 @@ class AdminService {
     try {
       await this.ensureCronTable();
     } catch (err) {
-      console.warn(
-        '[admin] دیتابیس هنگام بالا آمدن سرور در دسترس نبود؛ جدول cron_configs در اولین اتصال ساخته خواهد شد:',
-        err?.code || err?.message || err,
-      );
+      getActionLogger().warn({
+        category: 'admin',
+        action: 'admin.cron_table_deferred',
+        errorCode: err?.code || 'DB_INIT_DEFERRED',
+        message: 'DB unavailable on startup; cron_configs will be ensured on first use',
+        meta: { cause: err?.code || err?.message || String(err) },
+      });
     }
   }
 
@@ -419,7 +423,7 @@ class AdminService {
     }
   }
 
-  async startManualRun(payload = {}) {
+  async startManualRun(payload = {}, meta = {}) {
     const banks = this.resolveBanks(payload.banks, payload.bank);
     const filters = this.normalizeFilters(payload.filters);
     const { dateScope, days } = this.resolveDays(payload, filters);
@@ -439,6 +443,7 @@ class AdminService {
 
     return this.enqueueJob({
       source: 'manual',
+      actor: meta?.actor || null,
       dateScope,
       mode,
       conflictStrategy,
@@ -493,6 +498,22 @@ class AdminService {
     this.jobs.set(id, job);
     this.trimJobHistory();
 
+    getActionLogger().info({
+      category: 'admin',
+      action: 'admin.job.started',
+      actor: params.actor || (params.source === 'cron' ? 'cron' : null),
+      meta: {
+        jobId: id,
+        source: params.source,
+        dateScope: params.dateScope,
+        mode: params.mode,
+        conflictStrategy: params.conflictStrategy,
+        banks: params.banks,
+        days: params.days,
+        totalSteps: steps.length,
+      },
+    });
+
     const runtimeFilters = { ...params.filters };
     void this.executeJob(job, runtimeFilters, params.onFinish);
 
@@ -519,11 +540,32 @@ class AdminService {
           step.status = 'done';
           step.finishedAt = new Date().toISOString();
           job.completedSteps++;
+          getActionLogger().info({
+            category: 'admin',
+            action: 'admin.job.step_done',
+            meta: {
+              jobId: job.id,
+              bank: step.bank,
+              day: step.day,
+              processed: result?.processed ?? 0,
+              success: result?.success ?? 0,
+              fail: result?.fail ?? 0,
+              skipped: result?.skipped ?? 0,
+            },
+          });
         } catch (err) {
           step.error = String(err?.data?.message?.fa ?? err?.message ?? err).slice(0, 1000);
           step.status = 'failed';
           step.finishedAt = new Date().toISOString();
           job.failedSteps++;
+          getActionLogger().error({
+            category: 'admin',
+            action: 'admin.job.step_failed',
+            errorCode: err?.meta?.code || err?.code || 'JOB_STEP_FAILED',
+            message: step.error,
+            meta: { jobId: job.id, bank: step.bank, day: step.day },
+            stack: err?.stack,
+          });
         }
       }
     } finally {
@@ -533,11 +575,32 @@ class AdminService {
       else if (job.completedSteps > 0) job.status = 'partial_error';
       else job.status = 'failed';
 
+      getActionLogger().logEvent({
+        level: job.failedSteps > 0 ? (job.completedSteps === 0 ? 'error' : 'warn') : 'info',
+        category: 'admin',
+        action: 'admin.job.completed',
+        meta: {
+          jobId: job.id,
+          source: job.source,
+          status: job.status,
+          completedSteps: job.completedSteps,
+          failedSteps: job.failedSteps,
+          totalSteps: job.totalSteps,
+        },
+      });
+
       if (onFinish) {
         try {
           await onFinish(job);
         } catch (e) {
-          console.error('[admin] خطا در onFinish جاب:', e);
+          getActionLogger().error({
+            category: 'admin',
+            action: 'admin.job.on_finish_error',
+            errorCode: e?.code || 'JOB_ON_FINISH_ERROR',
+            message: e?.message || String(e),
+            meta: { jobId: job.id },
+            stack: e?.stack,
+          });
         }
       }
     }
@@ -585,7 +648,7 @@ class AdminService {
     return Promise.all(sorted.map((j) => this.enrichJobWithLiveProgress(j)));
   }
 
-  async triggerCronExecution(triggerSource, slotKey) {
+  async triggerCronExecution(triggerSource, slotKey, meta = {}) {
     await this.ensureCronTable();
     const cfgRes = await this.db.query('SELECT * FROM cron_configs WHERE id = $1', [CRON_ID]);
     const cfg = cfgRes.rows[0];
@@ -607,6 +670,7 @@ class AdminService {
 
     return this.enqueueJob({
       source: triggerSource,
+      actor: meta?.actor || 'cron',
       dateScope: 'single',
       mode: 'nightly',
       conflictStrategy: rebuild ? 'rebuild' : 'upsert',

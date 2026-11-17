@@ -16,35 +16,24 @@ import './login.css';
 
 type AuthMode = 'login' | 'register';
 
-function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 async function verifyTargetRouteAccess(target: string, auth: AuthSessionState): Promise<{
   allowed: boolean;
-  reason?: string;
 }> {
   if (!target.startsWith('/admin')) {
     return { allowed: true };
   }
   if (!auth.roles?.includes('admin')) {
-    return {
-      allowed: false,
-      reason: `حساب «${auth.username}» با نقش ${formatRolesFa(auth.roles)} مجوز ورود به پنل مدیریت (admin) را ندارد.`,
-    };
+    return { allowed: false };
   }
   try {
-    const res = await fetch('/api/admin/overview', {
+    const res = await fetch('/api/admin/cron', {
       method: 'GET',
       cache: 'no-store',
       credentials: 'include',
       headers: { accept: 'application/json' },
     });
     if (res.status === 401 || res.status === 403) {
-      return {
-        allowed: false,
-        reason: `دسترسی به پنل مدیریت از سمت سرور برای حساب «${auth.username}» مجاز نیست.`,
-      };
+      return { allowed: false };
     }
     return { allowed: true };
   } catch {
@@ -84,14 +73,12 @@ export default function LoginPage() {
   const [infoMsg, setInfoMsg] = useState<string | null>(null);
 
   const enterTargetWithCheck = async (target: string, auth: AuthSessionState) => {
-    setNavigatingStatus('در حال بررسی دسترسی و آماده‌سازی صفحه…');
-    const [check] = await Promise.all([
-      verifyTargetRouteAccess(target, auth),
-      sleep(300),
-    ]);
+    setNavigatingStatus('در حال بررسی دسترسی…');
+    const check = await verifyTargetRouteAccess(target, auth);
     if (!check.allowed) {
-      setNavigatingStatus(null);
-      setErrorMsg(check.reason || 'دسترسی به صفحهٔ درخواستی مجاز نیست.');
+      if (typeof window !== 'undefined') {
+        window.location.replace('/');
+      }
       return false;
     }
     if (typeof window !== 'undefined') {
@@ -121,18 +108,12 @@ export default function LoginPage() {
     let cancelled = false;
     (async () => {
       try {
-        const [state] = await Promise.all([ensureAuthenticated(), sleep(180)]);
+        const state = await ensureAuthenticated();
         if (!cancelled) {
           if (state?.authenticated && (hadExpiredParam || resolvedNext !== '/')) {
             const check = await verifyTargetRouteAccess(resolvedNext, state);
             if (!cancelled) {
-              if (check.allowed) {
-                window.location.replace(resolvedNext);
-                return;
-              }
-              setSessionState(state);
-              setErrorMsg(check.reason || null);
-              setCheckingSession(false);
+              window.location.replace(check.allowed ? resolvedNext : '/');
               return;
             }
           }
@@ -286,7 +267,7 @@ export default function LoginPage() {
       <div className="lgn-split">
         <aside className="lgn-visual" aria-label="نمایه داشبورد تحلیل داده‌های سرویس اعتبارسنجی">
           <img
-            src="/images/login-hero.png?v=2"
+            src="/images/login-hero.png?v=3"
             alt="داشبورد تحلیل داده‌های سرویس اعتبارسنجی — پردازش اطلاعات مالی پارت"
             className="lgn-visual-img"
           />

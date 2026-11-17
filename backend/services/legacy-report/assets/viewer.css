@@ -9,7 +9,7 @@
   --green:#34d399; --amber:#fbbf24; --stripe:#0e2046; --hover:#17346d;
 }
 * { box-sizing:border-box; }
-body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.9 Tahoma,"Segoe UI",sans-serif; }
+body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.9 'Vazirmatn',Tahoma,"Segoe UI",sans-serif; }
 .viewer { max-width:1180px; margin:0 auto; padding:0 20px 70px; }
 .detail-topbar { position:sticky; top:0; z-index:20; height:74px; background:color-mix(in srgb,var(--bg) 88%,transparent); backdrop-filter:blur(14px); border-bottom:1px solid var(--line);
   display:flex; align-items:center; justify-content:space-between; gap:15px; margin-bottom:22px; }

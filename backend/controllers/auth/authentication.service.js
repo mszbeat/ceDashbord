@@ -1,6 +1,7 @@
 'use strict';
 
 const { error: authError } = require('./config');
+const { getActionLogger } = require('../../services/logger/action-logger.service');
 
 const STATUS = {
   ACTIVE: 'Active',
@@ -44,8 +45,14 @@ class AuthenticationService {
         this.#system,
         trackingHeaders,
       );
-    } catch {
-      // در محیطی که کاربر از قبل در اصالت‌سنجی وجود دارد خطا مسدود نشود
+    } catch (err) {
+      getActionLogger().warn({
+        category: 'auth',
+        action: 'auth.base.add_user_skipped',
+        errorCode: err?.meta?.code || err?.code || 'AUTH_ADD_USER_SKIPPED',
+        message: err?.message || 'Auth base addUser skipped (user may already exist)',
+        meta: { targetUsername: username },
+      });
     }
     return undefined;
   }

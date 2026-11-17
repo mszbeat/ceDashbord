@@ -1,6 +1,7 @@
 'use strict';
 const { BANKS, config, resolveBankApiUrl } = require('../config');
 const { fetchBankJson } = require('../http/gateway-client');
+const { getActionLogger } = require('../logger/action-logger.service');
 const { error: adminError } = require('../../controllers/adminController/config');
 const {
   jalaliStampDigitsOf,
@@ -170,8 +171,21 @@ class IngestionService {
 
     try {
       await client.query('SELECT pg_advisory_lock(hashtext($1))', [lockKey]);
+      getActionLogger().info({
+        category: 'ingestion',
+        action: 'ingestion.day.started',
+        meta: { bank: bankKey, day, mode, rebuild, filteredRun },
+      });
       const preflight = await this.sourceTotal(day, filters, bankKey);
       if (rebuild && !preflight) {
+        getActionLogger().warn({
+          category: 'ingestion',
+          action: 'ingestion.day.aborted_empty_rebuild',
+          statusCode: 409,
+          errorCode: 'emptyRebuildAborted',
+          message: `Rebuild aborted for ${bankKey}/${day}: sourceTotal=0`,
+          meta: { bank: bankKey, day },
+        });
         throw adminError.emptyRebuildAborted(day);
       }
       if (rebuild) {
@@ -180,7 +194,12 @@ class IngestionService {
         const removed = await client.query(`DELETE FROM ${bank.table} WHERE day=$1`, [day]);
         deleted = removed.rowCount ?? 0;
         await client.query('DELETE FROM day_runs WHERE bank=$1 AND day=$2', [bankKey, day]);
-        console.warn(`[ingest] --rebuild: ${deleted} ردیف قدیمی ${bankKey}/${day} حذف شد؛ تراکنش تا پایان ورود باز است.`);
+        getActionLogger().warn({
+          category: 'ingestion',
+          action: 'ingestion.day.rebuild_reset',
+          message: `Deleted ${deleted} existing rows for ${bankKey}/${day} inside transaction`,
+          meta: { bank: bankKey, day, deleted },
+        });
       }
       const effectiveInitial = maxCount !== null ? Math.min(preflight, maxCount) : preflight;
       const initialTotal = effectiveInitial;
@@ -230,7 +249,12 @@ class IngestionService {
             }
           } catch (error) {
             if (countProcessed) skipped++;
-            console.warn(`[ingest] پرش نمونه: ${error?.message ?? error}`);
+            getActionLogger().warn({
+              category: 'ingestion',
+              action: 'ingestion.sample.skipped',
+              message: error?.message ?? String(error),
+              meta: { bank: bankKey, day },
+            });
           }
         }
         await this.upsertBatch(client, bank.table, rows);
@@ -334,7 +358,7 @@ class IngestionService {
         await client.query('COMMIT');
         inTransaction = false;
       }
-      return {
+      const summaryOut = {
         bank: bankKey,
         day,
         mode,
@@ -348,6 +372,12 @@ class IngestionService {
         rebuild,
         deleted,
       };
+      getActionLogger().info({
+        category: 'ingestion',
+        action: 'ingestion.day.completed',
+        meta: summaryOut,
+      });
+      return summaryOut;
     } catch (error) {
       const message = String(error?.data?.message?.fa ?? error?.message ?? error);
       if (inTransaction) {
@@ -366,6 +396,15 @@ class IngestionService {
           skipped_count: skipped,
         }).catch(() => undefined);
       }
+      getActionLogger().error({
+        category: 'ingestion',
+        action: 'ingestion.day.failed',
+        errorCode: error?.meta?.code || error?.code || 'INGESTION_FAILED',
+        statusCode: Number(error?.statusCode) || 500,
+        message,
+        meta: { bank: bankKey, day, mode, rebuild, checkpoint, processed },
+        stack: error?.stack,
+      });
       if (error && typeof error === 'object' && error.statusCode && error.meta) {
         throw error;
       }
@@ -457,7 +496,12 @@ class IngestionService {
             }
           } catch (error) {
             skipped++;
-            console.warn(`[ingest] پرش نمونه در جستجوی شناسهای: ${error?.message ?? error}`);
+            getActionLogger().warn({
+              category: 'ingestion',
+              action: 'ingestion.filtered_sample.skipped',
+              message: error?.message ?? String(error),
+              meta: { bank: bankKey },
+            });
           }
         }
         await this.upsertBatch(client, bank.table, rows);
@@ -474,7 +518,7 @@ class IngestionService {
         checkpoint += slice.length;
         if (reports.length < pageSize || checkpoint >= maxCount) break;
       }
-      return {
+      const filteredSummary = {
         bank: bankKey,
         day: daysTouched.size ? [...daysTouched].sort().join('، ') : 'بدون داده',
         days_touched: [...daysTouched].sort(),
@@ -489,6 +533,12 @@ class IngestionService {
         rebuild: false,
         deleted: 0,
       };
+      getActionLogger().info({
+        category: 'ingestion',
+        action: 'ingestion.filtered.completed',
+        meta: filteredSummary,
+      });
+      return filteredSummary;
     } finally {
       client.release();
     }

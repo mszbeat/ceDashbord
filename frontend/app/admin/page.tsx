@@ -9,7 +9,6 @@ import {
   probeSessionWithCleanRecovery,
   resolveBackendOrigin,
 } from '@/lib/server-auth';
-import AdminAccessDenied from './AdminAccessDenied';
 import AdminClient, { OverviewPayload } from './AdminClient';
 
 export const dynamic = 'force-dynamic';
@@ -75,14 +74,9 @@ export default async function AdminPage() {
     idleExpireMs: typeof authData.idleExpireMs === 'number' ? authData.idleExpireMs : undefined,
   };
 
-  // بررسی نقش در سمت سرور پیش از رندر کوچک‌ترین بخش از پنل مدیریت
+  // بررسی نقش در سمت سرور پیش از رندر کوچک‌ترین بخش از پنل مدیریت: کاربر غیرمدیر مستقیماً به داشبورد هدایت می‌شود
   if (!roles.includes('admin')) {
-    return (
-      <AdminAccessDenied
-        authUser={authUser}
-        reason={`شما با حساب «${authUser.username}» وارد شده‌اید؛ ورود به پنل مدیریت فقط برای کاربران دارای نقش مدیر سیستم (admin) مجاز است.`}
-      />
-    );
+    redirect('/');
   }
 
   // استعلام واقعی دسترسی از بک‌اند پیش از نمایش صفحهٔ مدیریت
@@ -101,12 +95,7 @@ export default async function AdminPage() {
           redirect('/login?next=%2Fadmin');
         }
       }
-      return (
-        <AdminAccessDenied
-          authUser={authUser}
-          reason={`دسترسی به پنل مدیریت از سمت سرویس بک‌اند برای حساب «${authUser.username}» مجاز نیست (فقط نقش admin).`}
-        />
-      );
+      redirect('/');
     }
 
     if (res.ok) {

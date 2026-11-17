@@ -414,10 +414,13 @@
             : typeof unwrapped.data?.message?.fa === 'string'
               ? unwrapped.data.message.fa
               : null);
+      const cleanedServerMsg = serverMsg
+        ? String(serverMsg).replace(/\s*\(نیازمند نقش creditEvaluation یا admin\)\.?/g, '').trim()
+        : null;
       const err = new Error(
-        serverMsg ||
+        cleanedServerMsg ||
           (response.status === 403 || response.status === 401
-            ? 'شما مجوز مشاهدهٔ جزئیات گزارش را ندارید (نیازمند نقش creditEvaluation یا admin).'
+            ? 'شما مجوز مشاهدهٔ جزئیات گزارش را ندارید.'
             : `دریافت جزئیات از API اصلی ناموفق بود (HTTP ${response.status}).`),
       );
       err.status = response.status;
@@ -430,7 +433,10 @@
     const win = window.open('', '_blank');
     if (!win) { alert('مرورگر باز کردن زبانهٔ جدید را مسدود کرده است. لطفاً اجازهٔ باز شدن زبانه را صادر کنید.'); return; }
     try { win.opener = null; } catch { /* محدودیت مرورگر */ }
-    win.document.write('<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><title>در حال بارگذاری گزارش</title></head><body style="font-family:Tahoma,sans-serif;padding:30px">در حال آمادهسازی دادهٔ گزارش…</body></html>');
+    const activeTheme = document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
+    const isDark = activeTheme === 'dark';
+    const fontCss = window.__CE_FONT_CSS || '';
+    win.document.write(`<!doctype html><html lang="fa" dir="rtl" data-theme="${activeTheme}"><head><meta charset="utf-8"><title>در حال بارگذاری گزارش</title><style>${fontCss}body{margin:0;background:${isDark ? '#040d21' : '#eef4fb'};color:${isDark ? '#eaf2ff' : '#0c1e3e'};font:14px/1.9 'Vazirmatn',Tahoma,"Segoe UI",sans-serif;padding:30px}</style></head><body>در حال آمادهسازی دادهٔ گزارش…</body></html>`);
     win.document.close();
     try {
       const payload = await loadSample(requestId);
@@ -448,15 +454,17 @@
       const escAttr = (s) => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
       const loginHref = escAttr(`${origin}/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`);
       const homeHref = escAttr(`${origin}/`);
+      const errTheme = document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
+      const errDark = errTheme === 'dark';
       win.document.open();
-      win.document.write(`<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><title>${isForbidden ? 'عدم دسترسی به جزئیات گزارش' : 'خطا در نمایش گزارش'}</title><style>
-        body{margin:0;background:#eef4fb;color:#0c1e3e;font:14px/1.9 Tahoma,"Segoe UI",sans-serif;padding:44px}
-        main{max-width:640px;margin:auto;background:#fff;border:1px solid #d4e2f4;border-radius:16px;padding:28px 32px;box-shadow:0 14px 36px rgba(0,28,88,.08)}
-        .badge{display:inline-block;background:${isForbidden ? '#fdecec' : '#fff4e2'};color:${isForbidden ? '#c9313d' : '#b4690e'};border-radius:8px;padding:3px 10px;font-size:12px;font-weight:700}
-        h1{font-size:20px;margin:12px 0 8px;color:#0c1e3e}p{color:#4e6788;margin:0 0 18px}
+      win.document.write(`<!doctype html><html lang="fa" dir="rtl" data-theme="${errTheme}"><head><meta charset="utf-8"><title>${isForbidden ? 'عدم دسترسی به جزئیات گزارش' : 'خطا در نمایش گزارش'}</title><style>${fontCss}
+        body{margin:0;background:${errDark ? '#040d21' : '#eef4fb'};color:${errDark ? '#eaf2ff' : '#0c1e3e'};font:14px/1.9 'Vazirmatn',Tahoma,"Segoe UI",sans-serif;padding:44px}
+        main{max-width:640px;margin:auto;background:${errDark ? '#0a1938' : '#fff'};border:1px solid ${errDark ? '#1e3766' : '#d4e2f4'};border-radius:16px;padding:28px 32px;box-shadow:0 14px 36px ${errDark ? 'rgba(0,0,0,.45)' : 'rgba(0,28,88,.08)'}}
+        .badge{display:inline-block;background:${isForbidden ? (errDark ? 'rgba(248,113,113,.18)' : '#fdecec') : (errDark ? 'rgba(251,191,36,.18)' : '#fff4e2')};color:${isForbidden ? (errDark ? '#fca5a5' : '#c9313d') : (errDark ? '#fcd34d' : '#b4690e')};border-radius:8px;padding:3px 10px;font-size:12px;font-weight:700}
+        h1{font-size:20px;margin:12px 0 8px;color:${errDark ? '#f8fafc' : '#0c1e3e'}}p{color:${errDark ? '#9fb5d4' : '#4e6788'};margin:0 0 18px}
         .actions{display:flex;gap:10px;flex-wrap:wrap}
-        .btn{display:inline-flex;align-items:center;border-radius:10px;padding:8px 16px;text-decoration:none;font-weight:700;font-size:13px;border:1px solid #d4e2f4;color:#0c1e3e;background:#f4f8fe}
-        .btn-primary{background:#0b5ed7;border-color:#0b5ed7;color:#fff}
+        .btn{display:inline-flex;align-items:center;border-radius:10px;padding:8px 16px;text-decoration:none;font-weight:700;font-size:13px;border:1px solid ${errDark ? '#27447a' : '#d4e2f4'};color:${errDark ? '#e6f0ff' : '#0c1e3e'};background:${errDark ? '#0f234c' : '#f4f8fe'}}
+        .btn-primary{background:${errDark ? '#0ea5e9' : '#0b5ed7'};border-color:${errDark ? '#0ea5e9' : '#0b5ed7'};color:${errDark ? '#041226' : '#fff'}}
       </style></head><body><main><span class="badge">${isForbidden ? 'HTTP 403 · محدودیت سطح دسترسی' : 'خطا'}</span><h1>${isForbidden ? 'عدم مجوز مشاهدهٔ جزئیات گزارش' : 'مشاهدهٔ جزئیات ممکن نیست'}</h1><p id="err-msg"></p>${isForbidden ? `<div class="actions"><a class="btn btn-primary" href="${loginHref}">ورود با حساب مجاز</a><a class="btn" href="${homeHref}">بازگشت به داشبورد</a></div>` : ''}</main></body></html>`);
       win.document.close();
       const msgEl = win.document.getElementById('err-msg');
