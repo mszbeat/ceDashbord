@@ -513,9 +513,9 @@ test('session-guard: تمام روت‌های داشبورد/جزئیات/مدی
   }
 });
 
-test('gateway-client & per-bank URL: لینک اختصاصی هر بانک + توکن گیت‌وی خودکار فقط برای ملت و پست‌بانک و بدون گیت‌وی برای رسالت', async () => {
-  const { GatewayTokenManager, isGatewayInvalidTokenResponse, fetchBankJson } = require(path.join(ROOT, 'services', 'http', 'gateway-client'));
-  const { resolveBankApiUrl, bankUsesGateway, parseDurationMs } = require(path.join(ROOT, 'services', 'config'));
+test('gateway-client & per-bank HOST_NAME: هاست گزارش هر بانک + توکن گیت‌وی مستقل برای ملت و پست‌بانک و بدون گیت‌وی برای رسالت', async () => {
+  const { gatewayTokenManager, isGatewayInvalidTokenResponse, fetchBankJson } = require(path.join(ROOT, 'services', 'http', 'gateway-client'));
+  const { resolveBankApiUrl, resolveBankGatewayConfig, bankUsesGateway, parseDurationMs } = require(path.join(ROOT, 'services', 'config'));
 
   assert.equal(parseDurationMs('30m', 1000), 1800000);
   assert.equal(parseDurationMs('14d', 1000), 14 * 86400000);
@@ -530,58 +530,70 @@ test('gateway-client & per-bank URL: لینک اختصاصی هر بانک + ت�
   assert.equal(bankUsesGateway('tavan_postbank'), true);
   assert.equal(bankUsesGateway('tavan_resalat'), false);
 
-  const prevEnv = {
-    mellat: process.env.CE_API_URL_MELLAT,
-    resalat: process.env.CE_API_URL_RESALAT,
-    postbank: process.env.CE_API_URL_POSTBANK,
-    gwUrl: process.env.CE_GATEWAY_TOKEN_URL,
-    gwSys: process.env.CE_GATEWAY_SYSTEM,
-    gwUser: process.env.CE_GATEWAY_USERNAME,
-    gwPass: process.env.CE_GATEWAY_PASSWORD,
-    gwToken: process.env.CE_GATEWAY_TOKEN,
-  };
+  const envKeys = [
+    'CE_REPORT_HOST_MELLAT', 'CE_REPORT_HOST_RESALAT', 'CE_REPORT_HOST_POSTBANK',
+    'CE_GATEWAY_HOST_MELLAT', 'CE_GATEWAY_SYSTEM_MELLAT', 'CE_GATEWAY_USERNAME_MELLAT', 'CE_GATEWAY_PASSWORD_MELLAT', 'CE_GATEWAY_TOKEN_MELLAT',
+    'CE_GATEWAY_HOST_POSTBANK', 'CE_GATEWAY_SYSTEM_POSTBANK', 'CE_GATEWAY_USERNAME_POSTBANK', 'CE_GATEWAY_PASSWORD_POSTBANK', 'CE_GATEWAY_TOKEN_POSTBANK',
+  ];
+  const prevEnv = Object.fromEntries(envKeys.map((k) => [k, process.env[k]]));
 
-  process.env.CE_API_URL_MELLAT = 'https://mellat.example.test/report';
-  process.env.CE_API_URL_RESALAT = 'https://resalat.example.test/report';
-  process.env.CE_API_URL_POSTBANK = 'https://postbank.example.test/report';
-  process.env.CE_GATEWAY_TOKEN_URL = 'https://gw.example.test/service/gateway@3/token';
-  process.env.CE_GATEWAY_SYSTEM = 'creditEvalSys';
-  process.env.CE_GATEWAY_USERNAME = 'gw_user';
-  process.env.CE_GATEWAY_PASSWORD = 'gw_pass';
-  process.env.CE_GATEWAY_TOKEN = 'stale-token-0';
+  process.env.CE_REPORT_HOST_MELLAT = 'mellat-report.example.test';
+  process.env.CE_REPORT_HOST_RESALAT = 'resalat-report.example.test';
+  process.env.CE_REPORT_HOST_POSTBANK = 'postbank-report.example.test';
 
-  assert.equal(resolveBankApiUrl('tavan_mellat'), 'https://mellat.example.test/report');
-  assert.equal(resolveBankApiUrl('tavan_resalat'), 'https://resalat.example.test/report');
-  assert.equal(resolveBankApiUrl('tavan_postbank'), 'https://postbank.example.test/report');
+  process.env.CE_GATEWAY_HOST_MELLAT = 'gw-mellat.example.test';
+  process.env.CE_GATEWAY_SYSTEM_MELLAT = 'sysMellat';
+  process.env.CE_GATEWAY_USERNAME_MELLAT = 'userMellat';
+  process.env.CE_GATEWAY_PASSWORD_MELLAT = 'passMellat';
+  process.env.CE_GATEWAY_TOKEN_MELLAT = 'stale-mellat-0';
 
-  const calls = [];
+  process.env.CE_GATEWAY_HOST_POSTBANK = 'gw-postbank.example.test';
+  process.env.CE_GATEWAY_SYSTEM_POSTBANK = 'sysPostbank';
+  process.env.CE_GATEWAY_USERNAME_POSTBANK = 'userPostbank';
+  process.env.CE_GATEWAY_PASSWORD_POSTBANK = 'passPostbank';
+  process.env.CE_GATEWAY_TOKEN_POSTBANK = 'stale-postbank-0';
+
+  assert.equal(resolveBankApiUrl('tavan_mellat'), 'http://mellat-report.example.test/creditEvaluation@2/report');
+  assert.equal(resolveBankApiUrl('tavan_resalat'), 'http://resalat-report.example.test/creditEvaluation@2/report');
+  assert.equal(resolveBankApiUrl('tavan_postbank'), 'http://postbank-report.example.test/creditEvaluation@2/report');
+  assert.equal(resolveBankGatewayConfig('tavan_mellat').tokenUrl, 'https://gw-mellat.example.test/service/gateway@3/token');
+  assert.equal(resolveBankGatewayConfig('tavan_postbank').tokenUrl, 'https://gw-postbank.example.test/service/gateway@3/token');
+
+  gatewayTokenManager.clearCache();
   const origFetch = global.fetch;
-  let tokenIssueCount = 0;
+  let mellatTokenCalls = 0;
+  let postbankTokenCalls = 0;
 
   global.fetch = async (url, init = {}) => {
     const u = String(url);
-    calls.push({ url: u, method: init.method || 'GET', headers: init.headers || {}, body: init.body });
 
-    if (u === 'https://gw.example.test/service/gateway@3/token') {
-      tokenIssueCount += 1;
+    if (u === 'https://gw-mellat.example.test/service/gateway@3/token') {
+      mellatTokenCalls += 1;
       assert.equal(init.method, 'POST');
       assert.equal(init.headers.pass, '');
       assert.equal(init.headers['Content-Type'], 'application/json');
-      const parsedBody = JSON.parse(init.body);
-      assert.deepEqual(parsedBody, {
-        system: 'creditEvalSys',
-        authenticationPack: { username: 'gw_user', password: 'gw_pass' },
+      assert.deepEqual(JSON.parse(init.body), {
+        system: 'sysMellat',
+        authenticationPack: { username: 'userMellat', password: 'passMellat' },
       });
-      return {
-        ok: true,
-        status: 200,
-        text: async () => JSON.stringify({ data: { token: `fresh-gw-token-${tokenIssueCount}` } }),
-      };
+      return { ok: true, status: 200, text: async () => JSON.stringify({ data: { token: `mellat-fresh-${mellatTokenCalls}` } }) };
     }
 
-    if (u.startsWith('https://mellat.example.test/')) {
-      assert.equal(init.headers['gateway-system'], 'creditEvalSys');
-      if (init.headers['gateway-token'] === 'stale-token-0') {
+    if (u === 'https://gw-postbank.example.test/service/gateway@3/token') {
+      postbankTokenCalls += 1;
+      assert.equal(init.method, 'POST');
+      assert.equal(init.headers.pass, '');
+      assert.equal(init.headers['Content-Type'], 'application/json');
+      assert.deepEqual(JSON.parse(init.body), {
+        system: 'sysPostbank',
+        authenticationPack: { username: 'userPostbank', password: 'passPostbank' },
+      });
+      return { ok: true, status: 200, text: async () => JSON.stringify({ data: { token: `postbank-fresh-${postbankTokenCalls}` } }) };
+    }
+
+    if (u.startsWith('http://mellat-report.example.test/creditEvaluation@2/report')) {
+      assert.equal(init.headers['gateway-system'], 'sysMellat');
+      if (init.headers['gateway-token'] === 'stale-mellat-0') {
         return {
           ok: false,
           status: 401,
@@ -592,17 +604,28 @@ test('gateway-client & per-bank URL: لینک اختصاصی هر بانک + ت�
             }),
         };
       }
-      assert.equal(init.headers['gateway-token'], 'fresh-gw-token-1');
+      assert.equal(init.headers['gateway-token'], 'mellat-fresh-1');
       return { ok: true, status: 200, text: async () => JSON.stringify({ data: { count: 1, bank: 'mellat' } }) };
     }
 
-    if (u.startsWith('https://postbank.example.test/')) {
-      assert.equal(init.headers['gateway-system'], 'creditEvalSys');
-      assert.equal(init.headers['gateway-token'], 'fresh-gw-token-1');
+    if (u.startsWith('http://postbank-report.example.test/creditEvaluation@2/report')) {
+      assert.equal(init.headers['gateway-system'], 'sysPostbank');
+      if (init.headers['gateway-token'] === 'stale-postbank-0') {
+        return {
+          ok: false,
+          status: 401,
+          text: async () =>
+            JSON.stringify({
+              data: { message: { en: 'Gateway token is not valid!', fa: 'توکن ارتباط با gateway معتبر نیست!' } },
+              meta: { code: 'invalidToken', sourceType: 'launcher', sourceName: 'apiGateway' },
+            }),
+        };
+      }
+      assert.equal(init.headers['gateway-token'], 'postbank-fresh-1');
       return { ok: true, status: 200, text: async () => JSON.stringify({ data: { count: 1, bank: 'postbank' } }) };
     }
 
-    if (u.startsWith('https://resalat.example.test/')) {
+    if (u.startsWith('http://resalat-report.example.test/creditEvaluation@2/report')) {
       assert.equal('gateway-token' in init.headers, false, 'resalat must NOT send gateway-token');
       assert.equal('gateway-system' in init.headers, false, 'resalat must NOT send gateway-system');
       return { ok: true, status: 200, text: async () => JSON.stringify({ data: { count: 1, bank: 'resalat' } }) };
@@ -612,37 +635,29 @@ test('gateway-client & per-bank URL: لینک اختصاصی هر بانک + ت�
   };
 
   try {
-    // ریست کش برای شروع پاک تست
-    const gm = new GatewayTokenManager();
-    assert.equal(typeof gm.getToken, 'function');
-
     const mellatData = await fetchBankJson('tavan_mellat', `${resolveBankApiUrl('tavan_mellat')}?page=1&limit=1`, { retryCount: 1 });
     assert.equal(mellatData.bank, 'mellat');
-    assert.equal(tokenIssueCount, 1);
+    assert.equal(mellatTokenCalls, 1);
 
-    // پست‌بانک باید از توکن کش‌شدهٔ fresh-gw-token-1 بدون فراخوانی مجدد گیت‌وی استفاده کند
+    // پست‌بانک باید توکن و گیت‌وی مستقل خودش را بگیرد و با ملت تداخل نداشته باشد
     const postbankData = await fetchBankJson('tavan_postbank', `${resolveBankApiUrl('tavan_postbank')}?page=1&limit=1`, { retryCount: 1 });
     assert.equal(postbankData.bank, 'postbank');
-    assert.equal(tokenIssueCount, 1);
+    assert.equal(postbankTokenCalls, 1);
 
-    // رسالت باید بدون هیچ هدر گیت‌وی درخواست بزند
+    // درخواست بعدی ملت همچنان از توکن کش‌شدهٔ ملت استفاده کند (بدون درخواست مجدد گیت‌وی)
+    const mellatAgain = await fetchBankJson('tavan_mellat', `${resolveBankApiUrl('tavan_mellat')}?page=2&limit=1`, { retryCount: 1 });
+    assert.equal(mellatAgain.bank, 'mellat');
+    assert.equal(mellatTokenCalls, 1);
+
+    // رسالت بدون هیچ هدر و درخواست گیت‌وی
     const resalatData = await fetchBankJson('tavan_resalat', `${resolveBankApiUrl('tavan_resalat')}?page=1&limit=1`, { retryCount: 1 });
     assert.equal(resalatData.bank, 'resalat');
-    assert.equal(tokenIssueCount, 1);
   } finally {
+    gatewayTokenManager.clearCache();
     global.fetch = origFetch;
-    for (const [k, envKey] of [
-      ['mellat', 'CE_API_URL_MELLAT'],
-      ['resalat', 'CE_API_URL_RESALAT'],
-      ['postbank', 'CE_API_URL_POSTBANK'],
-      ['gwUrl', 'CE_GATEWAY_TOKEN_URL'],
-      ['gwSys', 'CE_GATEWAY_SYSTEM'],
-      ['gwUser', 'CE_GATEWAY_USERNAME'],
-      ['gwPass', 'CE_GATEWAY_PASSWORD'],
-      ['gwToken', 'CE_GATEWAY_TOKEN'],
-    ]) {
-      if (prevEnv[k] === undefined) delete process.env[envKey];
-      else process.env[envKey] = prevEnv[k];
+    for (const k of envKeys) {
+      if (prevEnv[k] === undefined) delete process.env[k];
+      else process.env[k] = prevEnv[k];
     }
   }
 });

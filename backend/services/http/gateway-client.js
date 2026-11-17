@@ -2,9 +2,8 @@
 
 const {
   config,
-  cleanEnv,
   bankUsesGateway,
-  resolveGatewayTokenUrl,
+  resolveBankGatewayConfig,
 } = require('../config');
 
 function isGatewayInvalidTokenResponse(status, body) {
@@ -39,60 +38,57 @@ async function readResponseBody(response) {
   return null;
 }
 
-function resolveGatewaySettings() {
-  return {
-    tokenUrl: resolveGatewayTokenUrl() || config.gateway.tokenUrl,
-    system: cleanEnv(process.env.CE_GATEWAY_SYSTEM) || config.gateway.system || config.apiSystem || 'creditEvaluation',
-    username: cleanEnv(process.env.CE_GATEWAY_USERNAME) || config.gateway.username,
-    password: cleanEnv(process.env.CE_GATEWAY_PASSWORD) || config.gateway.password,
-    passHeader: process.env.CE_GATEWAY_PASS_HEADER ?? config.gateway.passHeader ?? '',
-    staticToken: cleanEnv(process.env.CE_GATEWAY_TOKEN) || config.apiToken || '',
-  };
-}
-
 class GatewayTokenManager {
   constructor() {
-    this.cachedToken = '';
-    this.inFlight = null;
+    this.tokenByBank = new Map();
+    this.inFlightByBank = new Map();
   }
 
-  getActiveTokenSync() {
-    if (this.cachedToken) return this.cachedToken;
-    const settings = resolveGatewaySettings();
+  getActiveTokenSync(bankKey) {
+    const cached = this.tokenByBank.get(bankKey);
+    if (cached) return cached;
+    const settings = resolveBankGatewayConfig(bankKey);
     return settings.staticToken || '';
   }
 
-  async getToken() {
-    const active = this.getActiveTokenSync();
+  async getToken(bankKey) {
+    const active = this.getActiveTokenSync(bankKey);
     if (active) return active;
-    return this.refreshToken('');
+    return this.refreshToken(bankKey, '');
   }
 
-  async refreshToken(failedToken = '') {
-    if (failedToken && this.cachedToken && this.cachedToken !== failedToken) {
-      return this.cachedToken;
+  async refreshToken(bankKey, failedToken = '') {
+    const current = this.tokenByBank.get(bankKey);
+    if (failedToken && current && current !== failedToken) {
+      return current;
     }
-    if (!this.inFlight) {
-      this.inFlight = this.#fetchNewToken()
+    if (!this.inFlightByBank.has(bankKey)) {
+      const promise = this.#fetchNewToken(bankKey)
         .then((token) => {
-          this.cachedToken = token;
+          this.tokenByBank.set(bankKey, token);
           return token;
         })
         .finally(() => {
-          this.inFlight = null;
+          this.inFlightByBank.delete(bankKey);
         });
+      this.inFlightByBank.set(bankKey, promise);
     }
-    return this.inFlight;
+    return this.inFlightByBank.get(bankKey);
   }
 
-  async #fetchNewToken() {
-    const settings = resolveGatewaySettings();
+  clearCache(bankKey) {
+    if (bankKey) this.tokenByBank.delete(bankKey);
+    else this.tokenByBank.clear();
+  }
+
+  async #fetchNewToken(bankKey) {
+    const settings = resolveBankGatewayConfig(bankKey);
     if (!settings.tokenUrl) {
       if (settings.staticToken) return settings.staticToken;
-      throw new Error('آدرس دریافت توکن گیت‌وی (CE_GATEWAY_TOKEN_URL یا CE_GATEWAY_HOST) تنظیم نشده است');
+      throw new Error(`هاست یا آدرس گیت‌وی برای بانک ${bankKey} تنظیم نشده است`);
     }
     if (!settings.username || !settings.password) {
-      throw new Error('نام کاربری یا رمز عبور گیت‌وی (CE_GATEWAY_USERNAME / CE_GATEWAY_PASSWORD) تنظیم نشده است');
+      throw new Error(`نام کاربری یا رمز عبور گیت‌وی برای بانک ${bankKey} تنظیم نشده است`);
     }
 
     const response = await fetch(settings.tokenUrl, {
@@ -103,7 +99,7 @@ class GatewayTokenManager {
         accept: 'application/json',
       },
       body: JSON.stringify({
-        system: settings.system,
+        system: settings.authSystem,
         authenticationPack: {
           username: settings.username,
           password: settings.password,
@@ -120,7 +116,7 @@ class GatewayTokenManager {
         body?.data?.message?.en ||
         body?.message ||
         `HTTP ${response.status} ${response.statusText || ''}`.trim();
-      throw new Error(`دریافت توکن گیت‌وی ناموفق بود: ${detail}`);
+      throw new Error(`دریافت توکن گیت‌وی برای ${bankKey} ناموفق بود: ${detail}`);
     }
     return token.trim();
   }
@@ -141,9 +137,9 @@ async function fetchBankJson(bankKey, url, options = {}) {
         const headers = { accept: 'application/json' };
         let usedToken = '';
         if (usesGateway) {
-          const settings = resolveGatewaySettings();
-          usedToken = await gatewayTokenManager.getToken();
-          headers['gateway-system'] = settings.system;
+          const settings = resolveBankGatewayConfig(bankKey);
+          usedToken = await gatewayTokenManager.getToken(bankKey);
+          headers['gateway-system'] = settings.gatewaySystem;
           headers['gateway-token'] = usedToken;
         }
 
@@ -156,7 +152,7 @@ async function fetchBankJson(bankKey, url, options = {}) {
         if (usesGateway && isGatewayInvalidTokenResponse(response.status, body)) {
           if (gatewayRefreshCount < 2) {
             gatewayRefreshCount += 1;
-            await gatewayTokenManager.refreshToken(usedToken);
+            await gatewayTokenManager.refreshToken(bankKey, usedToken);
             continue;
           }
           throw new Error(

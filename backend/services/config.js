@@ -17,7 +17,9 @@ try {
 function cleanEnv(value) {
   if (typeof value !== 'string') return '';
   const trimmed = value.trim();
-  if (!trimmed || /[\u0600-\u06FF]/.test(trimmed) || /^\*+$/.test(trimmed)) return '';
+  if (!trimmed || /[\u0600-\u06FF]/.test(trimmed) || /^\*+$/.test(trimmed) || /^HOST_NAME$/i.test(trimmed)) {
+    return '';
+  }
   return trimmed;
 }
 
@@ -50,34 +52,168 @@ function required(name, fallback) {
 
 const DEFAULT_REPORT_API_URL = 'http://creditevaluation-v2.ara.partdp.ir/creditEvaluation@2/report';
 
-function resolveGatewayTokenUrl() {
-  const explicit = cleanEnv(process.env.CE_GATEWAY_TOKEN_URL);
-  if (explicit) return explicit;
-  const host = cleanEnv(process.env.CE_GATEWAY_HOST);
-  if (!host) return '';
-  if (/^https?:\/\//i.test(host)) {
-    return `${host.replace(/\/+$/, '')}/service/gateway@3/token`;
+function buildServiceUrlFromHost(hostValue, defaultPath, defaultProtocol) {
+  const clean = cleanEnv(hostValue);
+  if (!clean) return '';
+  if (/^https?:\/\//i.test(clean)) {
+    const parsed = new URL(clean);
+    if (!parsed.pathname || parsed.pathname === '/') {
+      parsed.pathname = defaultPath;
+    }
+    return parsed.toString();
   }
-  const protocol = cleanEnv(process.env.CE_GATEWAY_PROTOCOL) || 'https';
-  return `${protocol}://${host.replace(/\/+$/, '')}/service/gateway@3/token`;
+  const stripped = clean.replace(/\/+$/, '');
+  if (stripped.includes('/')) {
+    return `${defaultProtocol}://${stripped}`;
+  }
+  return `${defaultProtocol}://${stripped}${defaultPath}`;
+}
+
+const BANKS = {
+  tavan_mellat: {
+    table: 'samples_mellat',
+    label: 'ملت',
+    method: 'tavan_mellat',
+    envSuffix: 'MELLAT',
+    reportHostEnv: 'CE_REPORT_HOST_MELLAT',
+    urlEnv: 'CE_API_URL_MELLAT',
+    usesGateway: true,
+  },
+  tavan_resalat: {
+    table: 'samples_resalat',
+    label: 'رسالت',
+    method: 'tavan_resalat',
+    envSuffix: 'RESALAT',
+    reportHostEnv: 'CE_REPORT_HOST_RESALAT',
+    urlEnv: 'CE_API_URL_RESALAT',
+    usesGateway: false,
+  },
+  tavan_postbank: {
+    table: 'samples_postbank',
+    label: 'پستبانک',
+    method: 'tavan_postbank',
+    envSuffix: 'POSTBANK',
+    reportHostEnv: 'CE_REPORT_HOST_POSTBANK',
+    urlEnv: 'CE_API_URL_POSTBANK',
+    usesGateway: true,
+  },
+};
+
+function resolveBankApiUrl(bankKey) {
+  const bank = BANKS[bankKey];
+  if (bank) {
+    const protocol =
+      cleanEnv(process.env[`CE_REPORT_PROTOCOL_${bank.envSuffix}`]) ||
+      cleanEnv(process.env.CE_REPORT_PROTOCOL) ||
+      'http';
+    const byHost = buildServiceUrlFromHost(
+      process.env[bank.reportHostEnv],
+      '/creditEvaluation@2/report',
+      protocol,
+    );
+    if (byHost) return byHost;
+
+    const explicitUrl = cleanEnv(process.env[bank.urlEnv]);
+    if (explicitUrl) return explicitUrl;
+  }
+
+  const baseHostProtocol = cleanEnv(process.env.CE_REPORT_PROTOCOL) || 'http';
+  const baseByHost = buildServiceUrlFromHost(
+    process.env.CE_REPORT_HOST,
+    '/creditEvaluation@2/report',
+    baseHostProtocol,
+  );
+  if (baseByHost) return baseByHost;
+
+  return cleanEnv(process.env.CE_API_BASE_URL) || DEFAULT_REPORT_API_URL;
+}
+
+function bankUsesGateway(bankKey) {
+  const bank = BANKS[bankKey];
+  return bank ? bank.usesGateway !== false : true;
+}
+
+function resolveBankGatewayConfig(bankKey) {
+  const bank = BANKS[bankKey];
+  const suffix = bank?.envSuffix || '';
+
+  const protocol =
+    (suffix && cleanEnv(process.env[`CE_GATEWAY_PROTOCOL_${suffix}`])) ||
+    cleanEnv(process.env.CE_GATEWAY_PROTOCOL) ||
+    'https';
+
+  const explicitTokenUrl =
+    (suffix && cleanEnv(process.env[`CE_GATEWAY_TOKEN_URL_${suffix}`])) ||
+    cleanEnv(process.env.CE_GATEWAY_TOKEN_URL);
+
+  const hostTokenUrl = buildServiceUrlFromHost(
+    (suffix && process.env[`CE_GATEWAY_HOST_${suffix}`]) || process.env.CE_GATEWAY_HOST,
+    '/service/gateway@3/token',
+    protocol,
+  );
+
+  const tokenUrl = explicitTokenUrl || hostTokenUrl;
+
+  const gatewaySystem =
+    (suffix && cleanEnv(process.env[`CE_GATEWAY_SYSTEM_${suffix}`])) ||
+    cleanEnv(process.env.CE_GATEWAY_SYSTEM) ||
+    'creditEvaluation';
+
+  const authSystem =
+    (suffix && cleanEnv(process.env[`CE_GATEWAY_TOKEN_SYSTEM_${suffix}`])) ||
+    gatewaySystem;
+
+  const username =
+    (suffix && cleanEnv(process.env[`CE_GATEWAY_USERNAME_${suffix}`])) ||
+    cleanEnv(process.env.CE_GATEWAY_USERNAME) ||
+    '';
+
+  const password =
+    (suffix && cleanEnv(process.env[`CE_GATEWAY_PASSWORD_${suffix}`])) ||
+    cleanEnv(process.env.CE_GATEWAY_PASSWORD) ||
+    '';
+
+  const passHeader =
+    (suffix && process.env[`CE_GATEWAY_PASS_HEADER_${suffix}`] !== undefined
+      ? process.env[`CE_GATEWAY_PASS_HEADER_${suffix}`]
+      : undefined) ??
+    process.env.CE_GATEWAY_PASS_HEADER ??
+    '';
+
+  const staticToken =
+    (suffix && cleanEnv(process.env[`CE_GATEWAY_TOKEN_${suffix}`])) ||
+    cleanEnv(process.env.CE_GATEWAY_TOKEN) ||
+    '';
+
+  return {
+    usesGateway: bankUsesGateway(bankKey),
+    tokenUrl,
+    gatewaySystem,
+    authSystem,
+    username,
+    password,
+    passHeader,
+    staticToken,
+  };
+}
+
+function resolveGatewayTokenUrl(bankKey) {
+  return resolveBankGatewayConfig(bankKey).tokenUrl;
 }
 
 const config = {
   databaseUrl: required('DATABASE_URL', 'postgres://ce_user:ce_pass@localhost:5432/ce_dashboard'),
   apiBaseUrl: required('CE_API_BASE_URL', DEFAULT_REPORT_API_URL),
   apiUrls: {
-    tavan_mellat: cleanEnv(process.env.CE_API_URL_MELLAT) || required('CE_API_BASE_URL', DEFAULT_REPORT_API_URL),
-    tavan_resalat: cleanEnv(process.env.CE_API_URL_RESALAT) || required('CE_API_BASE_URL', DEFAULT_REPORT_API_URL),
-    tavan_postbank: cleanEnv(process.env.CE_API_URL_POSTBANK) || required('CE_API_BASE_URL', DEFAULT_REPORT_API_URL),
+    tavan_mellat: resolveBankApiUrl('tavan_mellat'),
+    tavan_resalat: resolveBankApiUrl('tavan_resalat'),
+    tavan_postbank: resolveBankApiUrl('tavan_postbank'),
   },
   apiToken: cleanEnv(process.env.CE_GATEWAY_TOKEN),
   apiSystem: cleanEnv(process.env.CE_GATEWAY_SYSTEM) || 'creditEvaluation',
   gateway: {
-    tokenUrl: resolveGatewayTokenUrl(),
-    system: cleanEnv(process.env.CE_GATEWAY_SYSTEM) || 'creditEvaluation',
-    username: cleanEnv(process.env.CE_GATEWAY_USERNAME),
-    password: cleanEnv(process.env.CE_GATEWAY_PASSWORD),
-    passHeader: process.env.CE_GATEWAY_PASS_HEADER ?? '',
+    tavan_mellat: resolveBankGatewayConfig('tavan_mellat'),
+    tavan_postbank: resolveBankGatewayConfig('tavan_postbank'),
   },
   pageSize: Number(process.env.CE_API_PAGE_SIZE || 50),
   backendPort: Number(process.env.BACKEND_PORT || process.env.PORT || 3000),
@@ -97,57 +233,14 @@ const config = {
   sessionIdleMs: parseDurationMs(process.env.SESSION_IDLE_MS, 120000),
 };
 
-const BANKS = {
-  tavan_mellat: {
-    table: 'samples_mellat',
-    label: 'ملت',
-    method: 'tavan_mellat',
-    urlEnv: 'CE_API_URL_MELLAT',
-    usesGateway: true,
-  },
-  tavan_resalat: {
-    table: 'samples_resalat',
-    label: 'رسالت',
-    method: 'tavan_resalat',
-    urlEnv: 'CE_API_URL_RESALAT',
-    usesGateway: false,
-  },
-  tavan_postbank: {
-    table: 'samples_postbank',
-    label: 'پستبانک',
-    method: 'tavan_postbank',
-    urlEnv: 'CE_API_URL_POSTBANK',
-    usesGateway: true,
-  },
-};
-
-function resolveBankApiUrl(bankKey) {
-  const bank = BANKS[bankKey];
-  if (bank?.urlEnv) {
-    const dynamicUrl = cleanEnv(process.env[bank.urlEnv]);
-    if (dynamicUrl) return dynamicUrl;
-  }
-  if (bankKey && config.apiUrls?.[bankKey]) {
-    const fallbackDynamic = cleanEnv(process.env.CE_API_BASE_URL);
-    if (!cleanEnv(process.env[bank?.urlEnv || '']) && fallbackDynamic) {
-      return fallbackDynamic;
-    }
-    return config.apiUrls[bankKey];
-  }
-  return cleanEnv(process.env.CE_API_BASE_URL) || config.apiBaseUrl;
-}
-
-function bankUsesGateway(bankKey) {
-  const bank = BANKS[bankKey];
-  return bank ? bank.usesGateway !== false : true;
-}
-
 module.exports = {
   config,
   BANKS,
   cleanEnv,
   parseDurationMs,
+  buildServiceUrlFromHost,
   resolveBankApiUrl,
+  resolveBankGatewayConfig,
   resolveGatewayTokenUrl,
   bankUsesGateway,
 };

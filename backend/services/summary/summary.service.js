@@ -1,5 +1,5 @@
 'use strict';
-const { BANKS, config, resolveBankApiUrl, bankUsesGateway } = require('../config');
+const { BANKS, config, resolveBankApiUrl, resolveBankGatewayConfig, bankUsesGateway } = require('../config');
 const { fetchBankJson } = require('../http/gateway-client');
 const { error: summaryError } = require('../../controllers/summaryController/config');
 const { error: ceError } = require('../../controllers/creditEvaluationController/config');
@@ -790,7 +790,17 @@ class SummaryService {
         tavan_postbank: !!resolveBankApiUrl('tavan_postbank'),
       },
       apiTokenConfigured: !!config.apiToken,
-      gatewayAutoTokenConfigured: !!(config.gateway.tokenUrl && config.gateway.username && config.gateway.password),
+      gatewayAutoTokenConfigured: {
+        tavan_mellat: (() => {
+          const g = resolveBankGatewayConfig('tavan_mellat');
+          return !!(g.tokenUrl && g.username && g.password);
+        })(),
+        tavan_postbank: (() => {
+          const g = resolveBankGatewayConfig('tavan_postbank');
+          return !!(g.tokenUrl && g.username && g.password);
+        })(),
+        tavan_resalat: false,
+      },
       backendPort: config.backendPort,
       banks: Object.keys(BANKS),
       databaseConnected: false,
