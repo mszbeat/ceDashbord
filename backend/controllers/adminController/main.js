@@ -54,7 +54,7 @@ exports.controller = class AdminController extends BaseController {
     return helpers.listJobs(session);
   }
 
-  /** GET /api/admin/jobs/:id */
+  /** GET /api/admin/jobs?id=… */
   getJob(request, inputData, session) {
     return helpers.getJob(request, inputData, session);
   }

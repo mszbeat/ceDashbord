@@ -39,7 +39,7 @@ cd backend && npm run check:env
 | بانکها | ملت، رسالت، پستبانک — همگی از رجیستری قدیمی `banks/*.js` |
 | تجمیع | `legacy_bump`: همان `newStats()`/`bump()` قدیمی؛ SQL فقط فهرست/صفحهبندی/روزها |
 | کنترلها | نوار باریک legacy-styled: بانک / از / تا / بروزرسانی + وضعیت احراز هویت و ورود/خروج |
-| جزئیات | همان `viewer.js` در تب جدید، ولی داده از `/api/sample/{requestId}` (نقش `creditEvaluation` یا `admin`) |
+| جزئیات | همان `viewer.js` در تب جدید، ولی داده از `/api/sample?requestId={requestId}` (نقش `creditEvaluation` یا `admin`) |
 | احراز هویت | `partAuthenticationInterface` + سمد (`partSamadInterface` + `partSessionManager`) + رفرش‌توکن چرخشی (`auth_refresh_tokens`) |
 | اجرا | `install.sh` / `start.sh` / `dev.sh` / `migrate.sh` / `ingest.sh` در ریشه و هر پوشه |
 | Push | همین ریپو، برنچ `main` با Deploy Key |
@@ -182,7 +182,7 @@ cd backend && npm run check:env
 2. بکاند ردیفهای تحلیلشده را از `samples_<bank>` با keyset pagination میخواند.
 3. گروهها، چارکها، درصدها، کراسها، کارتها و سطرهای فهرست دقیقاً با `newStats()`/`bump()` قدیمی ساخته میشوند. `percentile_cont`/SQL دیگر منبع حقیقت نیست.
 4. `backend/services/legacy-report/render.js` همان `buildHtml` قدیمی صدا زده میشود؛ `charts.js`، `client.js`، `viewer.js` ساختار و منطق قدیمی را حفظ میکنند و `style.css` / `viewer.css` فقط پوستهٔ بصری شیشهای/مدرن گرفتهاند.
-5. فقط متنهای وابسته به «پوشهٔ reports» و «فایل خصوصی جزئیات» به API زنده تغییر کردهاند: `sid` همان `request_id` است و کلیک ردیف `fetch('/api/sample/{requestId}')` میکند و همان viewer را در تب جدید میسازد.
+5. فقط متنهای وابسته به «پوشهٔ reports» و «فایل خصوصی جزئیات» به API زنده تغییر کردهاند: `sid` همان `request_id` است و کلیک ردیف `fetch('/api/sample?requestId={requestId}')` میکند و همان viewer را در تب جدید میسازد.
 6. نوار باریک بالای صفحه، بانک/از/تا/بروزرسانی را با همان متغیرهای رنگی legacy اضافه میکند.
 
 ---
@@ -286,7 +286,7 @@ curl -X POST http://localhost:3000/api/runs \
 | GET | `/api/list?...&type=metric&id=totalTime` | مرتبسازی بر مقدار عددی |
 | GET | `/api/list?...&type=cat&id=scoreCategory&value=...` | فیلتر روی مقدار دسته |
 | GET | `/api/list?...&type=slow` | گزارشهای کندتر از ۴ ثانیه |
-| GET | `/api/sample/{requestId}` | پروکسی لحظهای به API اصلی؛ `no-store` + لاگ ممیزی |
+| GET | `/api/sample?requestId={requestId}` | پروکسی لحظهای به API اصلی؛ `no-store` + لاگ ممیزی |
 | GET | `/api/runs` | وضعیت اجراها |
 | POST | `/api/runs` | اجرای دستی `{ "bank", "day", "mode" }` |
 

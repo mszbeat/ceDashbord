@@ -106,15 +106,10 @@ exports.startRun = {
 
 exports.listJobs = { header: {}, params: {}, queryString: {} };
 
+// روت استاتیک: GET /api/admin/jobs?id=…
 exports.getJob = {
   header: {},
-  params: {
-    id: {
-      type: 'string',
-      minLength: 1,
-      errorMessages: { type: 'id must be a string', minLength: 'id is required' },
-    },
-  },
+  params: {},
   queryString: {},
 };
 

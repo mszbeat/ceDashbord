@@ -295,31 +295,22 @@
     for (const item of scopes) item.setAttribute('aria-pressed', String(item === button));
   }));
 
-  // وقتی نوار فیلتر به هدر برسد، به پنل شناورِ سمت چپ و زیر هدر تبدیل می‌شود.
+  // نوار «محدودهٔ نمایش» در جریان عادی صفحه می‌ماند (بدون چسبیدن/تمام‌عرض شدن)؛
+  // فقط سایهٔ ملایم هدر هنگام اسکرول اضافه می‌شود.
   let scheduled = false;
-  function syncFloating() {
+  function syncHeader() {
     scheduled = false;
-    if (!scopebar || !slot || !topbar) return;
-    if (!scopebar.classList.contains('floating')) slot.style.minHeight = `${scopebar.offsetHeight + 16}px`;
-    // هنگام اسکرول، هدر جمع می‌شود (چسبیده به لبه‌ی بالای صفحه) تا نوار محدودهٔ نمایش
-    // بتواند تمام عرض صفحه را بگیرد و محتوا از زیر هدر بیرون نزند.
-    const floatingNow = slot.getBoundingClientRect().top <= 64;
-    scopebar.classList.toggle('floating', floatingNow);
-    topbar.classList.toggle('compact', floatingNow);
+    if (!topbar) return;
     topbar.classList.toggle('scrolled', window.scrollY > 8);
   }
-  function scheduleFloating() {
+  function scheduleHeader() {
     if (scheduled) return;
     scheduled = true;
-    window.requestAnimationFrame(syncFloating);
+    window.requestAnimationFrame(syncHeader);
   }
-  window.addEventListener('scroll', scheduleFloating, { passive: true });
-  window.addEventListener('resize', () => {
-    scopebar?.classList.remove('floating');
-    if (slot) slot.style.minHeight = '';
-    scheduleFloating();
-  });
-  scheduleFloating();
+  window.addEventListener('scroll', scheduleHeader, { passive: true });
+  window.addEventListener('resize', scheduleHeader);
+  syncHeader();
 
   async function copyText(text) {
     if (navigator.clipboard?.writeText) {
@@ -375,8 +366,11 @@
   });
 
   async function loadSample(requestId) {
-    const bankParam = document.body.dataset.bank ? `?bank=${encodeURIComponent(document.body.dataset.bank)}` : '';
-    const url = `/api/sample/${encodeURIComponent(requestId)}${bankParam}`;
+    // روت استاتیک است؛ شناسه و بانک از query param می‌آیند.
+    const sampleQuery = new URLSearchParams({ requestId });
+    const bankKey = document.body.dataset.bank;
+    if (bankKey) sampleQuery.set('bank', bankKey);
+    const url = `/api/sample?${sampleQuery.toString()}`;
     const doFetch = () => fetch(url, {
       cache: 'no-store',
       credentials: 'include',

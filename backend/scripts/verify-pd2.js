@@ -149,8 +149,8 @@ async function waitForJob(adminConfig, adminHelpers, jobId, timeoutMs = 8000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const call = invokeWithConfigParams(adminConfig, adminHelpers, 'getJob', {
-      url: `/api/admin/jobs/${jobId}`,
-      params: { id: jobId },
+      url: `/api/admin/jobs?id=${encodeURIComponent(jobId)}`,
+      queryString: { id: jobId },
     });
     const job = parseResult(await call.promise);
     assert.equal(call.response.headers['content-type'], undefined);
@@ -205,6 +205,10 @@ async function waitForJob(adminConfig, adminHelpers, jobId, timeoutMs = 8000) {
   assert.match(serversSource, /'Access-Control-Allow-Credentials'\s*:\s*'true'/);
   const schemaSource = fs.readFileSync(path.join(ROOT, 'services', 'db', 'schema.sql'), 'utf8');
   assert.match(schemaSource, /CREATE TABLE IF NOT EXISTS admin_jobs/);
+  // هیچ روت داینامیک :param نباید باقی بماند؛ مقادیر پویا از query param خوانده می‌شوند.
+  for (const route of recorded) {
+    assert.doesNotMatch(route.url, /:\w+/, `route ${route.url} must be static (use query params)`);
+  }
 
   for (const dir of Object.values(controllers)) {
     const mainSource = fs.readFileSync(path.join(ROOT, 'controllers', dir, 'main.js'), 'utf8');
@@ -352,7 +356,7 @@ async function waitForJob(adminConfig, adminHelpers, jobId, timeoutMs = 8000) {
     const reportResult = await reportCall.promise;
     assert.equal(reportResult.statusCode, 200);
     assert.match(reportResult.headers['Content-Type'], /text\/html/);
-    assert.equal(reportResult.data.includes('/api/sample/'), true);
+    assert.equal(reportResult.data.includes('/api/sample?requestId='), true);
 
     assert.equal((await invokeWithConfigParams(summaryConfig, summaryHelpers, 'diagnostics').promise).ok, true);
     assert.equal(
@@ -366,7 +370,10 @@ async function waitForJob(adminConfig, adminHelpers, jobId, timeoutMs = 8000) {
     assert.equal(Array.isArray(parseResult(await invokeWithConfigParams(summaryConfig, summaryHelpers, 'runs').promise)), true);
 
     const sampleFound = parseResult(
-      await invokeWithConfigParams(ceConfig, ceHelpers, 'sample', { url: '/api/sample/m-1', params: { requestId: 'm-1' } }).promise,
+      await invokeWithConfigParams(ceConfig, ceHelpers, 'sample', {
+        url: '/api/sample?requestId=m-1',
+        queryString: { requestId: 'm-1' },
+      }).promise,
     );
     assert.equal(sampleFound.found, true);
     assert.equal(sampleFound.requestId, 'm-1');

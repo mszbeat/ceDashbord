@@ -42,8 +42,8 @@ backend/
 |---|---|---|---|
 | ۰ — اصالت‌سنجی | `auth-controller` | `POST /api/auth/register`, `POST /api/auth/login`, `POST /api/auth/refresh`, `POST /api/auth/logout`, `GET /api/auth/me`, `POST\|GET /api/auth/role`, `POST /api/auth/remove` | ✅ همه |
 | ۱ — کاربر عادی | `summary-controller` | `GET /api/health`, `/api/banks`, `/api/specs`, `/api/report`, `/api/diagnostics`, `/api/summary`, `/api/list`, `/api/runs` | ✅ به‌جز `health` |
-| ۲ — `creditEvaluation` + `admin` | `credit-evaluation-controller` | `GET /api/sample/:requestId` | ✅ |
-| ۳ — فقط `admin` | `admin-controller` | `GET /api/admin/overview`, `GET\|PUT /api/admin/cron`, `POST /api/admin/cron/run-now`, `POST /api/admin/runs/check`, `POST /api/admin/runs/start`, `GET /api/admin/jobs`, `GET /api/admin/jobs/:id`, `POST /api/admin/runs`, `POST /api/runs` | ✅ همه |
+| ۲ — `creditEvaluation` + `admin` | `credit-evaluation-controller` | `GET /api/sample?requestId=…` | ✅ |
+| ۳ — فقط `admin` | `admin-controller` | `GET /api/admin/overview`, `GET\|PUT /api/admin/cron`, `POST /api/admin/cron/run-now`, `POST /api/admin/runs/check`, `POST /api/admin/runs/start`, `GET /api/admin/jobs`, `GET /api/admin/jobs?id=…`, `POST /api/admin/runs`, `POST /api/runs` | ✅ همه |
 
 قاعدهٔ کلیدی: **هر هندلری که `_session` می‌گیرد، باید در `routes.js` با `.checkAccess(true)` ثبت شده باشد**؛ در غیر این صورت `_session` تزریق نمی‌شود.
 

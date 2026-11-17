@@ -55,7 +55,7 @@
     {
       "name": "2. Role: creditEvaluation | admin (creditEvaluationController)",
       "item": [
-        { "name": "GET /api/sample/:requestId", "request": { "method": "GET", "url": "{{baseUrl}}/api/sample/REQ-001" } }
+        { "name": "GET /api/sample?requestId=…", "request": { "method": "GET", "url": "{{baseUrl}}/api/sample?requestId=REQ-001&bank=tavan_mellat" } }
       ]
     },
     {

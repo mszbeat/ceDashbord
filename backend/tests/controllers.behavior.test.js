@@ -71,7 +71,7 @@ function fakeSummaryService(overrides = {}) {
   return {
     banks: () => [{ key: 'tavan_mellat' }, { key: 'tavan_resalat' }, { key: 'tavan_postbank' }],
     specs: (bank) => ({ bank: { key: bank } }),
-    report: async () => '<!doctype html><html><body><a href="/api/sample/m-1">x</a></body></html>',
+    report: async () => '<!doctype html><html><body><a href="/api/sample?requestId=m-1">x</a></body></html>',
     errorHtml: () => '<!doctype html><html><body>error</body></html>',
     diagnostics: async () => ({ ok: true }),
     summary: async () => ({ stats: { total: 2 } }),
@@ -362,7 +362,7 @@ test('summary-controller: خطای ساخت گزارش به صفحهٔ HTML با
   }
 });
 
-test('credit-evaluation-controller: requestId از مسیر خوانده می‌شود و نبود آن خطای ۴۰۰ می‌دهد', async () => {
+test('credit-evaluation-controller: requestId از query param خوانده می‌شود و نبود آن خطای ۴۰۰ می‌دهد', async () => {
   const { controller: CEController } = require(path.join(ROOT, 'controllers', 'creditEvaluationController', 'main.js'));
   const config = require(path.join(ROOT, 'controllers', 'creditEvaluationController', 'config.js'));
   const controller = new CEController({}, {}, config);
@@ -370,17 +370,24 @@ test('credit-evaluation-controller: requestId از مسیر خوانده می‌
   container.setServicesForTest({ summary: fakeSummaryService() });
   try {
     const ok = await invoke(controller, config, 'sample', {
-      url: '/api/sample/m-1',
-      params: { requestId: 'm-1' },
+      url: '/api/sample?requestId=m-1&bank=tavan_mellat',
+      queryString: { requestId: 'm-1', bank: 'tavan_mellat' },
     }).promise;
     assert.deepEqual(ok, { found: true, requestId: 'm-1' });
+
+    // نام جایگزین id هم پذیرفته می‌شود
+    const byId = await invoke(controller, config, 'sample', {
+      url: '/api/sample?id=m-2',
+      queryString: { id: 'm-2' },
+    }).promise;
+    assert.deepEqual(byId, { found: true, requestId: 'm-2' });
   } finally {
     container.setServicesForTest(undefined);
   }
 
   try {
     await assert.rejects(
-      () => invoke(controller, config, 'sample', { url: '/api/sample/' }).promise,
+      () => invoke(controller, config, 'sample', { url: '/api/sample' }).promise,
       (err) => err.statusCode === 400 && err.meta.code === 'requestIdRequired',
     );
   } finally {
@@ -425,10 +432,10 @@ test('admin-controller: همهٔ ۱۰ هندلر با تزریق _session و dat
     assert.equal((await invoke(controller, config, 'startRun', { data: { banks: ['tavan_mellat'] }, session: { samadUsername: 'adm' } }).promise).id, 'job-1');
     assert.equal((await invoke(controller, config, 'listJobs').promise).length, 1);
 
-    const job = await invoke(controller, config, 'getJob', { url: '/api/admin/jobs/job-1', params: { id: 'job-1' } }).promise;
+    const job = await invoke(controller, config, 'getJob', { url: '/api/admin/jobs?id=job-1', queryString: { id: 'job-1' } }).promise;
     assert.equal(job.status, 'completed');
     await assert.rejects(
-      () => invoke(controller, config, 'getJob', { url: '/api/admin/jobs/none', params: { id: 'none' } }).promise,
+      () => invoke(controller, config, 'getJob', { url: '/api/admin/jobs?id=none', queryString: { id: 'none' } }).promise,
       (err) => err.statusCode === 404 && err.meta.code === 'jobNotFound',
     );
 
@@ -544,7 +551,7 @@ test('session-guard: تمام روت‌های داشبورد/جزئیات/مدی
     [summaryCtrl, summaryConfig, 'summary', { queryString: { bank: 'tavan_mellat' } }],
     [summaryCtrl, summaryConfig, 'list', { queryString: { bank: 'tavan_mellat' } }],
     [summaryCtrl, summaryConfig, 'runs', {}],
-    [ceCtrl, ceConfig, 'sample', { url: '/api/sample/m-1', params: { requestId: 'm-1' } }],
+    [ceCtrl, ceConfig, 'sample', { url: '/api/sample?requestId=m-1', queryString: { requestId: 'm-1' } }],
     [adminCtrl, adminConfig, 'getOverview', {}],
     [adminCtrl, adminConfig, 'getCron', {}],
     [adminCtrl, adminConfig, 'updateCron', { data: { enabled: true } }],
@@ -552,7 +559,7 @@ test('session-guard: تمام روت‌های داشبورد/جزئیات/مدی
     [adminCtrl, adminConfig, 'checkExisting', { data: { banks: ['tavan_mellat'] } }],
     [adminCtrl, adminConfig, 'startRun', { data: { banks: ['tavan_mellat'] } }],
     [adminCtrl, adminConfig, 'listJobs', {}],
-    [adminCtrl, adminConfig, 'getJob', { url: '/api/admin/jobs/job-1', params: { id: 'job-1' } }],
+    [adminCtrl, adminConfig, 'getJob', { url: '/api/admin/jobs?id=job-1', queryString: { id: 'job-1' } }],
     [adminCtrl, adminConfig, 'runAdminDay', { data: { bank: 'tavan_mellat' } }],
     [adminCtrl, adminConfig, 'run', { data: { bank: 'tavan_mellat' } }],
     [authCtrl, authConfig, 'assignRole', { data: { username: 'ali', role: 'admin' } }],

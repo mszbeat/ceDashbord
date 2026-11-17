@@ -132,8 +132,8 @@ test('installHttpAuditLogger logs HTTP requests with AsyncLocalStorage actor & e
   installHttpAuditLogger();
 
   assert.equal(
-    sanitizeRequestUrl('/api/sample/req-1?token=secret123&bank=tavan_mellat&nationalCode=1234567890'),
-    '/api/sample/req-1?token=%5BREDACTED%5D&bank=tavan_mellat&nationalCode=%5BREDACTED%5D',
+    sanitizeRequestUrl('/api/sample?requestId=req-1&token=secret123&bank=tavan_mellat&nationalCode=1234567890'),
+    '/api/sample?requestId=req-1&token=%5BREDACTED%5D&bank=tavan_mellat&nationalCode=%5BREDACTED%5D',
   );
 
   const authException = require(path.join(ROOT, 'controllers', 'auth', 'exceptions', 'authException.js'));

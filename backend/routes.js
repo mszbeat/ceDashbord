@@ -83,7 +83,7 @@ module.exports = (router) => {
 
   // ─────────── سطح ۲: جزئیات گزارش — نقش‌های creditEvaluation و admin ───────────
   router
-    .setRoute('/api/sample/:requestId', 'credit-evaluation-controller.sample')
+    .setRoute('/api/sample', 'credit-evaluation-controller.sample')
     .method('GET')
     .checkAccess(true);
 
@@ -127,7 +127,7 @@ module.exports = (router) => {
     .checkAccess(true);
 
   router
-    .setRoute('/api/admin/jobs/:id', 'admin-controller.getJob')
+    .setRoute('/api/admin/jobs', 'admin-controller.getJob')
     .method('GET')
     .checkAccess(true);
 

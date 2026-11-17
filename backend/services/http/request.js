@@ -81,8 +81,25 @@ function readQuery(queryStringOrRequest) {
 }
 
 /**
- * پارامتر مسیر (مثل `/api/sample/:requestId`) را از `_inputData.params`،
- * `request.params` یا در نهایت از خود URL بیرون می‌کشد.
+ * مقدار یک query param را با پشتیبانی از نام‌های جایگزین برمی‌گرداند.
+ * روت‌ها استاتیک‌اند و مقادیر پویا از `?name=value` خوانده می‌شوند.
+ */
+function readQueryParam(query, ...names) {
+  if (!query || typeof query !== 'object') return '';
+  for (const name of names) {
+    const value = query[name];
+    if (value === undefined || value === null) continue;
+    const text = Array.isArray(value) ? value[0] : value;
+    const cleaned = String(text ?? '').trim();
+    if (cleaned) return cleaned;
+  }
+  return '';
+}
+
+/**
+ * مقدار پارامتری که در URL به شکل داینامیک آمده (مثل `/api/sample/:requestId`) را می‌خواند.
+ * سایر روت‌ها استاتیک‌اند و مقادیر را با `readQueryParam` از query می‌گیرند؛ این تابع
+ * فقط برای سازگاری با لینک‌های قدیمی و `_inputData.params` نگه داشته شده است.
  */
 function readRouteParam(request, inputData, paramName, fallbackRegex) {
   const candidates = [
@@ -122,6 +139,7 @@ function readClientMeta(requestOrInputData) {
 module.exports = {
   readBody,
   readQuery,
+  readQueryParam,
   readRouteParam,
   readClientMeta,
 };

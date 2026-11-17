@@ -34,7 +34,7 @@ const EXPECTED_ROUTES = [
   { verb: 'GET', url: '/api/list', target: 'summary-controller.list', validate: true, checkAccess: true },
   { verb: 'GET', url: '/api/runs', target: 'summary-controller.runs', validate: false, checkAccess: true },
   // detail (سطح ۲)
-  { verb: 'GET', url: '/api/sample/:requestId', target: 'credit-evaluation-controller.sample', validate: false, checkAccess: true },
+  { verb: 'GET', url: '/api/sample', target: 'credit-evaluation-controller.sample', validate: false, checkAccess: true },
   // admin (سطح ۳)
   { verb: 'GET', url: '/api/admin/overview', target: 'admin-controller.getOverview', validate: false, checkAccess: true },
   { verb: 'GET', url: '/api/admin/cron', target: 'admin-controller.getCron', validate: false, checkAccess: true },
@@ -43,7 +43,7 @@ const EXPECTED_ROUTES = [
   { verb: 'POST', url: '/api/admin/runs/check', target: 'admin-controller.checkExisting', validate: true, checkAccess: true },
   { verb: 'POST', url: '/api/admin/runs/start', target: 'admin-controller.startRun', validate: true, checkAccess: true },
   { verb: 'GET', url: '/api/admin/jobs', target: 'admin-controller.listJobs', validate: false, checkAccess: true },
-  { verb: 'GET', url: '/api/admin/jobs/:id', target: 'admin-controller.getJob', validate: false, checkAccess: true },
+  { verb: 'GET', url: '/api/admin/jobs', target: 'admin-controller.getJob', validate: false, checkAccess: true },
   { verb: 'POST', url: '/api/admin/runs', target: 'admin-controller.runAdminDay', validate: true, checkAccess: true },
   { verb: 'POST', url: '/api/runs', target: 'admin-controller.run', validate: true, checkAccess: true },
 ];

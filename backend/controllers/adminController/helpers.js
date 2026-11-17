@@ -1,7 +1,7 @@
 'use strict';
 
 const { getServices } = require('../../services/container');
-const { readBody, readRouteParam } = require('../../services/http/request');
+const { readBody, readRouteParam, readQuery, readQueryParam } = require('../../services/http/request');
 const { requireAuthenticatedSession } = require('../../services/http/session-guard');
 const { getActionLogger } = require('../../services/logger/action-logger.service');
 const { error: adminError } = require('./config');
@@ -144,7 +144,12 @@ exports.listJobs = async function (session) {
 
 exports.getJob = async function (request, inputData, session) {
   await requireAuthenticatedSession(session, () => adminError.sessionRequired);
-  const jobId = readRouteParam(request, inputData, 'id', /\/api\/admin\/jobs\/([^/?#]+)/);
+  // مسیر استاتیک است: GET /api/admin/jobs?id=…
+  const query = readQuery(request, inputData);
+  const jobId =
+    readQueryParam(query, 'id') ||
+    readQueryParam(query, 'jobId') ||
+    readRouteParam(request, inputData, 'id', /\/api\/admin\/jobs\/([^/?#]+)/);
   if (!jobId) throw adminError.jobNotFound(jobId);
   return getAdminService().getJob(jobId);
 };

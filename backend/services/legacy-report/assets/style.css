@@ -23,19 +23,25 @@ button:focus-visible, input:focus-visible, summary:focus-visible, tr[tabindex]:f
 .sr-only { position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 .ltr { direction: ltr; text-align: left; unicode-bidi: isolate; }
 .page { max-width: 1536px; margin: 0 auto; padding: 0 34px; }
-.topbar { position: sticky; top: 0; z-index: 40; height: 88px; display: flex; align-items: center; justify-content: space-between; gap: 20px; transition: height .2s ease, padding .2s ease, box-shadow .2s ease, background .2s ease; }
-/* نوار هدر تا لبه‌های صفحه ادامه پیدا می‌کند، حتی وقتی محتوا در ستون میانی است */
-.topbar:before { content: ""; position: absolute; inset: 0; left: 50%; transform: translateX(-50%); width: 100vw; z-index: -1; background: color-mix(in srgb, var(--bg) 90%, transparent); -webkit-backdrop-filter: blur(18px) saturate(150%); backdrop-filter: blur(18px) saturate(150%); border-bottom: 1px solid var(--line-light); }
-.topbar.compact:before { border-bottom-color: var(--line); box-shadow: 0 10px 30px rgba(2,24,70,.08); }
-.topbar.scrolled { box-shadow: 0 8px 24px rgba(2,24,70,.06); }
-/* هدر جمع‌شده: فقط برند و دکمه‌ها می‌مانند تا نوار فیلتر کل عرض را بگیرد */
-.topbar.compact { height: 56px; }
-.topbar.compact .brand-mark { width: 34px; height: 34px; border-radius: 11px; }
-.topbar.compact .brand-mark svg { width: 19px; height: 19px; }
-.topbar.compact .brand strong { font-size: 16px; }
-.topbar.compact .brand small,
-.topbar.compact .report-type { display: none; }
-.topbar.compact .icon-button { min-height: 32px; padding: 4px 10px; font-size: 12px; }
+/* هدر باید نسبت به viewport سراسری باشد، نه ستون میانی صفحه */
+.page { container-type: inline-size; }
+.page > .topbar { width: 100%; }
+.topbar { position: sticky; top: 0; z-index: 40; height: 88px; display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+/* نوار شیشه‌ای هدر از لبهٔ چپ تا لبهٔ راست viewport ادامه دارد و محتوا در ستون صفحه می‌ماند */
+.topbar:before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 88px;
+  z-index: -1;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line-light);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, .6) inset;
+  transition: box-shadow .2s ease, border-color .2s ease;
+}
+.topbar.scrolled:before { border-bottom-color: var(--line); box-shadow: 0 10px 28px rgba(2,24,70,.10); }
 .brand { display: flex; align-items: center; gap: 12px; line-height: 1.4; white-space: nowrap; }
 .brand-mark { width: 44px; height: 44px; display: inline-flex; align-items: center; justify-content: center; color: #7ee8fa; background: linear-gradient(145deg,#003ea4,#00144c); border-radius: 14px; box-shadow: 0 8px 20px rgba(0,32,102,.22); }
 .brand-mark svg { width: 25px; height: 25px; }
@@ -211,7 +217,8 @@ table.message-table { table-layout: fixed; min-width: 0; }
 }
 @media (max-width: 700px) {
   .page { padding: 0 13px; }
-  .topbar { height: 72px; }.top-actions { gap: 5px; }.report-type,.icon-button span { display: none; }
+  .topbar { height: 72px; }.topbar:before { height: 72px; }
+  .top-actions { gap: 5px; }.report-type,.icon-button span { display: none; }
   .icon-button { min-width: 37px; justify-content: center; padding: 6px; }
   .hero { border-radius: 16px 16px 0 0; padding: 24px; min-height: 0; }
   .hero h1 { font-size: 25px; }.hero-chart { display: none; }.hero-lead { font-size: 11px; }
@@ -244,7 +251,8 @@ table.message-table { table-layout: fixed; min-width: 0; }
 :root[data-theme="dark"] { --stripe:#0e2046; --row-hover:#17346d; --table-border:#203b6e; }
 @media screen {
   body { font-size:16px; line-height:1.85; }
-  .topbar { position:sticky; top:0; z-index:40; height:82px; padding:0 10px; background:var(--bg); border-bottom:1px solid var(--line); backdrop-filter:blur(14px); }
+  .topbar { position:sticky; top:0; z-index:40; height:82px; }
+  .topbar:before { height: 82px; }
   .topbar.scrolled { box-shadow:0 10px 24px rgba(0,28,88,.14); }
   .brand strong { font-size:21px; }.brand small { font-size:12px; }
   .report-type,.icon-button { font-size:14px; }
@@ -262,10 +270,6 @@ table.message-table { table-layout: fixed; min-width: 0; }
   .scopebar { position:relative; top:auto; margin-bottom:16px; }
   .scope-intro b,.scope-buttons button { font-size:13px; }
   .scope-intro small,.scopebar p,.scope-buttons span { font-size:11px; }
-  .scopebar.floating { position:fixed; left:0; right:0; top:56px; width:auto; margin:0; z-index:30; border-radius:0 0 14px 14px; border-color:var(--accent); padding:9px clamp(14px,3vw,34px); box-shadow:0 14px 40px rgba(10,44,50,.16); }
-  .scopebar.floating .scope-intro,.scopebar.floating p { display:none; }
-  .scopebar.floating .scope-buttons { display:flex; width:100%; }
-  .scopebar.floating .scope-buttons button { flex:1; }
   .panel-heading h2 { font-size:21px; }.panel-heading p,.method-details,.method-body { font-size:13px; }
   .section-kicker { font-size:12px !important; }
   h3 { font-size:16px; }.panel h3 small { font-size:12px; }
@@ -321,11 +325,9 @@ table.message-table { table-layout: fixed; min-width: 0; }
 @media screen and (max-width:1100px) {
   .navigation { max-height:none; }.sidebar { position:static; }
   .nav-button { min-height:56px; min-width:175px; }
-  .scopebar.floating { left:0; right:0; }
 }
 @media screen and (max-width:700px) {
   .topbar { height:72px; }.scope-slot { scroll-margin-top:80px; }
-  .scopebar.floating { top:52px; left:0; right:0; width:auto; }
   .hero-lead { font-size:13px; }.hero-tags > span { font-size:12px; }
   .headline-card strong { font-size:24px; }
   .panel-heading h2 { font-size:19px; }
@@ -495,13 +497,8 @@ th, td { padding:7px 10px; }
       var(--bg);
   }
   .page { max-width:1600px; padding-inline:clamp(16px,3vw,42px); }
-  .topbar {
-    height:78px;
-    margin-inline:calc(0px - clamp(16px,3vw,42px));
-    padding-inline:clamp(16px,3vw,42px);
-    background:color-mix(in srgb,var(--bg) 86%,transparent);
-    border-bottom-color:color-mix(in srgb,var(--line) 75%,transparent);
-  }
+  .topbar { height:78px; }
+  .topbar:before { height: 78px; }
   .brand { gap:13px; }
   .brand-mark {
     width:46px;height:46px;border-radius:15px;
@@ -609,7 +606,8 @@ th, td { padding:7px 10px; }
 }
 @media screen and (max-width:700px) {
   .page { padding-inline:12px; }
-  .topbar { height:68px;margin-inline:-12px;padding-inline:12px; }
+  .topbar { height:68px; }
+  .topbar:before { height: 68px; }
   .brand-mark { width:40px;height:40px;border-radius:13px; }
   .brand strong { font-size:19px; }
   .hero { min-height:0;padding:24px 20px;border-radius:18px; }
@@ -723,20 +721,6 @@ input,
 select {
   -webkit-backdrop-filter: blur(14px) saturate(145%);
   backdrop-filter: blur(14px) saturate(145%);
-}
-.scopebar.floating {
-  left: 0;
-  right: 0;
-  top: 56px;
-  width: auto;
-  border-radius: 0 0 16px 16px;
-  box-shadow: 0 20px 48px rgba(2, 24, 70, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.6);
-}
-.scopebar.floating .scope-buttons {
-  margin-inline-start: auto;
-}
-.scopebar.floating .scope-buttons button {
-  min-width: 96px;
 }
 .table th,
 .table td,

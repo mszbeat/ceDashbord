@@ -1,7 +1,7 @@
 'use strict';
 
 const { getServices } = require('../../services/container');
-const { readRouteParam, readQuery, readClientMeta } = require('../../services/http/request');
+const { readRouteParam, readQuery, readQueryParam, readClientMeta } = require('../../services/http/request');
 const { requireAuthenticatedSession } = require('../../services/http/session-guard');
 const { getActionLogger } = require('../../services/logger/action-logger.service');
 const { error: ceError } = require('./config');
@@ -12,10 +12,14 @@ const { error: ceError } = require('./config');
  */
 exports.sample = async function (request, inputData, session) {
   const actor = await requireAuthenticatedSession(session, () => ceError.sessionRequired);
-  const requestId = readRouteParam(request, inputData, 'requestId', /\/api\/sample\/([^/?#]+)/);
-  if (!requestId) throw ceError.requestIdRequired;
+  // مسیر استاتیک است: GET /api/sample?requestId=… (پارامترهای پویا از query خوانده می‌شوند)
   const query = readQuery(request, inputData);
-  const res = await getServices().summary.sample(requestId, readClientMeta(request), query.bank);
+  const requestId =
+    readQueryParam(query, 'requestId') ||
+    readQueryParam(query, 'id') ||
+    readRouteParam(request, inputData, 'requestId', /\/api\/sample\/([^/?#]+)/);
+  if (!requestId) throw ceError.requestIdRequired;
+  const res = await getServices().summary.sample(requestId, readClientMeta(request), readQueryParam(query, 'bank'));
   getActionLogger().info({
     category: 'detail',
     action: res?.found ? 'detail.sample.viewed' : 'detail.sample.not_found',
