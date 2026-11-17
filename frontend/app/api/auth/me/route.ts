@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
     const backendUrl = resolveBackendOrigin();
     const cookieHeader = request.headers.get('cookie') || '';
     const outcome = await probeSessionWithCleanRecovery(backendUrl, request.headers, cookieHeader);
-    return jsonReply(outcome.rawText, outcome.status, outcome.setCookies);
+    return jsonReply(outcome.rawText, outcome.status, outcome.browserSetCookies);
   } catch (err: any) {
     return jsonReply(
       JSON.stringify({

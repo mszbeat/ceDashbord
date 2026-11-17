@@ -34,7 +34,7 @@ module.exports = {
     },
     me: {
       needProtocolRef: false,
-      params: ['_session', '_protocolRef.request'],
+      params: ['_session', '_protocolRef.request', '_protocolRef.response'],
     },
     assignRole: {
       needProtocolRef: false,

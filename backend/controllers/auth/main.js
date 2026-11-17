@@ -3,6 +3,38 @@ const { readBody, readQuery, readClientMeta } = require('../../services/http/req
 const { requireAuthenticatedSession } = require('../../services/http/session-guard');
 const { error: authError } = require('./config');
 
+function isBffBridgeRequest(request) {
+  const headerVal =
+    request?.headers?.['x-ce-bff'] ??
+    request?.header?.['x-ce-bff'] ??
+    request?.req?.headers?.['x-ce-bff'];
+  if (String(headerVal || '').trim() === '1') return true;
+  const rawHeaders = request?.rawHeaders || request?.req?.rawHeaders;
+  if (Array.isArray(rawHeaders)) {
+    for (let i = 0; i < rawHeaders.length - 1; i += 2) {
+      if (String(rawHeaders[i]).toLowerCase() === 'x-ce-bff' && String(rawHeaders[i + 1]).trim() === '1') {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function withBffBridgedCookies(payload, request, response) {
+  if (!isBffBridgeRequest(request)) return payload;
+  const cookies =
+    (Array.isArray(request?.__cePendingSetCookies) && request.__cePendingSetCookies.length
+      ? request.__cePendingSetCookies
+      : null) ||
+    (Array.isArray(response?.__cePendingSetCookies) && response.__cePendingSetCookies.length
+      ? response.__cePendingSetCookies
+      : null);
+  if (cookies && cookies.length) {
+    return { ...payload, _ceSetCookies: cookies };
+  }
+  return payload;
+}
+
 exports.controller = class AuthController extends BaseController {
   /**
    * @param {Core} core
@@ -20,6 +52,9 @@ exports.controller = class AuthController extends BaseController {
   }
 
   async register(body, trackingHeaders, session, request, response) {
+    if (this.sessionManager && typeof this.sessionManager.ensureResponseCookieNormalization === 'function') {
+      this.sessionManager.ensureResponseCookieNormalization(response, request);
+    }
     const payload = readBody(body);
     if (!payload.username || !payload.password) throw authError.invalidAuthInput;
 
@@ -37,7 +72,7 @@ exports.controller = class AuthController extends BaseController {
         const current = await this.sessionManager.getSession(session).catch(() => null);
         if (!current?.samadUsername || current.samadUsername === 'visitor') {
           await this.sessionManager.setSession(session, { username: payload.username }, [role]);
-          if (typeof this.sessionManager.issueRefreshToken === 'function' && response) {
+          if (typeof this.sessionManager.issueRefreshToken === 'function' && (response || isBffBridgeRequest(request))) {
             const meta = readClientMeta(request);
             await this.sessionManager.issueRefreshToken(
               {
@@ -53,7 +88,7 @@ exports.controller = class AuthController extends BaseController {
           }
         }
       }
-      return { status: 'ok', username: payload.username, roles: [role] };
+      return withBffBridgedCookies({ status: 'ok', username: payload.username, roles: [role] }, request, response);
     } catch (err) {
       if (typeof rollback === 'function') {
         try {
@@ -67,6 +102,9 @@ exports.controller = class AuthController extends BaseController {
   }
 
   async login(body, trackingHeaders, session, request, response) {
+    if (this.sessionManager && typeof this.sessionManager.ensureResponseCookieNormalization === 'function') {
+      this.sessionManager.ensureResponseCookieNormalization(response, request);
+    }
     const payload = readBody(body);
     if (!payload.username || !payload.password) throw authError.invalidAuthInput;
 
@@ -102,17 +140,24 @@ exports.controller = class AuthController extends BaseController {
       timings = this.sessionManager.getTokenTimings(issued);
     }
 
-    return {
-      status: 'ok',
-      authenticated: true,
-      username: payload.username,
-      samadUsername: payload.username,
-      roles,
-      ...timings,
-    };
+    return withBffBridgedCookies(
+      {
+        status: 'ok',
+        authenticated: true,
+        username: payload.username,
+        samadUsername: payload.username,
+        roles,
+        ...timings,
+      },
+      request,
+      response,
+    );
   }
 
   async refresh(body, session, request, response) {
+    if (this.sessionManager && typeof this.sessionManager.ensureResponseCookieNormalization === 'function') {
+      this.sessionManager.ensureResponseCookieNormalization(response, request);
+    }
     const payload = readBody(body);
     const rawRefresh = this.sessionManager.extractRefreshToken(request, payload);
     if (!rawRefresh) {
@@ -151,22 +196,32 @@ exports.controller = class AuthController extends BaseController {
     const activeRoles = Array.isArray(rotated.roles) && rotated.roles.length ? rotated.roles : ['visitor'];
     await this.sessionManager.setSession(session, { username: rotated.username }, activeRoles);
 
-    return {
-      status: 'ok',
-      authenticated: true,
-      username: rotated.username,
-      samadUsername: rotated.username,
-      roles: activeRoles,
-      ...this.sessionManager.getTokenTimings(rotated),
-    };
+    return withBffBridgedCookies(
+      {
+        status: 'ok',
+        authenticated: true,
+        username: rotated.username,
+        samadUsername: rotated.username,
+        roles: activeRoles,
+        ...this.sessionManager.getTokenTimings(rotated),
+      },
+      request,
+      response,
+    );
   }
 
   async logout(session, response, request) {
+    if (this.sessionManager && typeof this.sessionManager.ensureResponseCookieNormalization === 'function') {
+      this.sessionManager.ensureResponseCookieNormalization(response, request);
+    }
     await this.sessionManager.removeSession(session, response, request);
-    return { status: 'ok' };
+    return withBffBridgedCookies({ status: 'ok' }, request, response);
   }
 
-  async me(session, request) {
+  async me(session, request, response) {
+    if (this.sessionManager && typeof this.sessionManager.ensureResponseCookieNormalization === 'function') {
+      this.sessionManager.ensureResponseCookieNormalization(response, request);
+    }
     if (typeof this.sessionManager.getSessionStatus === 'function') {
       return this.sessionManager.getSessionStatus(session, request);
     }

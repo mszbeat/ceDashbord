@@ -249,292 +249,302 @@ export default function LoginPage() {
         </header>
 
         <main className="lgn-stage">
-          <section className="lgn-card" aria-labelledby="login-heading">
-            {checkingSession ? (
-              <div style={{ padding: '48px 0', textAlign: 'center', color: 'var(--login-muted)' }}>
-                در حال بررسی نشست کاربری…
-              </div>
-            ) : sessionState?.authenticated ? (
-              <div>
-                <div className="lgn-card-head">
-                  <span className="lgn-badge ok" style={{ marginBottom: 10 }}>
-                    ● نشست فعال
-                  </span>
-                  <h1 id="login-heading">خوش آمدید، {sessionState.username}</h1>
+          <div className="lgn-split">
+            <aside className="lgn-visual" aria-label="نمایه داشبورد تحلیل داده‌های سرویس اعتبارسنجی">
+              <img
+                src="/images/login-hero.png"
+                alt="داشبورد تحلیل داده‌های سرویس اعتبارسنجی — پردازش اطلاعات مالی پارت"
+                className="lgn-visual-img"
+              />
+            </aside>
+
+            <section className="lgn-form-pane" aria-labelledby="login-heading">
+              {checkingSession ? (
+                <div style={{ padding: '48px 0', textAlign: 'center', color: 'var(--login-muted)' }}>
+                  در حال بررسی نشست کاربری…
                 </div>
+              ) : sessionState?.authenticated ? (
+                <div>
+                  <div className="lgn-card-head">
+                    <span className="lgn-badge ok" style={{ marginBottom: 10 }}>
+                      ● نشست فعال
+                    </span>
+                    <h1 id="login-heading">خوش آمدید، {sessionState.username}</h1>
+                  </div>
 
-                {errorMsg && (
-                  <div className="lgn-alert error" role="alert">
-                    {errorMsg}
-                  </div>
-                )}
-                {infoMsg && (
-                  <div className="lgn-alert ok" role="status">
-                    {infoMsg}
-                  </div>
-                )}
-
-                <div className="lgn-session-box">
-                  <div className="lgn-session-row">
-                    <span style={{ color: 'var(--login-muted)' }}>نام کاربری</span>
-                    <strong dir="ltr">{sessionState.username}</strong>
-                  </div>
-                  <div className="lgn-session-row">
-                    <span style={{ color: 'var(--login-muted)' }}>سطح دسترسی</span>
-                    <span className="lgn-badge accent">{formatRolesFa(sessionState.roles)}</span>
-                  </div>
-                </div>
-
-                <div className="lgn-stack-actions">
-                  {nextPath !== '/' && (
-                    <a className="lgn-btn lgn-btn-primary" href={nextPath}>
-                      ادامه به صفحهٔ درخواستی ↗
-                    </a>
+                  {errorMsg && (
+                    <div className="lgn-alert error" role="alert">
+                      {errorMsg}
+                    </div>
                   )}
-                  <a className={`lgn-btn ${nextPath === '/' ? 'lgn-btn-primary' : ''}`} href="/">
-                    مشاهدهٔ داشبورد
-                  </a>
-                  <button
-                    type="button"
-                    className="lgn-btn lgn-btn-danger"
-                    onClick={handleLogout}
-                    disabled={loggingOut}
-                  >
-                    {loggingOut ? 'در حال خروج…' : 'خروج از حساب کاربری'}
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div>
-                <div className="lgn-tabs" role="tablist" aria-label="حالت احراز هویت">
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={mode === 'login'}
-                    className={`lgn-tab ${mode === 'login' ? 'active' : ''}`}
-                    onClick={() => switchMode('login')}
-                  >
-                    ورود به سامانه
-                  </button>
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={mode === 'register'}
-                    className={`lgn-tab ${mode === 'register' ? 'active' : ''}`}
-                    onClick={() => switchMode('register')}
-                  >
-                    ثبت‌نام کاربر جدید
-                  </button>
-                </div>
-
-                <div className="lgn-card-head">
-                  <h1 id="login-heading">
-                    {mode === 'login' ? 'ورود به سامانه' : 'ایجاد حساب کاربری'}
-                  </h1>
-                </div>
-
-                {expiredReason && !errorMsg && mode === 'login' && (
-                  <div className="lgn-alert warn" role="status">
-                    نشست شما منقضی شده است؛ لطفاً دوباره وارد شوید.
-                  </div>
-                )}
-                {infoMsg && (
-                  <div className="lgn-alert ok" role="status">
-                    {infoMsg}
-                  </div>
-                )}
-                {errorMsg && (
-                  <div className="lgn-alert error" role="alert">
-                    {errorMsg}
-                  </div>
-                )}
-
-                {mode === 'login' ? (
-                  <form onSubmit={handleLoginSubmit} noValidate>
-                    <div className="lgn-field">
-                      <label className="lgn-label" htmlFor="login-username">
-                        نام کاربری
-                      </label>
-                      <input
-                        id="login-username"
-                        name="username"
-                        type="text"
-                        className="lgn-input"
-                        value={username}
-                        onChange={(e) => setUsername(e.target.value)}
-                        placeholder="username"
-                        autoComplete="username"
-                        autoFocus
-                        required
-                      />
+                  {infoMsg && (
+                    <div className="lgn-alert ok" role="status">
+                      {infoMsg}
                     </div>
+                  )}
 
-                    <div className="lgn-field">
-                      <label className="lgn-label" htmlFor="login-password">
-                        رمز عبور
-                      </label>
-                      <div className="lgn-input-wrap">
-                        <input
-                          id="login-password"
-                          name="password"
-                          type={showPassword ? 'text' : 'password'}
-                          className="lgn-input has-toggle"
-                          value={password}
-                          onChange={(e) => setPassword(e.target.value)}
-                          placeholder="••••••••"
-                          autoComplete="current-password"
-                          required
-                        />
-                        <button
-                          type="button"
-                          className="lgn-toggle-pass"
-                          onClick={() => setShowPassword((prev) => !prev)}
-                          aria-label={showPassword ? 'مخفی کردن رمز عبور' : 'نمایش رمز عبور'}
-                        >
-                          {showPassword ? 'مخفی' : 'نمایش'}
-                        </button>
-                      </div>
+                  <div className="lgn-session-box">
+                    <div className="lgn-session-row">
+                      <span style={{ color: 'var(--login-muted)' }}>نام کاربری</span>
+                      <strong dir="ltr">{sessionState.username}</strong>
                     </div>
+                    <div className="lgn-session-row">
+                      <span style={{ color: 'var(--login-muted)' }}>سطح دسترسی</span>
+                      <span className="lgn-badge accent">{formatRolesFa(sessionState.roles)}</span>
+                    </div>
+                  </div>
 
-                    <label className="lgn-check-row">
-                      <input
-                        type="checkbox"
-                        checked={rememberMe}
-                        onChange={(e) => setRememberMe(e.target.checked)}
-                      />
-                      <span>مرا به خاطر بسپار</span>
-                    </label>
-
+                  <div className="lgn-stack-actions">
+                    {nextPath !== '/' && (
+                      <a className="lgn-btn lgn-btn-primary" href={nextPath}>
+                        ادامه به صفحهٔ درخواستی ↗
+                      </a>
+                    )}
+                    <a className={`lgn-btn ${nextPath === '/' ? 'lgn-btn-primary' : ''}`} href="/">
+                      مشاهدهٔ داشبورد
+                    </a>
                     <button
-                      type="submit"
-                      className="lgn-btn lgn-btn-primary lgn-submit"
-                      disabled={submitting}
+                      type="button"
+                      className="lgn-btn lgn-btn-danger"
+                      onClick={handleLogout}
+                      disabled={loggingOut}
                     >
-                      {submitting ? 'در حال بررسی…' : 'ورود'}
+                      {loggingOut ? 'در حال خروج…' : 'خروج از حساب کاربری'}
                     </button>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <div className="lgn-tabs" role="tablist" aria-label="حالت احراز هویت">
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={mode === 'login'}
+                      className={`lgn-tab ${mode === 'login' ? 'active' : ''}`}
+                      onClick={() => switchMode('login')}
+                    >
+                      ورود به سامانه
+                    </button>
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={mode === 'register'}
+                      className={`lgn-tab ${mode === 'register' ? 'active' : ''}`}
+                      onClick={() => switchMode('register')}
+                    >
+                      ثبت‌نام کاربر جدید
+                    </button>
+                  </div>
 
-                    <div className="lgn-foot-links">
-                      <span>حساب کاربری ندارید؟</span>
-                      <button
-                        type="button"
-                        className="lgn-inline-link"
-                        onClick={() => switchMode('register')}
-                      >
-                        ثبت‌نام کاربر جدید ←
-                      </button>
+                  <div className="lgn-card-head">
+                    <h1 id="login-heading">
+                      {mode === 'login' ? 'ورود به سامانه' : 'ایجاد حساب کاربری'}
+                    </h1>
+                  </div>
+
+                  {expiredReason && !errorMsg && mode === 'login' && (
+                    <div className="lgn-alert warn" role="status">
+                      نشست شما منقضی شده است؛ لطفاً دوباره وارد شوید.
                     </div>
-                  </form>
-                ) : (
-                  <>
-                    <form onSubmit={handleRegisterSubmit} noValidate>
+                  )}
+                  {infoMsg && (
+                    <div className="lgn-alert ok" role="status">
+                      {infoMsg}
+                    </div>
+                  )}
+                  {errorMsg && (
+                    <div className="lgn-alert error" role="alert">
+                      {errorMsg}
+                    </div>
+                  )}
+
+                  {mode === 'login' ? (
+                    <form onSubmit={handleLoginSubmit} noValidate>
                       <div className="lgn-field">
-                        <label className="lgn-label" htmlFor="reg-username">
+                        <label className="lgn-label" htmlFor="login-username">
                           نام کاربری
                         </label>
                         <input
-                          id="reg-username"
-                          name="regUsername"
+                          id="login-username"
+                          name="username"
                           type="text"
                           className="lgn-input"
-                          value={regUsername}
-                          onChange={(e) => setRegUsername(e.target.value)}
+                          value={username}
+                          onChange={(e) => setUsername(e.target.value)}
                           placeholder="username"
                           autoComplete="username"
-                          minLength={3}
+                          autoFocus
                           required
                         />
                       </div>
 
                       <div className="lgn-field">
-                        <label className="lgn-label" htmlFor="reg-password">
+                        <label className="lgn-label" htmlFor="login-password">
                           رمز عبور
                         </label>
                         <div className="lgn-input-wrap">
                           <input
-                            id="reg-password"
-                            name="regPassword"
-                            type={showRegPassword ? 'text' : 'password'}
+                            id="login-password"
+                            name="password"
+                            type={showPassword ? 'text' : 'password'}
                             className="lgn-input has-toggle"
-                            value={regPassword}
-                            onChange={(e) => setRegPassword(e.target.value)}
-                            placeholder="حداقل ۴ کاراکتر"
-                            autoComplete="new-password"
-                            minLength={4}
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            placeholder="••••••••"
+                            autoComplete="current-password"
                             required
                           />
                           <button
                             type="button"
                             className="lgn-toggle-pass"
-                            onClick={() => setShowRegPassword((prev) => !prev)}
-                            aria-label={showRegPassword ? 'مخفی کردن رمز عبور' : 'نمایش رمز عبور'}
+                            onClick={() => setShowPassword((prev) => !prev)}
+                            aria-label={showPassword ? 'مخفی کردن رمز عبور' : 'نمایش رمز عبور'}
                           >
-                            {showRegPassword ? 'مخفی' : 'نمایش'}
+                            {showPassword ? 'مخفی' : 'نمایش'}
                           </button>
                         </div>
                       </div>
 
-                      <div className="lgn-field">
-                        <label className="lgn-label" htmlFor="reg-confirm-password">
-                          تکرار رمز عبور
-                        </label>
-                        <input
-                          id="reg-confirm-password"
-                          name="regConfirmPassword"
-                          type={showRegPassword ? 'text' : 'password'}
-                          className="lgn-input"
-                          value={regConfirmPassword}
-                          onChange={(e) => setRegConfirmPassword(e.target.value)}
-                          placeholder="تکرار رمز عبور"
-                          autoComplete="new-password"
-                          minLength={4}
-                          required
-                        />
-                      </div>
-
-                      <label className="lgn-check-row" style={{ marginBottom: 10 }}>
+                      <label className="lgn-check-row">
                         <input
                           type="checkbox"
-                          checked={regAutoLogin}
-                          onChange={(e) => setRegAutoLogin(e.target.checked)}
+                          checked={rememberMe}
+                          onChange={(e) => setRememberMe(e.target.checked)}
                         />
-                        <span>ورود خودکار پس از ثبت‌نام</span>
+                        <span>مرا به خاطر بسپار</span>
                       </label>
-
-                      {regAutoLogin && (
-                        <label className="lgn-check-row">
-                          <input
-                            type="checkbox"
-                            checked={regRememberMe}
-                            onChange={(e) => setRegRememberMe(e.target.checked)}
-                          />
-                          <span>مرا به خاطر بسپار</span>
-                        </label>
-                      )}
 
                       <button
                         type="submit"
                         className="lgn-btn lgn-btn-primary lgn-submit"
-                        disabled={regSubmitting}
+                        disabled={submitting}
                       >
-                        {regSubmitting ? 'در حال ثبت‌نام…' : 'ثبت‌نام'}
+                        {submitting ? 'در حال بررسی…' : 'ورود'}
                       </button>
-                    </form>
 
-                    <div className="lgn-foot-links">
-                      <span>قبلاً ثبت‌نام کرده‌اید؟</span>
-                      <button
-                        type="button"
-                        className="lgn-inline-link"
-                        onClick={() => switchMode('login')}
-                      >
-                        بازگشت به ورود ←
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
-          </section>
+                      <div className="lgn-foot-links">
+                        <span>حساب کاربری ندارید؟</span>
+                        <button
+                          type="button"
+                          className="lgn-inline-link"
+                          onClick={() => switchMode('register')}
+                        >
+                          ثبت‌نام کاربر جدید ←
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    <>
+                      <form onSubmit={handleRegisterSubmit} noValidate>
+                        <div className="lgn-field">
+                          <label className="lgn-label" htmlFor="reg-username">
+                            نام کاربری
+                          </label>
+                          <input
+                            id="reg-username"
+                            name="regUsername"
+                            type="text"
+                            className="lgn-input"
+                            value={regUsername}
+                            onChange={(e) => setRegUsername(e.target.value)}
+                            placeholder="username"
+                            autoComplete="username"
+                            minLength={3}
+                            required
+                          />
+                        </div>
+
+                        <div className="lgn-field">
+                          <label className="lgn-label" htmlFor="reg-password">
+                            رمز عبور
+                          </label>
+                          <div className="lgn-input-wrap">
+                            <input
+                              id="reg-password"
+                              name="regPassword"
+                              type={showRegPassword ? 'text' : 'password'}
+                              className="lgn-input has-toggle"
+                              value={regPassword}
+                              onChange={(e) => setRegPassword(e.target.value)}
+                              placeholder="حداقل ۴ کاراکتر"
+                              autoComplete="new-password"
+                              minLength={4}
+                              required
+                            />
+                            <button
+                              type="button"
+                              className="lgn-toggle-pass"
+                              onClick={() => setShowRegPassword((prev) => !prev)}
+                              aria-label={showRegPassword ? 'مخفی کردن رمز عبور' : 'نمایش رمز عبور'}
+                            >
+                              {showRegPassword ? 'مخفی' : 'نمایش'}
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="lgn-field">
+                          <label className="lgn-label" htmlFor="reg-confirm-password">
+                            تکرار رمز عبور
+                          </label>
+                          <input
+                            id="reg-confirm-password"
+                            name="regConfirmPassword"
+                            type={showRegPassword ? 'text' : 'password'}
+                            className="lgn-input"
+                            value={regConfirmPassword}
+                            onChange={(e) => setRegConfirmPassword(e.target.value)}
+                            placeholder="تکرار رمز عبور"
+                            autoComplete="new-password"
+                            minLength={4}
+                            required
+                          />
+                        </div>
+
+                        <label className="lgn-check-row" style={{ marginBottom: 10 }}>
+                          <input
+                            type="checkbox"
+                            checked={regAutoLogin}
+                            onChange={(e) => setRegAutoLogin(e.target.checked)}
+                          />
+                          <span>ورود خودکار پس از ثبت‌نام</span>
+                        </label>
+
+                        {regAutoLogin && (
+                          <label className="lgn-check-row">
+                            <input
+                              type="checkbox"
+                              checked={regRememberMe}
+                              onChange={(e) => setRegRememberMe(e.target.checked)}
+                            />
+                            <span>مرا به خاطر بسپار</span>
+                          </label>
+                        )}
+
+                        <button
+                          type="submit"
+                          className="lgn-btn lgn-btn-primary lgn-submit"
+                          disabled={regSubmitting}
+                        >
+                          {regSubmitting ? 'در حال ثبت‌نام…' : 'ثبت‌نام'}
+                        </button>
+                      </form>
+
+                      <div className="lgn-foot-links">
+                        <span>قبلاً ثبت‌نام کرده‌اید؟</span>
+                        <button
+                          type="button"
+                          className="lgn-inline-link"
+                          onClick={() => switchMode('login')}
+                        >
+                          بازگشت به ورود ←
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </section>
+          </div>
         </main>
       </div>
     </div>

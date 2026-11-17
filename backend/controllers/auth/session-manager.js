@@ -2,6 +2,12 @@
 
 const { error: authError } = require('./config');
 const { RefreshTokenService, REFRESH_COOKIE_NAME } = require('./refresh-token.service');
+const {
+  kPendingRefreshCookies,
+  mergeAndNormalizeSetCookies,
+  normalizeSetCookieLine,
+  splitSetCookieHeaderValue,
+} = require('../../services/http/cookie-normalize');
 
 function readCookieHeader(request) {
   const candidates = [
@@ -72,9 +78,44 @@ function isSecureRequest(request) {
   return String(proto).toLowerCase().split(',')[0].trim() === 'https';
 }
 
-function appendSetCookies(response, newCookies) {
+function recordPendingCookies(request, response, cookies) {
+  const list = cookies.map(String).filter(Boolean);
+  if (request && typeof request === 'object') {
+    const prev = Array.isArray(request.__cePendingSetCookies) ? request.__cePendingSetCookies : [];
+    request.__cePendingSetCookies = mergeAndNormalizeSetCookies(prev, list);
+  }
+  if (response && typeof response === 'object') {
+    const prev = Array.isArray(response.__cePendingSetCookies) ? response.__cePendingSetCookies : [];
+    response.__cePendingSetCookies = mergeAndNormalizeSetCookies(prev, list);
+  }
+}
+
+function patchTargetSetHeader(target) {
+  if (!target || target.__ceSetCookiePatched || typeof target.setHeader !== 'function') return;
+  const origSetHeader = target.setHeader.bind(target);
+  target.__ceSetCookiePatched = true;
+  target.setHeader = function patchedResponseSetHeader(name, value) {
+    if (String(name).toLowerCase() === 'set-cookie') {
+      const merged = mergeAndNormalizeSetCookies(value, [], target[kPendingRefreshCookies]);
+      const refreshLines = merged.filter((c) => c.startsWith(`${REFRESH_COOKIE_NAME}=`));
+      if (refreshLines.length) {
+        target[kPendingRefreshCookies] = refreshLines;
+      }
+      return origSetHeader(name, merged);
+    }
+    return origSetHeader(name, value);
+  };
+}
+
+function appendSetCookies(response, newCookies, request) {
+  const normalizedNew = newCookies.map((c) => normalizeSetCookieLine(c));
+  recordPendingCookies(request, response, normalizedNew);
+
   const target = resolveResponseTarget(response);
   if (!target) return;
+
+  patchTargetSetHeader(target);
+
   let existingRaw;
   if (typeof target.getHeader === 'function') {
     existingRaw = target.getHeader('Set-Cookie');
@@ -82,12 +123,12 @@ function appendSetCookies(response, newCookies) {
       existingRaw = target.getHeader('set-cookie');
     }
   }
-  const existing = Array.isArray(existingRaw)
-    ? existingRaw.map(String)
-    : existingRaw
-      ? [String(existingRaw)]
-      : [];
-  const next = [...existing, ...newCookies.map(String)];
+  const existing = splitSetCookieHeaderValue(existingRaw);
+  const next = mergeAndNormalizeSetCookies(existing, normalizedNew, target[kPendingRefreshCookies]);
+  const refreshLines = next.filter((c) => c.startsWith(`${REFRESH_COOKIE_NAME}=`));
+  if (refreshLines.length) {
+    target[kPendingRefreshCookies] = refreshLines;
+  }
   target.setHeader('Set-Cookie', next);
 }
 
@@ -102,6 +143,22 @@ class SessionManager {
   constructor(options = {}) {
     this.refreshTokens = options.refreshTokenService || new RefreshTokenService(options);
   }
+
+  ensureResponseCookieNormalization = (response, request) => {
+    const target = resolveResponseTarget(response);
+    if (!target) return;
+    patchTargetSetHeader(target);
+    if (typeof target.getHeader === 'function') {
+      const existing = target.getHeader('Set-Cookie') ?? target.getHeader('set-cookie');
+      if (existing !== undefined) {
+        const normalized = mergeAndNormalizeSetCookies(existing, [], target[kPendingRefreshCookies]);
+        target.setHeader('Set-Cookie', normalized);
+      }
+    }
+    if (request && target[kPendingRefreshCookies]?.length) {
+      recordPendingCookies(request, response, target[kPendingRefreshCookies]);
+    }
+  };
 
   setSession = async (session, body, roles) => {
     const normalizedRoles = Array.isArray(roles) && roles.length ? roles : ['visitor'];
@@ -232,44 +289,45 @@ class SessionManager {
   }
 
   #setRefreshCookie(response, request, rawToken, ttlMs, expiresAt) {
-    if (!resolveResponseTarget(response)) return;
     const maxAgeSec = Math.max(1, Math.floor(Number(ttlMs) / 1000));
     const securePart = isSecureRequest(request) ? ' Secure;' : '';
     const domainEnv = process.env.COOKIE_DOMAIN ? ` Domain=${process.env.COOKIE_DOMAIN};` : '';
     const expiresPart = expiresAt ? ` Expires=${new Date(expiresAt).toUTCString()};` : '';
     const cookie = `${REFRESH_COOKIE_NAME}=${encodeURIComponent(rawToken)}; Path=/;${domainEnv} Max-Age=${maxAgeSec};${expiresPart} HttpOnly; SameSite=Lax;${securePart}`;
-    appendSetCookies(response, [cookie]);
+    appendSetCookies(response, [cookie], request);
   }
 
   clearRefreshCookie(response, request) {
-    if (!resolveResponseTarget(response)) return;
     const securePart = isSecureRequest(request) ? ' Secure;' : '';
     const cookies = [
       `${REFRESH_COOKIE_NAME}=; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Lax;${securePart}`,
+      `${REFRESH_COOKIE_NAME}=; Path=/api/auth; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Lax;${securePart}`,
     ];
     if (process.env.COOKIE_DOMAIN) {
       cookies.push(
         `${REFRESH_COOKIE_NAME}=; Path=/; Domain=${process.env.COOKIE_DOMAIN}; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Lax;${securePart}`,
       );
     }
-    appendSetCookies(response, cookies);
+    appendSetCookies(response, cookies, request);
   }
 
   #clearCookie(response, request) {
-    if (!resolveResponseTarget(response)) return;
     const domain = process.env.COOKIE_DOMAIN || 'localhost';
     const securePart = isSecureRequest(request) ? ' Secure;' : '';
     const cookies = [
       'token=; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly;',
+      'token=; Path=/api/auth; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly;',
       `token=; Path=/; Domain=${domain}; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly;`,
+      `token=; Path=/api/auth; Domain=${domain}; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly;`,
       `${REFRESH_COOKIE_NAME}=; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Lax;${securePart}`,
+      `${REFRESH_COOKIE_NAME}=; Path=/api/auth; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Lax;${securePart}`,
     ];
     if (process.env.COOKIE_DOMAIN) {
       cookies.push(
         `${REFRESH_COOKIE_NAME}=; Path=/; Domain=${process.env.COOKIE_DOMAIN}; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Lax;${securePart}`,
       );
     }
-    appendSetCookies(response, cookies);
+    appendSetCookies(response, cookies, request);
   }
 }
 

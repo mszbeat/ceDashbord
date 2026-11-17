@@ -32,6 +32,19 @@ export function resolveBackendOrigin(): string {
   return (process.env.BACKEND_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://127.0.0.1:3000').replace(/\/+$/, '');
 }
 
+export function isRequestHttps(incoming: Headers, requestUrl?: string): boolean {
+  if (process.env.COOKIE_SECURE === 'true') return true;
+  if (process.env.COOKIE_SECURE === 'false') return false;
+  const xfp = incoming.get('x-forwarded-proto');
+  if (xfp) {
+    return xfp.split(',')[0].trim().toLowerCase() === 'https';
+  }
+  if (requestUrl && requestUrl.toLowerCase().startsWith('https://')) {
+    return true;
+  }
+  return false;
+}
+
 export function extractSetCookies(headers: Headers): string[] {
   const getSetCookie = (headers as any).getSetCookie;
   if (typeof getSetCookie === 'function') {
@@ -42,6 +55,184 @@ export function extractSetCookies(headers: Headers): string[] {
   if (!combined) return [];
   // تقسیم امن بدون شکستن تاریخ Expires=Thu, 01 Jan 1970...
   return combined.split(/,\s*(?=[A-Za-z0-9_!#$%&'*+.^`|~-]+=)/).filter(Boolean);
+}
+
+interface ParsedSetCookie {
+  name: string;
+  value: string;
+  attrs: string[];
+  path: string;
+  domain: string;
+  maxAge: string;
+  isDeletion: boolean;
+}
+
+function parseSetCookieLine(line: string): ParsedSetCookie | null {
+  const parts = String(line || '')
+    .split(';')
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (!parts.length) return null;
+  const first = parts[0];
+  const eq = first.indexOf('=');
+  if (eq <= 0) return null;
+  const name = first.slice(0, eq).trim();
+  const value = first.slice(eq + 1).trim();
+  const attrs = parts.slice(1);
+  let path = '';
+  let domain = '';
+  let maxAge = '';
+  for (const attr of attrs) {
+    const lower = attr.toLowerCase();
+    if (lower.startsWith('path=')) path = attr.slice(5).trim();
+    else if (lower.startsWith('domain=')) domain = attr.slice(7).trim();
+    else if (lower.startsWith('max-age=')) maxAge = attr.slice(8).trim();
+  }
+  return {
+    name,
+    value,
+    attrs,
+    path,
+    domain,
+    maxAge,
+    isDeletion: value === '' || maxAge === '0',
+  };
+}
+
+export function buildExpiredCookieLines(
+  name: string,
+  options: { includeApiAuthPath?: boolean; includeLocalhostDomain?: boolean; isHttps?: boolean } = {},
+): string[] {
+  const secure = options.isHttps ? ' Secure;' : '';
+  const sameSite = name === 'ce_refresh' ? ' SameSite=Lax;' : '';
+  const paths = options.includeApiAuthPath ? ['/', '/api/auth'] : ['/'];
+  const configuredDomain = process.env.COOKIE_DOMAIN ? process.env.COOKIE_DOMAIN.trim() : '';
+  const out: string[] = [];
+  for (const p of paths) {
+    out.push(`${name}=; Path=${p}; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly;${sameSite}${secure}`);
+    if (options.includeLocalhostDomain) {
+      out.push(
+        `${name}=; Path=${p}; Domain=localhost; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly;${sameSite}${secure}`,
+      );
+    }
+    if (configuredDomain && configuredDomain.toLowerCase() !== 'localhost') {
+      out.push(
+        `${name}=; Path=${p}; Domain=${configuredDomain}; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly;${sameSite}${secure}`,
+      );
+    }
+  }
+  return out;
+}
+
+export function normalizeBrowserSetCookies(
+  cookies: string[],
+  options: {
+    allowToken?: boolean;
+    scrubApiAuthPath?: boolean;
+    isHttps?: boolean;
+  } = {},
+): string[] {
+  const allowToken = options.allowToken !== false;
+  const scrubApiAuthPath = options.scrubApiAuthPath !== false;
+  const isHttps = Boolean(options.isHttps);
+  const configuredDomain = process.env.COOKIE_DOMAIN ? process.env.COOKIE_DOMAIN.trim() : '';
+  const out: string[] = [];
+  let touchedToken = false;
+
+  for (const raw of cookies) {
+    const parsed = parseSetCookieLine(raw);
+    if (!parsed) {
+      if (raw && raw.trim()) out.push(raw.trim());
+      continue;
+    }
+
+    const { name, value, attrs, isDeletion } = parsed;
+    if (name !== 'token' && name !== 'ce_refresh') {
+      out.push(raw.trim());
+      continue;
+    }
+
+    if (isDeletion) {
+      if (name === 'token') touchedToken = true;
+      // هر دو مسیر / و /api/auth را جهت پاک‌سازی کوکی‌های قدیمی حفظ می‌کنیم
+      const kept = attrs.filter((a) => !/^secure$/i.test(a) || isHttps);
+      const line = [`${name}=${value}`, ...kept].join('; ');
+      out.push(line);
+      continue;
+    }
+
+    if (name === 'token' && !allowToken) {
+      // هرگز توکن بازدیدکنندهٔ احرازنشده به مرورگر فرستاده نشود
+      continue;
+    }
+
+    if (name === 'token') {
+      touchedToken = true;
+    }
+
+    const keptAttrs: string[] = [];
+    let hasHttpOnly = false;
+    let hasSameSite = false;
+    let hasSecure = false;
+
+    for (const attr of attrs) {
+      const lower = attr.toLowerCase();
+      if (lower.startsWith('path=')) continue;
+      if (lower.startsWith('domain=')) {
+        const domVal = attr.slice(7).trim();
+        if (configuredDomain && domVal.toLowerCase() === configuredDomain.toLowerCase()) {
+          keptAttrs.push(`Domain=${configuredDomain}`);
+        }
+        continue;
+      }
+      if (lower === 'httponly') {
+        hasHttpOnly = true;
+        keptAttrs.push('HttpOnly');
+        continue;
+      }
+      if (lower.startsWith('samesite=')) {
+        hasSameSite = true;
+        keptAttrs.push(attr);
+        continue;
+      }
+      if (lower === 'secure') {
+        if (isHttps) {
+          hasSecure = true;
+          keptAttrs.push('Secure');
+        }
+        continue;
+      }
+      keptAttrs.push(attr);
+    }
+
+    const rebuilt = [`${name}=${value}`, 'Path=/'];
+    if (configuredDomain && !keptAttrs.some((a) => a.toLowerCase().startsWith('domain='))) {
+      rebuilt.push(`Domain=${configuredDomain}`);
+    }
+    rebuilt.push(...keptAttrs);
+    if (!hasHttpOnly) rebuilt.push('HttpOnly');
+    if (!hasSameSite) rebuilt.push('SameSite=Lax');
+    if (isHttps && !hasSecure && process.env.COOKIE_SECURE === 'true') {
+      rebuilt.push('Secure');
+    }
+
+    out.push(rebuilt.join('; '));
+  }
+
+  const scrubList: string[] = [];
+  if (scrubApiAuthPath && touchedToken) {
+    scrubList.push(
+      `token=; Path=/api/auth; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly`,
+      `token=; Path=/api/auth; Domain=localhost; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly`,
+    );
+    if (configuredDomain.toLowerCase() !== 'localhost') {
+      scrubList.push(
+        `token=; Path=/; Domain=localhost; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly`,
+      );
+    }
+  }
+
+  return dedupeSetCookies([...scrubList, ...out]);
 }
 
 export function parseCookieHeader(rawCookieHeader: string): Map<string, string> {
@@ -81,18 +272,19 @@ export function stripCookie(rawCookieHeader: string, name: string): string {
 
 export function mergeCookieHeader(rawCookieHeader: string, setCookieHeaders: string[]): string {
   const jar = parseCookieHeader(rawCookieHeader);
+  const configuredDomain = (process.env.COOKIE_DOMAIN || '').trim().toLowerCase();
   for (const sc of setCookieHeaders) {
-    const firstSemi = sc.indexOf(';');
-    const pair = firstSemi >= 0 ? sc.slice(0, firstSemi) : sc;
-    const eq = pair.indexOf('=');
-    if (eq <= 0) continue;
-    const name = pair.slice(0, eq).trim();
-    const val = pair.slice(eq + 1).trim();
-    const maxAgeZero = /;\s*max-age=0\b/i.test(sc);
-    if (!val || maxAgeZero) {
-      jar.delete(name);
+    const parsed = parseSetCookieLine(sc);
+    if (!parsed) continue;
+    if (parsed.isDeletion) {
+      // پاک‌کردن کوکی قدیمی با مسیر `/api/auth` یا دامنهٔ قدیمی نباید کوکی سالم روی `/` را حذف کند
+      const samePath = !parsed.path || parsed.path === '/';
+      const sameScopeDomain = !parsed.domain || (configuredDomain && parsed.domain.toLowerCase() === configuredDomain);
+      if (samePath && sameScopeDomain) {
+        jar.delete(parsed.name);
+      }
     } else {
-      jar.set(name, val);
+      jar.set(parsed.name, parsed.value);
     }
   }
   return serializeCookieMap(jar);
@@ -100,23 +292,24 @@ export function mergeCookieHeader(rawCookieHeader: string, setCookieHeaders: str
 
 export function dedupeSetCookies(cookies: string[]): string[] {
   const order: string[] = [];
-  const latestByName = new Map<string, string>();
+  const latestByKey = new Map<string, string>();
   for (const sc of cookies) {
-    const firstSemi = sc.indexOf(';');
-    const pair = firstSemi >= 0 ? sc.slice(0, firstSemi) : sc;
-    const eq = pair.indexOf('=');
-    const name = eq > 0 ? pair.slice(0, eq).trim() : sc;
-    if (!latestByName.has(name)) {
-      order.push(name);
+    const parsed = parseSetCookieLine(sc);
+    const key = parsed
+      ? `${parsed.name.toLowerCase()}@${parsed.path || '/'}@${parsed.domain.toLowerCase()}`
+      : sc;
+    if (!latestByKey.has(key)) {
+      order.push(key);
     }
-    latestByName.set(name, sc);
+    latestByKey.set(key, sc);
   }
-  return order.map((k) => latestByName.get(k)!).filter(Boolean);
+  return order.map((k) => latestByKey.get(k)!).filter(Boolean);
 }
 
 export function buildForwardClientHeaders(incoming: Headers, cookieHeader: string): Record<string, string> {
   const headers: Record<string, string> = {
     accept: 'application/json',
+    'x-ce-bff': '1',
   };
   if (cookieHeader) {
     headers.cookie = cookieHeader;
@@ -168,6 +361,81 @@ function safeParseJson(text: string): any {
   }
 }
 
+function extractBridgedCookiesFromJson(rawText: string, rawJson: any): {
+  cleanText: string;
+  cleanJson: any;
+  bridgedCookies: string[];
+} {
+  if (!rawJson || typeof rawJson !== 'object') {
+    return { cleanText: rawText, cleanJson: rawJson, bridgedCookies: [] };
+  }
+
+  const bridged: string[] = [];
+  let mutated = false;
+  const clone = Array.isArray(rawJson) ? [...rawJson] : { ...rawJson };
+
+  const pullList = (obj: any) => {
+    if (obj && typeof obj === 'object' && Array.isArray(obj._ceSetCookies)) {
+      for (const item of obj._ceSetCookies) {
+        if (typeof item === 'string' && item.trim()) bridged.push(item.trim());
+      }
+      delete obj._ceSetCookies;
+      mutated = true;
+    }
+  };
+
+  pullList(clone);
+  if (clone.data && typeof clone.data === 'object') {
+    clone.data = { ...clone.data };
+    pullList(clone.data);
+  } else if (typeof clone.data === 'string') {
+    const inner = safeParseJson(clone.data);
+    if (inner && typeof inner === 'object' && Array.isArray(inner._ceSetCookies)) {
+      pullList(inner);
+      clone.data = JSON.stringify(inner);
+      mutated = true;
+    }
+  }
+
+  return {
+    cleanText: mutated ? JSON.stringify(clone) : rawText,
+    cleanJson: clone,
+    bridgedCookies: bridged,
+  };
+}
+
+function collectResponseCookies(res: Response, rawText: string, rawJson: any): {
+  setCookies: string[];
+  cleanText: string;
+  cleanJson: any;
+} {
+  const httpCookies = extractSetCookies(res.headers);
+  const { cleanText, cleanJson, bridgedCookies } = extractBridgedCookiesFromJson(rawText, rawJson);
+  const setCookies = dedupeSetCookies([...httpCookies, ...bridgedCookies]);
+  return { setCookies, cleanText, cleanJson };
+}
+
+function ensureActiveTokenSetCookie(
+  setCookies: string[],
+  liveCookieHeader: string,
+  isHttps: boolean,
+): string[] {
+  const hasActiveToken = setCookies.some((c) => {
+    const parsed = parseSetCookieLine(c);
+    return parsed?.name === 'token' && !parsed.isDeletion;
+  });
+  if (hasActiveToken) return setCookies;
+
+  const tokenVal = getCookieValue(liveCookieHeader, 'token');
+  if (!tokenVal) return setCookies;
+
+  const securePart = isHttps && process.env.COOKIE_SECURE === 'true' ? '; Secure' : '';
+  return [
+    `token=${tokenVal}; Path=/; HttpOnly; SameSite=Lax${securePart}`,
+    ...setCookies,
+  ];
+}
+
 export interface SessionProbeResult {
   ok: boolean;
   status: number;
@@ -176,6 +444,7 @@ export interface SessionProbeResult {
   data: AuthPayload | null;
   cookieHeader: string;
   setCookies: string[];
+  browserSetCookies: string[];
 }
 
 export async function probeSessionWithCleanRecovery(
@@ -184,30 +453,34 @@ export async function probeSessionWithCleanRecovery(
   incomingCookieHeader: string,
   options: { forceCleanTokenIfUnauthed?: boolean } = {},
 ): Promise<SessionProbeResult> {
+  const isHttps = isRequestHttps(incomingHeaders);
+
   const callMe = async (cookieVal: string) => {
     const res = await fetch(new URL('/api/auth/me', backendUrl).toString(), {
       method: 'GET',
       cache: 'no-store',
       headers: buildForwardClientHeaders(incomingHeaders, cookieVal),
     });
-    const setCookies = extractSetCookies(res.headers);
     const rawText = await res.text().catch(() => '');
     const rawJson = safeParseJson(rawText);
-    const data = unwrapAuthPayload(rawJson);
-    return { res, setCookies, rawText, rawJson, data };
+    const { setCookies, cleanText, cleanJson } = collectResponseCookies(res, rawText, rawJson);
+    const data = unwrapAuthPayload(cleanJson);
+    return { res, setCookies, rawText: cleanText, rawJson: cleanJson, data };
   };
 
   let first = await callMe(incomingCookieHeader);
   let mergedCookies = mergeCookieHeader(incomingCookieHeader, first.setCookies);
   let collectedSetCookies = [...first.setCookies];
 
-  const issuedNewToken = first.setCookies.some((c) => /^token=[^;]+/.test(c.trim()) && !/max-age=0/i.test(c));
+  const issuedNewToken = first.setCookies.some((c) => {
+    const parsed = parseSetCookieLine(c);
+    return parsed?.name === 'token' && !parsed.isDeletion;
+  });
   const shouldRecoverToken =
     hasCookie(incomingCookieHeader, 'token') &&
     (!first.res.ok || (options.forceCleanTokenIfUnauthed && first.data?.authenticated !== true && !issuedNewToken));
 
   if (shouldRecoverToken) {
-    // توکن قبلی در Redis منقضی یا نامعتبر است؛ بدون توکن قبلی و با حفظ ce_refresh سشن بازدیدکننده تازه می‌گیریم.
     const cleanCookie = stripCookie(incomingCookieHeader, 'token');
     const cleanAttempt = await callMe(cleanCookie);
     if (cleanAttempt.res.ok || cleanAttempt.setCookies.length) {
@@ -215,6 +488,31 @@ export async function probeSessionWithCleanRecovery(
       collectedSetCookies = dedupeSetCookies([...collectedSetCookies, ...cleanAttempt.setCookies]);
       first = cleanAttempt;
     }
+  }
+
+  const isAuthenticated = first.res.ok && first.data?.authenticated === true;
+  let browserSetCookies: string[];
+  if (isAuthenticated) {
+    browserSetCookies = normalizeBrowserSetCookies(collectedSetCookies, {
+      allowToken: true,
+      scrubApiAuthPath: true,
+      isHttps,
+    });
+  } else {
+    // به کاربر احرازنشده هرگز کوکی visitor جدید ارسال نمی‌شود؛ فقط در صورت نیاز کوکی‌های خراب قبلی پاک می‌شوند.
+    const cleanup =
+      hasCookie(incomingCookieHeader, 'token') && first.data?.canRefresh !== true
+        ? buildExpiredCookieLines('token', {
+            includeApiAuthPath: true,
+            includeLocalhostDomain: true,
+            isHttps,
+          })
+        : [];
+    browserSetCookies = normalizeBrowserSetCookies([...collectedSetCookies, ...cleanup], {
+      allowToken: false,
+      scrubApiAuthPath: true,
+      isHttps,
+    });
   }
 
   return {
@@ -225,6 +523,7 @@ export async function probeSessionWithCleanRecovery(
     data: first.data,
     cookieHeader: mergedCookies,
     setCookies: dedupeSetCookies(collectedSetCookies),
+    browserSetCookies,
   };
 }
 
@@ -244,8 +543,13 @@ async function executeRefreshWithRecovery(
   incomingCookieHeader: string,
   existingProbe?: SessionProbeResult,
 ): Promise<RefreshOutcome> {
-  // ۱. ابتدا وضعیت فعلی + گرفتن توکن بازدیدکنندهٔ معتبر (در صورت منقضی بودن token قبلی)
-  const probe = existingProbe ?? await probeSessionWithCleanRecovery(backendUrl, incomingHeaders, incomingCookieHeader);
+  const isHttps = isRequestHttps(incomingHeaders);
+
+  const probe =
+    existingProbe ??
+    (await probeSessionWithCleanRecovery(backendUrl, incomingHeaders, incomingCookieHeader, {
+      forceCleanTokenIfUnauthed: true,
+    }));
 
   if (probe.ok && probe.data?.authenticated === true) {
     return {
@@ -255,7 +559,10 @@ async function executeRefreshWithRecovery(
       rawJson: probe.rawJson,
       data: probe.data,
       cookieHeader: probe.cookieHeader,
-      setCookies: probe.setCookies,
+      setCookies: normalizeBrowserSetCookies(
+        ensureActiveTokenSetCookie(probe.setCookies, probe.cookieHeader, isHttps),
+        { allowToken: true, scrubApiAuthPath: true, isHttps },
+      ),
     };
   }
 
@@ -272,7 +579,11 @@ async function executeRefreshWithRecovery(
       rawJson: null,
       data: { authenticated: false, canRefresh: false },
       cookieHeader: probe.cookieHeader,
-      setCookies: probe.setCookies,
+      setCookies: normalizeBrowserSetCookies(probe.setCookies, {
+        allowToken: false,
+        scrubApiAuthPath: true,
+        isHttps,
+      }),
     };
   }
 
@@ -286,18 +597,17 @@ async function executeRefreshWithRecovery(
       },
       body: '{}',
     });
-    const setCookies = extractSetCookies(res.headers);
     const rawText = await res.text().catch(() => '');
     const rawJson = safeParseJson(rawText);
-    const data = unwrapAuthPayload(rawJson);
-    return { res, setCookies, rawText, rawJson, data };
+    const { setCookies, cleanText, cleanJson } = collectResponseCookies(res, rawText, rawJson);
+    const data = unwrapAuthPayload(cleanJson);
+    return { res, setCookies, rawText: cleanText, rawJson: cleanJson, data };
   };
 
   let attempt = await postRefresh(probe.cookieHeader);
   let allSetCookies = dedupeSetCookies([...probe.setCookies, ...attempt.setCookies]);
   let liveCookies = mergeCookieHeader(probe.cookieHeader, attempt.setCookies);
 
-  // ۲. اگر partSessionManager خودِ کوکی token را رد کرد (مثلاً به دلیل انقضا/ناهماهنگی میان‌درخواست)، با یک token بازدیدکنندهٔ تازه تلاش می‌کنیم
   if (!attempt.res.ok) {
     const metaCode = extractPartMetaCode(attempt.rawJson);
     if (!REFRESH_TOKEN_ERROR_CODES.has(metaCode) && hasCookie(probe.cookieHeader, 'token')) {
@@ -312,14 +622,37 @@ async function executeRefreshWithRecovery(
     }
   }
 
+  const ok = attempt.res.ok && attempt.data?.authenticated === true;
+  let finalCookies: string[];
+  if (ok) {
+    const ensured = ensureActiveTokenSetCookie(allSetCookies, liveCookies, isHttps);
+    finalCookies = normalizeBrowserSetCookies(ensured, {
+      allowToken: true,
+      scrubApiAuthPath: true,
+      isHttps,
+    });
+  } else {
+    finalCookies = normalizeBrowserSetCookies(
+      [
+        ...allSetCookies,
+        ...buildExpiredCookieLines('token', {
+          includeApiAuthPath: true,
+          includeLocalhostDomain: true,
+          isHttps,
+        }),
+      ],
+      { allowToken: false, scrubApiAuthPath: true, isHttps },
+    );
+  }
+
   return {
-    ok: attempt.res.ok && attempt.data?.authenticated === true,
+    ok,
     status: attempt.res.status,
     rawText: attempt.rawText,
     rawJson: attempt.rawJson,
     data: attempt.data,
     cookieHeader: liveCookies,
-    setCookies: allSetCookies,
+    setCookies: finalCookies,
   };
 }
 
@@ -371,6 +704,8 @@ export async function performLoginWithRecovery(
   incomingCookieHeader: string,
   bodyText: string,
 ): Promise<RefreshOutcome> {
+  const isHttps = isRequestHttps(incomingHeaders);
+
   const postLogin = async (cookieVal: string) => {
     const res = await fetch(new URL('/api/auth/login', backendUrl).toString(), {
       method: 'POST',
@@ -381,14 +716,13 @@ export async function performLoginWithRecovery(
       },
       body: bodyText,
     });
-    const setCookies = extractSetCookies(res.headers);
     const rawText = await res.text().catch(() => '');
     const rawJson = safeParseJson(rawText);
-    const data = unwrapAuthPayload(rawJson);
-    return { res, setCookies, rawText, rawJson, data };
+    const { setCookies, cleanText, cleanJson } = collectResponseCookies(res, rawText, rawJson);
+    const data = unwrapAuthPayload(cleanJson);
+    return { res, setCookies, rawText: cleanText, rawJson: cleanJson, data };
   };
 
-  // گرفتن نشست بازدیدکنندهٔ سالم پیش از login (در صورت منقضی بودن token قبلی، جایگزین می‌شود)
   let probe = await probeSessionWithCleanRecovery(backendUrl, incomingHeaders, incomingCookieHeader, {
     forceCleanTokenIfUnauthed: true,
   });
@@ -410,7 +744,6 @@ export async function performLoginWithRecovery(
     }
   }
 
-  // اطمینان از فعال شدن سشن روی token جاری (تثبیت ورود اول بدون نیاز به تلاش دوم کاربر)
   if (attempt.res.ok) {
     const verify = await probeSessionWithCleanRecovery(backendUrl, incomingHeaders, liveCookies);
     allSetCookies = dedupeSetCookies([...allSetCookies, ...verify.setCookies]);
@@ -430,6 +763,18 @@ export async function performLoginWithRecovery(
     }
   }
 
+  const finalCookies = attempt.res.ok
+    ? normalizeBrowserSetCookies(ensureActiveTokenSetCookie(allSetCookies, liveCookies, isHttps), {
+        allowToken: true,
+        scrubApiAuthPath: true,
+        isHttps,
+      })
+    : normalizeBrowserSetCookies(allSetCookies, {
+        allowToken: false,
+        scrubApiAuthPath: true,
+        isHttps,
+      });
+
   return {
     ok: attempt.res.ok,
     status: attempt.res.status,
@@ -437,7 +782,7 @@ export async function performLoginWithRecovery(
     rawJson: attempt.rawJson,
     data: attempt.data,
     cookieHeader: liveCookies,
-    setCookies: allSetCookies,
+    setCookies: finalCookies,
   };
 }
 
@@ -447,19 +792,23 @@ export async function performRegisterWithRecovery(
   incomingCookieHeader: string,
   bodyText: string,
 ): Promise<RefreshOutcome> {
-  // حذف نقش احتمالی ارسالی در BFF — ثبت‌نام همواره visitor است
+  const isHttps = isRequestHttps(incomingHeaders);
   let sanitizedBody = bodyText;
+  let shouldAutoLogin = true;
   try {
     const parsed = JSON.parse(bodyText);
     if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
       delete parsed.role;
+      shouldAutoLogin = parsed.autoLogin !== false;
       sanitizedBody = JSON.stringify(parsed);
     }
   } catch {
     // pass through
   }
 
-  const probe = await probeSessionWithCleanRecovery(backendUrl, incomingHeaders, incomingCookieHeader);
+  const probe = await probeSessionWithCleanRecovery(backendUrl, incomingHeaders, incomingCookieHeader, {
+    forceCleanTokenIfUnauthed: shouldAutoLogin,
+  });
   const res = await fetch(new URL('/api/auth/register', backendUrl).toString(), {
     method: 'POST',
     cache: 'no-store',
@@ -469,20 +818,27 @@ export async function performRegisterWithRecovery(
     },
     body: sanitizedBody,
   });
-  const setCookies = extractSetCookies(res.headers);
   const rawText = await res.text().catch(() => '');
   const rawJson = safeParseJson(rawText);
-  const data = unwrapAuthPayload(rawJson);
+  const { setCookies, cleanText, cleanJson } = collectResponseCookies(res, rawText, rawJson);
+  const data = unwrapAuthPayload(cleanJson);
   const allSetCookies = dedupeSetCookies([...probe.setCookies, ...setCookies]);
+  const liveCookies = mergeCookieHeader(probe.cookieHeader, setCookies);
+
+  const allowIssuedToken = res.ok && shouldAutoLogin;
+  const finalCookies = normalizeBrowserSetCookies(
+    allowIssuedToken ? ensureActiveTokenSetCookie(allSetCookies, liveCookies, isHttps) : allSetCookies,
+    { allowToken: allowIssuedToken, scrubApiAuthPath: true, isHttps },
+  );
 
   return {
     ok: res.ok,
     status: res.status,
-    rawText,
-    rawJson,
+    rawText: cleanText,
+    rawJson: cleanJson,
     data,
-    cookieHeader: mergeCookieHeader(probe.cookieHeader, setCookies),
-    setCookies: allSetCookies,
+    cookieHeader: liveCookies,
+    setCookies: finalCookies,
   };
 }
 
@@ -491,6 +847,7 @@ export async function performLogoutWithRecovery(
   incomingHeaders: Headers,
   incomingCookieHeader: string,
 ): Promise<RefreshOutcome> {
+  const isHttps = isRequestHttps(incomingHeaders);
   const res = await fetch(new URL('/api/auth/logout', backendUrl).toString(), {
     method: 'POST',
     cache: 'no-store',
@@ -500,16 +857,34 @@ export async function performLogoutWithRecovery(
     },
     body: '{}',
   });
-  const setCookies = extractSetCookies(res.headers);
   const rawText = await res.text().catch(() => '');
   const rawJson = safeParseJson(rawText);
+  const { setCookies, cleanText, cleanJson } = collectResponseCookies(res, rawText, rawJson);
+  const merged = dedupeSetCookies([
+    ...setCookies,
+    ...buildExpiredCookieLines('token', {
+      includeApiAuthPath: true,
+      includeLocalhostDomain: true,
+      isHttps,
+    }),
+    ...buildExpiredCookieLines('ce_refresh', {
+      includeApiAuthPath: true,
+      includeLocalhostDomain: true,
+      isHttps,
+    }),
+  ]);
+
   return {
     ok: res.ok,
     status: res.status,
-    rawText,
-    rawJson,
-    data: unwrapAuthPayload(rawJson),
-    cookieHeader: mergeCookieHeader(incomingCookieHeader, setCookies),
-    setCookies,
+    rawText: cleanText,
+    rawJson: cleanJson,
+    data: unwrapAuthPayload(cleanJson),
+    cookieHeader: mergeCookieHeader(incomingCookieHeader, merged),
+    setCookies: normalizeBrowserSetCookies(merged, {
+      allowToken: false,
+      scrubApiAuthPath: true,
+      isHttps,
+    }),
   };
 }

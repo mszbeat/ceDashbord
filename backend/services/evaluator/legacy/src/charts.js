@@ -1,6 +1,6 @@
 'use strict';
 const {h,nf,pct}=require('./common');
-const COLORS=['var(--green)','var(--chart-purple)','var(--amber)','#3d95cf','#e16d80','#5aabaa','#b58c57','#b374ce'];
+const COLORS=['var(--accent)','var(--chart-purple)','var(--amber)','#0ea5e9','#e11d48','#08876d','#b4690e','#6366f1'];
 const colorAt=i=>COLORS[i]||`hsl(${(i*137.508)%360},55%,50%)`;
 const frame=(kind,title,note,body)=>`<figure class="insight-chart ${kind}"><figcaption><span class="chart-kicker">نمای تصویری</span><h3>${h(title)}</h3><p>${h(note)}</p></figcaption>${body}</figure>`;
 function tipAttrs(key,title,rows,total,unit='گزارش',footnote='',direction='auto',subtitle=''){

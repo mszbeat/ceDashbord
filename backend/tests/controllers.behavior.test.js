@@ -248,6 +248,74 @@ test('auth-controller: register/login/refresh/logout/me/role/removeUser با ت�
   assert.equal(authCalls.some(([kind, payload]) => kind === 'remove' && payload.username === 'ali'), true);
 });
 
+test('auth-controller BFF bridge: فقط هنگام ارسال هدر x-ce-bff: 1 کوکی‌های ce_refresh در _ceSetCookies ارسال می‌شوند', async () => {
+  const { controller: AuthController } = require(path.join(ROOT, 'controllers', 'auth', 'main.js'));
+  const authConfig = require(path.join(ROOT, 'controllers', 'auth', 'config.js'));
+  const SessionManager = require(path.join(ROOT, 'controllers', 'auth', 'session-manager'));
+
+  const sessionStore = { samadUsername: 'visitor', roles: ['visitor'] };
+  const session = {
+    set(values, cb) { Object.assign(sessionStore, values); cb(null, sessionStore); },
+    get(keys, cb) { const out = {}; for (const k of keys) out[k] = sessionStore[k]; cb(null, out); },
+    remove(cb) { sessionStore.samadUsername = 'visitor'; sessionStore.roles = ['visitor']; cb(null, ['OK']); },
+  };
+  const authService = {
+    async addUser() { return { ok: true }; },
+    async authenticate() { return { ok: true }; },
+  };
+  const samadService = {
+    async addUser() { return () => {}; },
+    async getRole() { return ['admin']; },
+  };
+  const sessionManager = new SessionManager({ useMemoryOnly: true });
+  const controller = new AuthController({}, {}, authConfig, authService, sessionManager, samadService);
+
+  // بدون x-ce-bff: 1 نباید _ceSetCookies برگردد
+  const normalOut = await invoke(controller, authConfig, 'login', {
+    data: { username: 'u1', password: 'p1', rememberMe: true },
+    session,
+  }).promise;
+  assert.equal('_ceSetCookies' in normalOut, false);
+
+  // با x-ce-bff: 1 روی register/login/refresh/logout کوکی‌های Path=/ در _ceSetCookies پل می‌شوند
+  const regBff = await invoke(controller, authConfig, 'register', {
+    data: { username: 'u2', password: 'p2', rememberMe: true },
+    session: {
+      set(v, cb) { cb(null, v); },
+      get(k, cb) { cb(null, { samadUsername: 'visitor', roles: ['visitor'] }); },
+      remove(cb) { cb(null, ['OK']); },
+    },
+    headers: { 'x-ce-bff': '1' },
+  }).promise;
+  assert.equal(Array.isArray(regBff._ceSetCookies), true);
+  assert.equal(regBff._ceSetCookies.some((c) => c.startsWith('ce_refresh=') && c.includes('Path=/')), true);
+
+  const loginBff = await invoke(controller, authConfig, 'login', {
+    data: { username: 'u1', password: 'p1', rememberMe: true },
+    session,
+    headers: { 'x-ce-bff': '1' },
+  }).promise;
+  assert.equal(Array.isArray(loginBff._ceSetCookies), true);
+  const bffRefreshLine = loginBff._ceSetCookies.find((c) => c.startsWith('ce_refresh='));
+  assert.ok(bffRefreshLine && bffRefreshLine.includes('Path=/'));
+  const rt1 = decodeURIComponent(bffRefreshLine.split(';')[0].slice('ce_refresh='.length));
+
+  const refreshBff = await invoke(controller, authConfig, 'refresh', {
+    session,
+    headers: { 'x-ce-bff': '1', cookie: `ce_refresh=${encodeURIComponent(rt1)}` },
+  }).promise;
+  assert.equal(Array.isArray(refreshBff._ceSetCookies), true);
+  assert.equal(refreshBff._ceSetCookies.some((c) => c.startsWith('ce_refresh=') && c.includes('Path=/')), true);
+
+  const logoutBff = await invoke(controller, authConfig, 'logout', {
+    session,
+    headers: { 'x-ce-bff': '1', cookie: `ce_refresh=${encodeURIComponent(rt1)}` },
+  }).promise;
+  assert.equal(Array.isArray(logoutBff._ceSetCookies), true);
+  assert.equal(logoutBff._ceSetCookies.some((c) => c.startsWith('token=;') && c.includes('Path=/') && c.includes('Max-Age=0')), true);
+  assert.equal(logoutBff._ceSetCookies.some((c) => c.startsWith('ce_refresh=;') && c.includes('Path=/') && c.includes('Max-Age=0')), true);
+});
+
 test('summary-controller: هر ۸ هندلر با پارامترهای تزریقی پاسخ درست می‌دهد', async () => {
   const { controller: SummaryController } = require(path.join(ROOT, 'controllers', 'summaryController', 'main.js'));
   const config = require(path.join(ROOT, 'controllers', 'summaryController', 'config.js'));

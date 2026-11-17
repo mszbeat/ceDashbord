@@ -1,8 +1,11 @@
 import { NextRequest } from 'next/server';
 import {
+  buildExpiredCookieLines,
   dedupeSetCookies,
   extractSetCookies,
   hasCookie,
+  isRequestHttps,
+  normalizeBrowserSetCookies,
   performRefreshWithRecovery,
   resolveBackendOrigin,
 } from '@/lib/server-auth';
@@ -14,10 +17,10 @@ const escapeHtml = (value: string) => value.replace(/&/g, '&amp;').replace(/</g,
   .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
 const errorPage = (title: string, detail: string, status?: number) => `<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title><style>
-  body{margin:0;background:#f3f6f8;color:#1a2935;font:14px/1.9 Tahoma,"Segoe UI",sans-serif;padding:40px}
-  main{max-width:640px;margin:auto;background:#fff;border:1px solid #dfe7e9;border-radius:16px;padding:28px 32px;box-shadow:0 14px 36px rgba(20,52,64,.06)}
-  h1{color:#af711e;font-size:20px;margin:0 0 12px}p{color:#627484}pre{direction:ltr;text-align:left;background:#f7f9fa;border:1px solid #ebeff0;border-radius:8px;padding:8px 12px;white-space:pre-wrap;word-break:break-word;font-size:12px}
-  a{color:#087b72;font-weight:700}
+  body{margin:0;background:#eef4fb;color:#0c1e3e;font:14px/1.9 Tahoma,"Segoe UI",sans-serif;padding:40px}
+  main{max-width:640px;margin:auto;background:#fff;border:1px solid #d4e2f4;border-radius:16px;padding:28px 32px;box-shadow:0 14px 36px rgba(0,28,88,.08)}
+  h1{color:#002878;font-size:20px;margin:0 0 12px}p{color:#4e6788}pre{direction:ltr;text-align:left;background:#f4f8fe;border:1px solid #e7effa;border-radius:8px;padding:8px 12px;white-space:pre-wrap;word-break:break-word;font-size:12px}
+  a{color:#0b5ed7;font-weight:700}
 </style></head><body><main><h1>${escapeHtml(title)}</h1><p>${escapeHtml(detail)}</p>
 <pre>${escapeHtml(status ? `HTTP ${status}\n` : '')}${escapeHtml(detail)}</pre>
 <p><a href="/login">ورود به سامانه</a> · <a href="/">تلاش دوباره</a></p>
@@ -100,11 +103,13 @@ function buildReportHeaders(request: NextRequest, cookieValue: string): Record<s
  */
 export async function GET(request: NextRequest) {
   const cookieHeader = request.headers.get('cookie') || '';
-  if (!cookieHeader.trim()) {
+  const hasAuthTokens = hasCookie(cookieHeader, 'token') || hasCookie(cookieHeader, 'ce_refresh');
+  if (!hasAuthTokens) {
     return redirectToLoginResponse(request);
   }
 
   const backendUrl = resolveBackendOrigin();
+  const isHttps = isRequestHttps(request.headers, request.url);
   const target = new URL('/api/report', backendUrl);
   request.nextUrl.searchParams.forEach((value, key) => {
     if (value !== '') target.searchParams.set(key, value);
@@ -138,13 +143,28 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const finalCookies = dedupeSetCookies(collectedCookies);
-    for (const c of finalCookies) {
-      headers.append('set-cookie', c);
+    if (response.status === 401) {
+      const clearAll = normalizeBrowserSetCookies(
+        [
+          ...collectedCookies,
+          ...buildExpiredCookieLines('token', {
+            includeApiAuthPath: true,
+            includeLocalhostDomain: true,
+            isHttps,
+          }),
+        ],
+        { allowToken: false, scrubApiAuthPath: true, isHttps },
+      );
+      return redirectToLoginResponse(request, 'expired', clearAll);
     }
 
-    if (response.status === 401) {
-      return redirectToLoginResponse(request, 'expired', finalCookies);
+    const finalCookies = normalizeBrowserSetCookies(collectedCookies, {
+      allowToken: response.ok,
+      scrubApiAuthPath: true,
+      isHttps,
+    });
+    for (const c of finalCookies) {
+      headers.append('set-cookie', c);
     }
 
     const body = await response.text();

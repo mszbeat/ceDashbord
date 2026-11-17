@@ -30,7 +30,7 @@ const CONTROL_CSS = `
 .ce-user-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:8px;background:var(--surface-2);color:var(--ink);padding:4px 10px;min-height:32px;font-weight:700}
 .ce-role-badge{display:inline-flex;align-items:center;border-radius:999px;background:var(--accent-soft);color:var(--accent-strong);padding:1px 8px;font-size:11px;font-weight:700}
 .ce-live-bar .ce-logout-btn{background:var(--surface-2);color:var(--ink);border-color:var(--line)}
-.ce-live-bar .ce-logout-btn:hover{background:#c23636;border-color:#c23636;color:#fff}
+.ce-live-bar .ce-logout-btn:hover{background:#c9313d;border-color:#c9313d;color:#fff}
 .ce-live-status{margin-inline-start:auto;color:var(--subtle);font-size:11px}
 @media (max-width:720px){.ce-live-status{width:100%;margin-inline-start:0}.ce-auth-slot{width:100%;justify-content:flex-end}}
 </style>`;

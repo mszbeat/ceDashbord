@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
+  buildExpiredCookieLines,
   dedupeSetCookies,
   hasCookie,
+  isRequestHttps,
   performRefreshWithRecovery,
   probeSessionWithCleanRecovery,
   resolveBackendOrigin,
@@ -39,6 +41,8 @@ function redirectToLogin(request: NextRequest, reason?: string, extraSetCookies?
   return res;
 }
 
+const PUBLIC_ASSET_RE = /\.(?:png|jpe?g|svg|webp|gif|ico|css|js|woff2?|map)$/i;
+
 /**
  * محافظ سراسری مسیرهای فرانت‌اند:
  * کاربر تنها با داشتن سشن معتبر یا رفرش‌توکن معتبر اجازهٔ مشاهدهٔ صفحات را دارد؛
@@ -52,29 +56,33 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/login/') ||
     pathname.startsWith('/api/') ||
     pathname.startsWith('/_next/') ||
-    pathname === '/favicon.ico'
+    pathname.startsWith('/images/') ||
+    pathname === '/favicon.ico' ||
+    PUBLIC_ASSET_RE.test(pathname)
   ) {
     return NextResponse.next();
   }
 
   const cookieHeader = request.headers.get('cookie') || '';
-  if (!cookieHeader.trim()) {
+  const hasAuthTokens = hasCookie(cookieHeader, 'token') || hasCookie(cookieHeader, 'ce_refresh');
+  if (!hasAuthTokens) {
     return redirectToLogin(request);
   }
 
   const backendUrl = resolveBackendOrigin();
+  const isHttps = isRequestHttps(request.headers, request.url);
 
   try {
     const probe = await probeSessionWithCleanRecovery(backendUrl, request.headers, cookieHeader);
 
     if (probe.ok && probe.data?.authenticated === true) {
-      if (probe.setCookies.length) {
+      if (probe.browserSetCookies.length) {
         const requestHeaders = new Headers(request.headers);
         requestHeaders.set('cookie', probe.cookieHeader);
         const nextRes = NextResponse.next({
           request: { headers: requestHeaders },
         });
-        for (const c of probe.setCookies) {
+        for (const c of probe.browserSetCookies) {
           nextRes.headers.append('set-cookie', c);
         }
         return nextRes;
@@ -99,14 +107,33 @@ export async function middleware(request: NextRequest) {
         }
         return nextRes;
       }
-      return redirectToLogin(request, 'expired', refreshed.setCookies);
+      const clearAll = dedupeSetCookies([
+        ...refreshed.setCookies,
+        ...buildExpiredCookieLines('token', {
+          includeApiAuthPath: true,
+          includeLocalhostDomain: true,
+          isHttps,
+        }),
+        ...buildExpiredCookieLines('ce_refresh', {
+          includeApiAuthPath: true,
+          includeLocalhostDomain: true,
+          isHttps,
+        }),
+      ]);
+      return redirectToLogin(request, 'expired', clearAll);
     }
 
-    const hadAuthCookie = hasCookie(cookieHeader, 'token') || hasCookie(cookieHeader, 'ce_refresh');
-    return redirectToLogin(request, hadAuthCookie ? 'expired' : undefined, probe.setCookies);
+    const clearStale = dedupeSetCookies([
+      ...probe.browserSetCookies,
+      ...buildExpiredCookieLines('token', {
+        includeApiAuthPath: true,
+        includeLocalhostDomain: true,
+        isHttps,
+      }),
+    ]);
+    return redirectToLogin(request, 'expired', clearStale);
   } catch {
-    const hasAuthCookie = hasCookie(cookieHeader, 'token') || hasCookie(cookieHeader, 'ce_refresh');
-    if (!hasAuthCookie || pathname !== '/') {
+    if (!hasAuthTokens || pathname !== '/') {
       return redirectToLogin(request);
     }
     return NextResponse.next();
@@ -114,5 +141,7 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!api/|_next/static|_next/image|favicon\\.ico|login(?:/|$)).*)'],
+  matcher: [
+    '/((?!api/|_next/static|_next/image|images/|favicon\\.ico|login(?:/|$)|.*\\.(?:png|jpe?g|svg|webp|gif|ico|css|js|woff2?|map)$).*)',
+  ],
 };

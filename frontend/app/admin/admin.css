@@ -1,55 +1,65 @@
 :root {
   color-scheme: light;
-  --adm-bg: #f3f6f8;
+  --adm-bg: #eef4fb;
   --adm-surface: #ffffff;
-  --adm-surface-2: #f7f9fa;
-  --adm-ink: #1a2935;
-  --adm-muted: #627484;
-  --adm-subtle: #81909c;
-  --adm-line: #dfe7e9;
-  --adm-line-light: #ebeff0;
-  --adm-accent: #087b72;
-  --adm-accent-strong: #00685e;
-  --adm-accent-soft: #e6f5f0;
-  --adm-navy: #0b2233;
-  --adm-green: #0d936d;
-  --adm-green-soft: #e7f8ef;
-  --adm-amber: #af711e;
-  --adm-amber-soft: #fff5e3;
-  --adm-red: #c23636;
-  --adm-red-soft: #fdecec;
-  --adm-shadow: 0 14px 36px rgba(20, 52, 64, 0.06), 0 2px 8px rgba(20, 52, 64, 0.03);
+  --adm-surface-2: #f4f8fe;
+  --adm-ink: #0c1e3e;
+  --adm-muted: #4e6788;
+  --adm-subtle: #6f87a6;
+  --adm-line: #d4e2f4;
+  --adm-line-light: #e7effa;
+  --adm-accent: #0b5ed7;
+  --adm-accent-strong: #003f9e;
+  --adm-accent-soft: #e6f1ff;
+  --adm-navy: #001c58;
+  --adm-green: #08876d;
+  --adm-green-soft: #e6f7f2;
+  --adm-amber: #b4690e;
+  --adm-amber-soft: #fff4e2;
+  --adm-red: #c9313d;
+  --adm-red-soft: #fdecee;
+  --adm-shadow: 0 14px 36px rgba(0, 28, 88, 0.08), 0 2px 8px rgba(0, 28, 88, 0.04);
 }
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --adm-bg: #0c171d;
-  --adm-surface: #14242c;
-  --adm-surface-2: #1b2c35;
-  --adm-ink: #e8f1f0;
-  --adm-muted: #a5b8b9;
-  --adm-subtle: #8ba2a6;
-  --adm-line: #32434a;
-  --adm-line-light: #2a3a40;
-  --adm-accent: #63d7bc;
-  --adm-accent-strong: #7deccf;
-  --adm-accent-soft: #123d36;
-  --adm-navy: #102736;
-  --adm-green: #60d3aa;
-  --adm-green-soft: #133d33;
-  --adm-amber: #f5c375;
-  --adm-amber-soft: #4d3822;
-  --adm-red: #ff8a8a;
-  --adm-red-soft: #441c20;
-  --adm-shadow: 0 16px 42px rgba(0, 0, 0, 0.24);
+  --adm-bg: #040d21;
+  --adm-surface: #0a1938;
+  --adm-surface-2: #10244d;
+  --adm-ink: #eaf2ff;
+  --adm-muted: #9db4d8;
+  --adm-subtle: #7d96be;
+  --adm-line: #1e3766;
+  --adm-line-light: #172c54;
+  --adm-accent: #38bdf8;
+  --adm-accent-strong: #67e8f9;
+  --adm-accent-soft: #0d2f5e;
+  --adm-navy: #0b2866;
+  --adm-green: #34d399;
+  --adm-green-soft: #0d3832;
+  --adm-amber: #fbbf24;
+  --adm-amber-soft: #3f2d14;
+  --adm-red: #fb7185;
+  --adm-red-soft: #3e1723;
+  --adm-shadow: 0 18px 44px rgba(0, 6, 24, 0.42);
 }
 
 .adm-root {
   min-height: 100vh;
-  background: var(--adm-bg);
+  background:
+    radial-gradient(ellipse at 86% 0%, rgba(14, 165, 233, 0.1), transparent 36rem),
+    radial-gradient(ellipse at 10% 42%, rgba(0, 48, 135, 0.06), transparent 30rem),
+    var(--adm-bg);
   color: var(--adm-ink);
   font: 400 14px/1.85 Tahoma, "Segoe UI", sans-serif;
   padding-bottom: 56px;
+}
+
+:root[data-theme="dark"] .adm-root {
+  background:
+    radial-gradient(ellipse at 86% 0%, rgba(34, 211, 238, 0.11), transparent 36rem),
+    radial-gradient(ellipse at 10% 42%, rgba(11, 94, 215, 0.14), transparent 30rem),
+    var(--adm-bg);
 }
 
 .adm-root *,
@@ -90,13 +100,13 @@
   width: 44px;
   height: 44px;
   border-radius: 14px;
-  background: var(--adm-navy);
-  color: #defbf1;
+  background: linear-gradient(145deg, #003ea4, #00144c);
+  color: #7ee8fa;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   font-size: 20px;
-  box-shadow: 0 6px 16px rgba(7, 45, 52, 0.15);
+  box-shadow: 0 8px 20px rgba(0, 32, 102, 0.24), inset 0 1px 0 rgba(126, 232, 250, 0.2);
 }
 
 .adm-brand strong {
@@ -168,19 +178,21 @@
 }
 
 .adm-btn-primary {
-  background: var(--adm-accent);
-  border-color: var(--adm-accent);
+  background: linear-gradient(135deg, #003ea4 0%, #0b5ed7 58%, #0ea5e9 100%);
+  border-color: transparent;
   color: #ffffff;
+  box-shadow: 0 6px 18px rgba(11, 94, 215, 0.24);
 }
 
 .adm-btn-primary:hover:not(:disabled) {
-  background: var(--adm-accent-strong);
-  border-color: var(--adm-accent-strong);
+  background: linear-gradient(135deg, #003185 0%, #084eb8 58%, #0284c7 100%);
+  border-color: transparent;
   color: #ffffff;
 }
 
 :root[data-theme="dark"] .adm-btn-primary {
-  color: #07221d;
+  background: linear-gradient(135deg, #0b5ed7 0%, #0ea5e9 60%, #22d3ee 100%);
+  color: #021433;
 }
 
 .adm-btn-danger {
@@ -195,7 +207,7 @@
 }
 
 :root[data-theme="dark"] .adm-btn-danger {
-  color: #220707;
+  color: #26050d;
 }
 
 .adm-btn-sm {
@@ -206,17 +218,21 @@
 }
 
 .adm-hero {
-  background: radial-gradient(circle at 52% -35%, rgba(61, 186, 158, 0.3), transparent 48%),
-    linear-gradient(116deg, #0b2934 0%, #104d57 56%, #0b2d45 100%);
-  color: #f5fefa;
-  border-radius: 20px;
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 72% 10%, rgba(34, 211, 238, 0.24), transparent 36%),
+    radial-gradient(circle at 8% 108%, rgba(14, 116, 255, 0.3), transparent 46%),
+    linear-gradient(118deg, #001042 0%, #002776 56%, #0041ac 100%);
+  color: #f3f9ff;
+  border-radius: 22px;
   padding: 26px 34px;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 20px;
-  box-shadow: var(--adm-shadow);
+  box-shadow: 0 18px 44px rgba(0, 20, 72, 0.22), inset 0 1px 0 rgba(126, 232, 250, 0.16);
   margin-bottom: 20px;
 }
 
@@ -228,7 +244,7 @@
 
 .adm-hero p {
   margin: 0;
-  color: #d3eae6;
+  color: #cfe3ff;
   font-size: 13px;
   max-width: 680px;
 }
@@ -240,8 +256,8 @@
 }
 
 .adm-clock-chip {
-  background: rgba(244, 255, 254, 0.09);
-  border: 1px solid rgba(195, 238, 224, 0.24);
+  background: rgba(235, 246, 255, 0.09);
+  border: 1px solid rgba(126, 232, 250, 0.28);
   border-radius: 12px;
   padding: 8px 14px;
   min-width: 126px;
@@ -250,7 +266,7 @@
 .adm-clock-chip span {
   display: block;
   font-size: 11px;
-  color: #b7ded7;
+  color: #9ed8ff;
 }
 
 .adm-clock-chip strong {
@@ -630,7 +646,7 @@
 
 .adm-progress-bar {
   height: 100%;
-  background: var(--adm-accent);
+  background: linear-gradient(90deg, var(--adm-accent), #22d3ee);
   transition: width 0.3s ease;
 }
 
@@ -657,8 +673,8 @@
   position: fixed;
   inset: 0;
   z-index: 1000;
-  background: rgba(8, 22, 30, 0.62);
-  backdrop-filter: blur(3px);
+  background: rgba(2, 12, 36, 0.68);
+  backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -674,7 +690,7 @@
   max-height: 90vh;
   overflow-y: auto;
   padding: 24px 26px;
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.28);
+  box-shadow: 0 24px 64px rgba(0, 12, 42, 0.36);
 }
 
 .adm-modal h3 {

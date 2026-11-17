@@ -10,6 +10,7 @@ const { config } = require('./services/config');
 
 const SessionManager = require('./controllers/auth/session-manager');
 const SamadService = require('./controllers/auth/samad.service');
+const { installHttpCookiePathNormalizer } = require('./services/http/cookie-normalize');
 
 function cleanEnv(value) {
   if (typeof value !== 'string') return undefined;
@@ -101,6 +102,7 @@ class Program {
   }
 
   async run() {
+    installHttpCookiePathNormalizer();
     await this.#core.init();
     await this.#loadDependencies();
     await this.#loadControllers();

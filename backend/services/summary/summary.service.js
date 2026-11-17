@@ -757,10 +757,10 @@ class SummaryService {
     const rawMsg = error?.data?.message?.fa ?? error?.message ?? error;
     const message = escape(String(rawMsg).slice(0, 600));
     return `<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>گزارش در دسترس نیست</title><style>
-      body{margin:0;background:#f3f6f8;color:#1a2935;font:14px/1.9 Tahoma,"Segoe UI",sans-serif;padding:40px}
-      main{max-width:640px;margin:auto;background:#fff;border:1px solid #dfe7e9;border-radius:16px;padding:28px 32px;box-shadow:0 14px 36px rgba(20,52,64,.06)}
-      h1{color:#af711e;font-size:20px;margin:0 0 12px}p{color:#627484}pre{direction:ltr;text-align:left;background:#f7f9fa;border:1px solid #ebeff0;border-radius:8px;padding:8px 12px;white-space:pre-wrap;word-break:break-word;font-size:12px}
-      a{color:#087b72;font-weight:700}.badge{display:inline-block;background:#fff5e3;color:#af711e;border-radius:8px;padding:2px 10px;font-size:12px}
+      body{margin:0;background:#eef4fb;color:#0c1e3e;font:14px/1.9 Tahoma,"Segoe UI",sans-serif;padding:40px}
+      main{max-width:640px;margin:auto;background:#fff;border:1px solid #d4e2f4;border-radius:16px;padding:28px 32px;box-shadow:0 14px 36px rgba(0,28,88,.08)}
+      h1{color:#002878;font-size:20px;margin:0 0 12px}p{color:#4e6788}pre{direction:ltr;text-align:left;background:#f4f8fe;border:1px solid #e7effa;border-radius:8px;padding:8px 12px;white-space:pre-wrap;word-break:break-word;font-size:12px}
+      a{color:#0b5ed7;font-weight:700}.badge{display:inline-block;background:#fff4e2;color:#b4690e;border-radius:8px;padding:2px 10px;font-size:12px}
     </style></head><body><main><span class="badge">HTTP 503</span><h1>در حال حاضر امکان ساخت گزارش وجود ندارد</h1>
       <p>لطفاً چند لحظه دیگر دوباره تلاش کنید.</p>
       <pre>${message}</pre>

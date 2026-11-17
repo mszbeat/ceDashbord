@@ -444,13 +444,13 @@
       const homeHref = escAttr(`${origin}/`);
       win.document.open();
       win.document.write(`<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><title>${isForbidden ? 'عدم دسترسی به جزئیات گزارش' : 'خطا در نمایش گزارش'}</title><style>
-        body{margin:0;background:#f3f6f8;color:#1a2935;font:14px/1.9 Tahoma,"Segoe UI",sans-serif;padding:44px}
-        main{max-width:640px;margin:auto;background:#fff;border:1px solid #dfe7e9;border-radius:16px;padding:28px 32px;box-shadow:0 14px 36px rgba(20,52,64,.06)}
-        .badge{display:inline-block;background:${isForbidden ? '#fdecec' : '#fff5e3'};color:${isForbidden ? '#b42318' : '#af711e'};border-radius:8px;padding:3px 10px;font-size:12px;font-weight:700}
-        h1{font-size:20px;margin:12px 0 8px;color:#1a2935}p{color:#526575;margin:0 0 18px}
+        body{margin:0;background:#eef4fb;color:#0c1e3e;font:14px/1.9 Tahoma,"Segoe UI",sans-serif;padding:44px}
+        main{max-width:640px;margin:auto;background:#fff;border:1px solid #d4e2f4;border-radius:16px;padding:28px 32px;box-shadow:0 14px 36px rgba(0,28,88,.08)}
+        .badge{display:inline-block;background:${isForbidden ? '#fdecec' : '#fff4e2'};color:${isForbidden ? '#c9313d' : '#b4690e'};border-radius:8px;padding:3px 10px;font-size:12px;font-weight:700}
+        h1{font-size:20px;margin:12px 0 8px;color:#0c1e3e}p{color:#4e6788;margin:0 0 18px}
         .actions{display:flex;gap:10px;flex-wrap:wrap}
-        .btn{display:inline-flex;align-items:center;border-radius:10px;padding:8px 16px;text-decoration:none;font-weight:700;font-size:13px;border:1px solid #dfe7e9;color:#1a2935;background:#f7f9fa}
-        .btn-primary{background:#087b72;border-color:#087b72;color:#fff}
+        .btn{display:inline-flex;align-items:center;border-radius:10px;padding:8px 16px;text-decoration:none;font-weight:700;font-size:13px;border:1px solid #d4e2f4;color:#0c1e3e;background:#f4f8fe}
+        .btn-primary{background:#0b5ed7;border-color:#0b5ed7;color:#fff}
       </style></head><body><main><span class="badge">${isForbidden ? 'HTTP 403 · محدودیت سطح دسترسی' : 'خطا'}</span><h1>${isForbidden ? 'عدم مجوز مشاهدهٔ جزئیات گزارش' : 'مشاهدهٔ جزئیات ممکن نیست'}</h1><p id="err-msg"></p>${isForbidden ? `<div class="actions"><a class="btn btn-primary" href="${loginHref}">ورود با حساب مجاز</a><a class="btn" href="${homeHref}">بازگشت به داشبورد</a></div>` : ''}</main></body></html>`);
       win.document.close();
       const msgEl = win.document.getElementById('err-msg');

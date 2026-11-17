@@ -321,3 +321,42 @@ test('AuthenticationService: init + add/authenticate/remove با هدرهای ر
     (err) => err.statusCode === 503 && err.meta.code === 'authBaseServiceError',
   );
 });
+
+test('cookie-normalize: اجبار Path=/ روی کوکی token، حفظ ce_refresh هنگام بازنویسی Set-Cookie و پل _ceSetCookies برای BFF', async () => {
+  const {
+    normalizeSetCookieLine,
+    mergeAndNormalizeSetCookies,
+  } = require(path.join(ROOT, 'services', 'http', 'cookie-normalize'));
+
+  // کوکی بدون Path (باگ partSessionManager که در مرورگر روی /api/auth قفل می‌شد)
+  const rawPartToken = 'token=e9ddbb2f86a21794898113105; Domain=localhost; HttpOnly';
+  const normalizedToken = normalizeSetCookieLine(rawPartToken);
+  assert.match(normalizedToken, /^token=e9ddbb2f86a21794898113105;/);
+  assert.match(normalizedToken, /Path=\//);
+  assert.doesNotMatch(normalizedToken, /Domain=localhost/i);
+  assert.match(normalizedToken, /SameSite=Lax/);
+
+  // کوکی پاک‌سازی مسیر قدیمی /api/auth باید مسیر خودش را برای پاک‌کردن در مرورگر حفظ کند
+  const clearOldPath = 'token=; Path=/api/auth; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly;';
+  assert.equal(normalizeSetCookieLine(clearOldPath), clearOldPath);
+
+  // ادغام و جلوگیری از پاک شدن ce_refresh هنگام ست‌شدن بعدی token=...
+  const merged = mergeAndNormalizeSetCookies(
+    ['token=tok1; Path=/api/auth; HttpOnly'],
+    [],
+    ['ce_refresh=ref1; Path=/; Max-Age=3600; HttpOnly; SameSite=Lax'],
+  );
+  assert.equal(merged.some((c) => c.startsWith('token=tok1;') && c.includes('Path=/')), true);
+  assert.equal(merged.some((c) => c.startsWith('ce_refresh=ref1;') && c.includes('Path=/')), true);
+
+  // اطمینان از هم‌سویی setHeader در SessionManager حتی اگر فریم‌ورک پس از لاگین Set-Cookie را بازنویسی کند
+  const SessionManager = require(path.join(ROOT, 'controllers', 'auth', 'session-manager'));
+  const manager = new SessionManager({ useMemoryOnly: true });
+  const mockRes = createMockResponse();
+  await manager.issueRefreshToken({ username: 'sadegh', roles: ['admin'] }, mockRes, {});
+  mockRes.setHeader('Set-Cookie', ['token=after_login_tok; Domain=localhost; HttpOnly']);
+  const finalHeaders = mockRes.headers['set-cookie'];
+  assert.equal(finalHeaders.some((c) => c.startsWith('token=after_login_tok;') && c.includes('Path=/') && !c.includes('/api/auth')), true);
+  assert.equal(finalHeaders.some((c) => c.startsWith('ce_refresh=')), true);
+});
+
