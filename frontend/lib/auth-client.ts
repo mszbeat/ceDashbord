@@ -457,9 +457,14 @@ export async function authFetch(input: string, init?: RequestInit): Promise<Resp
 
   const res = await doFetch();
   if (res.status === 401 || res.status === 403) {
-    const refreshed = await refreshSession();
-    if (refreshed && refreshed.authenticated) {
-      return doFetch();
+    const before = await getAuthStatus().catch(() => null);
+    // اگر سشن واقعاً احرازنشده است با رفرش تمدید و فقط در آن صورت درخواست تکرار شود؛
+    // اگر کاربر لاگین است و خطای سطح دسترسی (۴۰۱/۴۰۳ نقش) گرفته، دوباره تکرار نشود.
+    if (!before?.authenticated) {
+      const refreshed = await refreshSession();
+      if (refreshed && refreshed.authenticated) {
+        return doFetch();
+      }
     }
   }
   return res;
