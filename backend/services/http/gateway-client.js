@@ -39,35 +39,117 @@ async function readResponseBody(response) {
   return null;
 }
 
+/**
+ * وضعیت هر توکن گیت‌وی: مقدار + زمان انقضا + زمان آخرین تمدید.
+ * توکن‌ها پیش از هر درخواست داده بررسی می‌شوند: اگر منقضی یا در آستانهٔ انقضا باشند،
+ * ابتدا از گیت‌وی توکن تازه گرفته می‌شود و بعد درخواست دریافت داده زده می‌شود.
+ */
 class GatewayTokenManager {
   constructor() {
     this.tokenByBank = new Map();
     this.inFlightByBank = new Map();
+    // اکسپایر اعلام‌شده در پاسخ گیت‌وی برای هر بانک (میلی‌ثانیه)
+    this.declaredTtlByBank = new Map();
   }
 
+  now() {
+    return Date.now();
+  }
+
+  #resolveLifetimeMs(bankKey) {
+    const settings = resolveBankGatewayConfig(bankKey);
+    const declared = Number(this.declaredTtlByBank.get(bankKey));
+    const configured = Number(settings.ttlMs);
+    const lifetime = Number.isFinite(declared) && declared > 0 ? declared : configured;
+    const skew = Number(settings.refreshSkewMs);
+    const safeSkew = Number.isFinite(skew) && skew >= 0 ? skew : 15000;
+    return { lifetimeMs: lifetime > 0 ? lifetime : 60000, skewMs: safeSkew };
+  }
+
+  /**
+   * توکن آمادهٔ استفاده را برمی‌گرداند. اگر توکن کش‌شده منقضی شده یا در پنجرهٔ
+   * پیش‌تمدید (refreshSkew) باشد، **قبل از** درخواست داده، توکن تازه از گیت‌وی گرفته می‌شود.
+   */
+  async getToken(bankKey) {
+    const entry = this.tokenByBank.get(bankKey);
+    const now = this.now();
+    if (entry && entry.token) {
+      const { skewMs } = this.#resolveLifetimeMs(bankKey);
+      const renewAt = entry.expiresAt - skewMs;
+      if (now < renewAt) return entry.token;
+      getActionLogger().info({
+        category: 'gateway',
+        action: now >= entry.expiresAt ? 'gateway.token.expired' : 'gateway.token.preemptive_renew',
+        statusCode: 200,
+        message: `Renewing gateway token for ${bankKey} before the upstream data request`,
+        meta: {
+          bankKey,
+          expiresAt: new Date(entry.expiresAt).toISOString(),
+          skewMs,
+        },
+      });
+      return this.refreshToken(bankKey, '');
+    }
+    const settings = resolveBankGatewayConfig(bankKey);
+    if (settings.staticToken) return settings.staticToken;
+    return this.refreshToken(bankKey, '');
+  }
+
+  /** برای سازگاری با فراخوان‌های قبلی؛ فقط توکن معتبر فعلی یا توکن استاتیک. */
   getActiveTokenSync(bankKey) {
-    const cached = this.tokenByBank.get(bankKey);
-    if (cached) return cached;
+    const entry = this.tokenByBank.get(bankKey);
+    if (entry && entry.token && entry.expiresAt > this.now()) return entry.token;
     const settings = resolveBankGatewayConfig(bankKey);
     return settings.staticToken || '';
   }
 
-  async getToken(bankKey) {
-    const active = this.getActiveTokenSync(bankKey);
-    if (active) return active;
-    return this.refreshToken(bankKey, '');
+  /** وضعیت توکن برای گزارش/دیاگنوستیک. */
+  tokenStatus(bankKey) {
+    const entry = this.tokenByBank.get(bankKey);
+    if (!entry) {
+      return {
+        bank: bankKey,
+        hasToken: Boolean(resolveBankGatewayConfig(bankKey).staticToken),
+        expiresAt: null,
+        issuedAt: null,
+        ttlMs: null,
+        source: resolveBankGatewayConfig(bankKey).staticToken ? 'static' : 'none',
+      };
+    }
+    return {
+      bank: bankKey,
+      hasToken: entry.expiresAt > this.now(),
+      expiresAt: new Date(entry.expiresAt).toISOString(),
+      issuedAt: new Date(entry.issuedAt).toISOString(),
+      ttlMs: entry.expiresAt - entry.issuedAt,
+      source: 'gateway',
+    };
   }
 
   async refreshToken(bankKey, failedToken = '') {
     const current = this.tokenByBank.get(bankKey);
-    if (failedToken && current && current !== failedToken) {
-      return current;
+    if (failedToken && current && current.token && current.token !== failedToken) {
+      return current.token;
     }
     if (!this.inFlightByBank.has(bankKey)) {
       const promise = this.#fetchNewToken(bankKey)
-        .then((token) => {
-          this.tokenByBank.set(bankKey, token);
-          return token;
+        .then((issued) => {
+          const { lifetimeMs } = this.#resolveLifetimeMs(bankKey);
+          const now = this.now();
+          const entry = {
+            token: issued.token,
+            issuedAt: now,
+            expiresAt: now + lifetimeMs,
+          };
+          if (issued.ttlMs) this.declaredTtlByBank.set(bankKey, issued.ttlMs);
+          this.tokenByBank.set(bankKey, entry);
+          getActionLogger().info({
+            category: 'gateway',
+            action: 'gateway.token.ready',
+            statusCode: 200,
+            meta: { bankKey, ttlMs: lifetimeMs, expiresAt: new Date(entry.expiresAt).toISOString() },
+          });
+          return entry.token;
         })
         .finally(() => {
           this.inFlightByBank.delete(bankKey);
@@ -77,9 +159,23 @@ class GatewayTokenManager {
     return this.inFlightByBank.get(bankKey);
   }
 
+  /** سرور پاسخ داد «توکن معتبر نیست»: کش را کنار بگذار و توکن تازه بگیر. */
+  async invalidateAndRenew(bankKey, rejectedToken = '') {
+    const entry = this.tokenByBank.get(bankKey);
+    if (entry && (!rejectedToken || entry.token === rejectedToken)) {
+      this.tokenByBank.delete(bankKey);
+    }
+    return this.refreshToken(bankKey, rejectedToken);
+  }
+
   clearCache(bankKey) {
-    if (bankKey) this.tokenByBank.delete(bankKey);
-    else this.tokenByBank.clear();
+    if (bankKey) {
+      this.tokenByBank.delete(bankKey);
+      this.declaredTtlByBank.delete(bankKey);
+    } else {
+      this.tokenByBank.clear();
+      this.declaredTtlByBank.clear();
+    }
   }
 
   async #fetchNewToken(bankKey) {
@@ -133,8 +229,35 @@ class GatewayTokenManager {
       statusCode: 200,
       meta: { bankKey },
     });
-    return token.trim();
+    return { token: token.trim(), ttlMs: readDeclaredTtlMs(body) };
   }
+}
+
+/** عمر توکن را از فیلدهای رایج پاسخ گیت‌وی (expiresIn/ttl/exp) استخراج می‌کند. */
+function readDeclaredTtlMs(body) {
+  const candidates = [
+    body?.data?.expiresInMs,
+    body?.data?.expires_in_ms,
+    body?.data?.expiresIn,
+    body?.data?.expires_in,
+    body?.data?.ttlMs,
+    body?.data?.ttl,
+  ];
+  for (const raw of candidates) {
+    const value = Number(raw);
+    if (Number.isFinite(value) && value > 0) {
+      // مقادیر کوچک (<= 86400) ثانیه‌اند؛ مقادیر بزرگ ms.
+      return value > 86400 ? Math.floor(value) : Math.floor(value * 1000);
+    }
+  }
+  const exp = Number(body?.data?.exp);
+  if (Number.isFinite(exp) && exp > 0) {
+    // exp یا epoch ثانیه است یا epoch ms.
+    const expiresAtMs = exp > 1e12 ? exp : exp * 1000;
+    const delta = expiresAtMs - Date.now();
+    if (delta > 0) return Math.floor(delta);
+  }
+  return 0;
 }
 
 const gatewayTokenManager = new GatewayTokenManager();
@@ -167,7 +290,14 @@ async function fetchBankJson(bankKey, url, options = {}) {
         if (usesGateway && isGatewayInvalidTokenResponse(response.status, body)) {
           if (gatewayRefreshCount < 2) {
             gatewayRefreshCount += 1;
-            await gatewayTokenManager.refreshToken(bankKey, usedToken);
+            getActionLogger().warn({
+              category: 'gateway',
+              action: 'gateway.token.renew_after_reject',
+              statusCode: response.status || 401,
+              message: `Upstream rejected the gateway token for ${bankKey}; renewing and retrying`,
+              meta: { bankKey, attempt: gatewayRefreshCount },
+            });
+            await gatewayTokenManager.invalidateAndRenew(bankKey, usedToken);
             continue;
           }
           throw new Error(
@@ -216,4 +346,5 @@ module.exports = {
   gatewayTokenManager,
   isGatewayInvalidTokenResponse,
   fetchBankJson,
+  readDeclaredTtlMs,
 };

@@ -189,6 +189,18 @@ function resolveBankGatewayConfig(bankKey) {
     cleanEnv(process.env.CE_GATEWAY_TOKEN) ||
     '';
 
+  // عمر اعلامی توکن گیت‌وی (ثانیه یا ms یا 30m). پیش‌فرض ۶۰ ثانیه؛ اگر گیت‌وی عمر دیگری اعلام کند، همان اولویت دارد.
+  const ttlMs = parseDurationMs(
+    (suffix && cleanEnv(process.env[`CE_GATEWAY_TOKEN_TTL_${suffix}`])) ||
+      cleanEnv(process.env.CE_GATEWAY_TOKEN_TTL),
+    60000,
+  );
+  const refreshSkewMs = parseDurationMs(
+    (suffix && cleanEnv(process.env[`CE_GATEWAY_TOKEN_REFRESH_SKEW_${suffix}`])) ||
+      cleanEnv(process.env.CE_GATEWAY_TOKEN_REFRESH_SKEW),
+    15000,
+  );
+
   return {
     usesGateway: bankUsesGateway(bankKey),
     tokenUrl,
@@ -198,6 +210,8 @@ function resolveBankGatewayConfig(bankKey) {
     password,
     passHeader,
     staticToken,
+    ttlMs,
+    refreshSkewMs,
   };
 }
 

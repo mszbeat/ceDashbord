@@ -571,6 +571,7 @@
   --glass-line: rgba(120, 160, 210, 0.28);
   --glass-shadow: 0 30px 80px rgba(2, 24, 70, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.72);
   --glass-accent: linear-gradient(135deg, rgba(0, 62, 164, 0.94), rgba(11, 94, 215, 0.9) 55%, rgba(14, 165, 233, 0.92));
+  --glass-accent-hover: linear-gradient(135deg, rgba(0, 47, 130, 0.97), rgba(8, 78, 190, 0.94) 55%, rgba(2, 132, 199, 0.95));
 }
 :root[data-theme="dark"] {
   --glass-panel: rgba(10, 27, 60, 0.7);
@@ -579,6 +580,7 @@
   --glass-line: rgba(125, 190, 245, 0.18);
   --glass-shadow: 0 34px 88px rgba(0, 4, 20, 0.58), inset 0 1px 0 rgba(255, 255, 255, 0.07);
   --glass-accent: linear-gradient(135deg, rgba(11, 94, 215, 0.92), rgba(14, 165, 233, 0.88) 60%, rgba(34, 211, 238, 0.9));
+  --glass-accent-hover: linear-gradient(135deg, rgba(22, 119, 255, 0.95), rgba(56, 189, 248, 0.92) 60%, rgba(103, 232, 249, 0.94));
 }
 .lgn-split {
   background:
@@ -668,9 +670,30 @@
   -webkit-backdrop-filter: blur(14px);
   backdrop-filter: blur(14px);
 }
+/* دکمهٔ اصلی در هاور هم آبی می‌ماند؛ قاعدهٔ عمومی .lgn-btn:hover نباید پس‌زمینه را سفید کند */
+.lgn-btn-primary,
+.lgn-btn.lgn-btn-primary,
+.lgn-submit,
+.lgn-btn.lgn-submit {
+  background: var(--glass-accent);
+  color: #ffffff;
+}
+
+.lgn-btn-primary:hover:not(:disabled),
+.lgn-btn.lgn-btn-primary:hover:not(:disabled),
 .lgn-submit:hover:not(:disabled),
-.lgn-btn-primary:hover:not(:disabled) {
-  filter: brightness(1.06);
+.lgn-btn.lgn-submit:hover:not(:disabled) {
+  background: var(--glass-accent-hover);
+  border-color: rgba(126, 232, 250, 0.55);
+  color: #ffffff;
+  filter: brightness(1.08) saturate(1.05);
+  transform: translateY(-1px);
+  box-shadow: 0 20px 42px rgba(6, 70, 170, 0.34), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+
+:root[data-theme="dark"] .lgn-btn-primary:hover:not(:disabled),
+:root[data-theme="dark"] .lgn-submit:hover:not(:disabled) {
+  color: #02142f;
 }
 .lgn-alert.ok,
 .lgn-alert.error,

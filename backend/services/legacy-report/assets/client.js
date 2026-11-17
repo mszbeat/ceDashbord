@@ -12,10 +12,19 @@
   const scopebar = document.querySelector('.scopebar');
 
   const ROLE_FA = {
-    admin: 'مدیر سیستم',
-    creditEvaluation: 'ارزیاب اعتبار',
+    admin: 'ادمین',
+    creditEvaluation: 'CE',
     visitor: 'بازدیدکننده',
   };
+  const ROLE_ORDER = { admin: 3, creditEvaluation: 2, visitor: 1 };
+
+  /** فقط برترین نقش: admin > creditEvaluation (CE) > visitor */
+  function primaryRoleLabel(roles) {
+    const list = Array.isArray(roles) ? roles.filter(Boolean) : [];
+    if (!list.length) return ROLE_FA.visitor;
+    const top = [...list].sort((a, b) => (ROLE_ORDER[b] || 0) - (ROLE_ORDER[a] || 0))[0];
+    return ROLE_FA[top] || top;
+  }
 
   let authState = null;
   let refreshInFlight = null;
@@ -145,7 +154,7 @@
       userLabel.textContent = `👤 ${state.username || state.samadUsername || ''}`;
       const badge = document.createElement('span');
       badge.className = 'ce-role-badge';
-      badge.textContent = roles.map((r) => ROLE_FA[r] || r).join('، ');
+      badge.textContent = primaryRoleLabel(roles);
       chip.append(userLabel, badge);
 
       const logoutBtn = document.createElement('button');
@@ -292,8 +301,11 @@
     scheduled = false;
     if (!scopebar || !slot || !topbar) return;
     if (!scopebar.classList.contains('floating')) slot.style.minHeight = `${scopebar.offsetHeight + 16}px`;
-    const reached = slot.getBoundingClientRect().top <= topbar.getBoundingClientRect().bottom + 8;
-    scopebar.classList.toggle('floating', reached);
+    // هنگام اسکرول، هدر جمع می‌شود (چسبیده به لبه‌ی بالای صفحه) تا نوار محدودهٔ نمایش
+    // بتواند تمام عرض صفحه را بگیرد و محتوا از زیر هدر بیرون نزند.
+    const floatingNow = slot.getBoundingClientRect().top <= 64;
+    scopebar.classList.toggle('floating', floatingNow);
+    topbar.classList.toggle('compact', floatingNow);
     topbar.classList.toggle('scrolled', window.scrollY > 8);
   }
   function scheduleFloating() {

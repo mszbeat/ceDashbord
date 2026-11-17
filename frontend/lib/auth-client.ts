@@ -17,13 +17,42 @@ export const ROLE_LABELS_FA: Record<string, string> = {
   visitor: 'بازدیدکننده',
 };
 
+const ROLE_SHORT_LABELS_FA: Record<string, string> = {
+  admin: 'ادمین',
+  creditEvaluation: 'CE',
+  visitor: 'بازدیدکننده',
+};
+
+/** ترتیب برتری نقش‌ها: admin > creditEvaluation (CE) > visitor */
+const ROLE_PRIORITY: Record<string, number> = {
+  admin: 3,
+  creditEvaluation: 2,
+  visitor: 1,
+};
+
 export function formatRoleFa(role: string): string {
   return ROLE_LABELS_FA[role] || role;
 }
 
+export function formatRoleShortFa(role: string): string {
+  return ROLE_SHORT_LABELS_FA[role] || ROLE_LABELS_FA[role] || role;
+}
+
+/** بالاترین نقش کاربر؛ حتی وقتی هم‌زمان چند نقش دارد. */
+export function pickPrimaryRole(roles?: string[] | null): string {
+  if (!Array.isArray(roles) || !roles.length) return 'visitor';
+  const known = roles.filter((role) => typeof role === 'string' && role.trim());
+  if (!known.length) return 'visitor';
+  return [...known].sort(
+    (a, b) => (ROLE_PRIORITY[b] ?? 0) - (ROLE_PRIORITY[a] ?? 0),
+  )[0];
+}
+
+/**
+ * فقط نقش برتر را نمایش می‌دهد: admin، سپس CE (خلاصهٔ creditEvaluation) و در نهایت بازدیدکننده.
+ */
 export function formatRolesFa(roles?: string[] | null): string {
-  if (!Array.isArray(roles) || !roles.length) return ROLE_LABELS_FA.visitor;
-  return roles.map(formatRoleFa).join('، ');
+  return formatRoleShortFa(pickPrimaryRole(roles));
 }
 
 export function sanitizeNextPath(raw: string | null | undefined, fallback = '/'): string {

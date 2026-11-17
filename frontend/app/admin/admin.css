@@ -916,6 +916,107 @@
 .adm-section-head {
   border-bottom: 1px solid var(--glass-line);
 }
+/* ── Light-theme readability fixes: glass surfaces must never wash out their text ── */
+:root[data-theme="light"],
+:root:not([data-theme="dark"]) {
+  --adm-glass-tint: rgba(255, 255, 255, 0.9);
+}
+:root[data-theme="dark"] {
+  --adm-glass-tint: var(--glass-panel);
+}
+/* کارت‌ها/باکس‌های شیشه‌ای در حالت روشن کمی مات‌تر می‌شوند تا متن روی آن خوانا بماند */
+.adm-card,
+.adm-job-card,
+.adm-step-item,
+.adm-details,
+.adm-cron-status-box,
+.adm-gate-card,
+.adm-table-wrap,
+.adm-privacy-note,
+.adm-metric-box {
+  background: var(--adm-glass-tint);
+}
+/* این دو بلوک همیشه هم‌رنگ کارت میزبانشان هستند (ارثی، نه لایهٔ مستقل) */
+.adm-bank-metrics,
+.adm-bank-foot {
+  background: inherit;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  border-color: inherit;
+}
+.adm-bank-metrics {
+  padding: 0;
+  border: 0;
+}
+.adm-bank-foot {
+  border-top: 1px solid var(--glass-line);
+}
+/* پیل‌ها/برچسب‌ها/دکمه‌های ثانویه: پس‌زمینهٔ روشن‌تر + متن پرکنتراست */
+.adm-pill,
+.adm-btn,
+.adm-choice-btn,
+.adm-quick-days,
+.adm-select,
+.adm-input {
+  color: var(--adm-ink);
+}
+.adm-pill.active,
+.adm-choice-btn.active {
+  background: var(--adm-accent-soft);
+  border-color: var(--adm-accent);
+  color: var(--adm-accent-strong);
+}
+:root[data-theme="light"] .adm-pill,
+:root:not([data-theme="dark"]) .adm-pill,
+:root[data-theme="light"] .adm-btn,
+:root:not([data-theme="dark"]) .adm-btn,
+:root[data-theme="light"] .adm-select,
+:root:not([data-theme="dark"]) .adm-select,
+:root[data-theme="light"] .adm-input,
+:root:not([data-theme="dark"]) .adm-input,
+:root[data-theme="light"] .adm-choice-btn,
+:root:not([data-theme="dark"]) .adm-choice-btn {
+  background: rgba(255, 255, 255, 0.86);
+  border-color: var(--glass-line);
+}
+:root[data-theme="light"] .adm-table th,
+:root:not([data-theme="dark"]) .adm-table th {
+  background: rgba(244, 248, 254, 0.92);
+  color: var(--adm-muted);
+}
+:root[data-theme="light"] .adm-table td,
+:root:not([data-theme="dark"]) .adm-table td {
+  color: var(--adm-ink);
+}
+:root[data-theme="light"] .adm-table tbody tr:nth-child(even),
+:root:not([data-theme="dark"]) .adm-table tbody tr:nth-child(even) {
+  background: rgba(244, 248, 254, 0.5);
+}
+:root[data-theme="light"] .adm-badge.muted,
+:root:not([data-theme="dark"]) .adm-badge.muted {
+  background: #eef4fb;
+  color: var(--adm-muted);
+}
+:root[data-theme="light"] .adm-user-chip,
+:root:not([data-theme="dark"]) .adm-user-chip {
+  background: rgba(255, 255, 255, 0.9);
+  border-color: var(--glass-line);
+  color: var(--adm-ink);
+}
+:root[data-theme="light"] .adm-cron-status-box,
+:root:not([data-theme="dark"]) .adm-cron-status-box,
+:root[data-theme="light"] .adm-details-body,
+:root:not([data-theme="dark"]) .adm-details-body {
+  color: var(--adm-ink);
+}
+:root[data-theme="light"] .adm-hint,
+:root:not([data-theme="dark"]) .adm-hint,
+:root[data-theme="light"] .adm-label,
+:root:not([data-theme="dark"]) .adm-label {
+  color: var(--adm-muted);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .adm-root *,
   .adm-root *::before,
