@@ -19,11 +19,12 @@ exports.controller = class AuthController extends BaseController {
     this.samadService = samadService;
   }
 
-  async register(body, trackingHeaders, session) {
+  async register(body, trackingHeaders, session, request, response) {
     const payload = readBody(body);
     if (!payload.username || !payload.password) throw authError.invalidAuthInput;
 
     const role = typeof payload.role === 'string' && payload.role.trim() ? payload.role.trim() : 'visitor';
+    const shouldAutoLogin = payload.autoLogin !== false;
     let rollback = null;
 
     try {
@@ -32,10 +33,24 @@ exports.controller = class AuthController extends BaseController {
       }
       await this.authService.addUser({ username: payload.username, password: payload.password }, trackingHeaders);
 
-      if (session && this.sessionManager) {
+      if (shouldAutoLogin && session && this.sessionManager) {
         const current = await this.sessionManager.getSession(session).catch(() => null);
         if (!current?.samadUsername || current.samadUsername === 'visitor') {
           await this.sessionManager.setSession(session, { username: payload.username }, [role]);
+          if (typeof this.sessionManager.issueRefreshToken === 'function' && response) {
+            const meta = readClientMeta(request);
+            await this.sessionManager.issueRefreshToken(
+              {
+                username: payload.username,
+                roles: [role],
+                rememberMe: payload.rememberMe === true,
+                ip: meta.ip,
+                userAgent: meta.headers?.['user-agent'],
+              },
+              response,
+              request,
+            );
+          }
         }
       }
       return { status: 'ok', username: payload.username, roles: [role] };

@@ -99,6 +99,8 @@ export function extractPartErrorMessage(payload: any, status: number): string {
   }
   if (status === 401) return 'نام کاربری یا رمز عبور نادرست است یا نشست شما منقضی شده است.';
   if (status === 403) return 'شما مجوز دسترسی به این بخش را ندارید.';
+  if (status === 404) return 'کاربر یا نقش مورد نظر در سرویس سمد یافت نشد.';
+  if (status === 409) return 'این نام کاربری قبلاً در سیستم ثبت شده است.';
   if (status === 429) return 'تعداد تلاش‌های ناموفق بیش از حد مجاز است؛ لطفاً چند لحظه صبر کنید.';
   if (status === 503) return 'سرویس احراز هویت موقتاً در دسترس نیست.';
   return `خطای سرور (HTTP ${status})`;
@@ -235,11 +237,11 @@ export async function ensureAuthenticated(): Promise<AuthSessionState> {
   return me;
 }
 
-export async function loginWithPassword(params: {
+async function postLoginRequest(params: {
   username: string;
   password: string;
   rememberMe?: boolean;
-}): Promise<AuthSessionState> {
+}): Promise<any> {
   const res = await fetch('/api/auth/login', {
     method: 'POST',
     cache: 'no-store',
@@ -269,19 +271,167 @@ export async function loginWithPassword(params: {
     err.payload = parsed;
     throw err;
   }
+  return parsed;
+}
+
+export async function loginWithPassword(params: {
+  username: string;
+  password: string;
+  rememberMe?: boolean;
+}): Promise<AuthSessionState> {
+  let parsed = await postLoginRequest(params);
+
+  // اطمینان از اینکه نشست در بک‌اند/کوکی مرورگر واقعاً فعال شده است
+  // (اگر توکن بازدیدکننده قبلی منقضی بوده، یک بار با رفرش یا درخواست مجدد تثبیت می‌شود).
+  let verified = await getAuthStatus().catch(() => null);
+  if (!verified?.authenticated) {
+    if (verified?.canRefresh) {
+      const refreshed = await refreshSession().catch(() => null);
+      if (refreshed?.authenticated) {
+        verified = refreshed;
+      }
+    }
+    if (!verified?.authenticated) {
+      parsed = await postLoginRequest(params);
+      verified = await getAuthStatus().catch(() => null);
+      if (!verified?.authenticated && verified?.canRefresh) {
+        const refreshed = await refreshSession().catch(() => null);
+        if (refreshed?.authenticated) {
+          verified = refreshed;
+        }
+      }
+    }
+  }
+
+  if (!verified?.authenticated) {
+    const err: any = new Error('ورود انجام شد اما کوکی نشست روی مرورگر تثبیت نشد. لطفاً تنظیمات کوکی/سشن را بررسی کنید.');
+    err.status = 401;
+    throw err;
+  }
 
   const state: AuthSessionState = {
     authenticated: true,
-    username: String(parsed?.username || params.username.trim()),
-    samadUsername: String(parsed?.samadUsername || parsed?.username || params.username.trim()),
-    roles: Array.isArray(parsed?.roles) && parsed.roles.length ? parsed.roles : ['visitor'],
-    canRefresh: true,
-    refreshExpiresAt: parsed?.refreshExpiresAt || null,
-    accessExpireMs: typeof parsed?.accessExpireMs === 'number' ? parsed.accessExpireMs : undefined,
-    idleExpireMs: typeof parsed?.idleExpireMs === 'number' ? parsed.idleExpireMs : undefined,
+    username: String(verified.username || parsed?.username || params.username.trim()),
+    samadUsername: String(verified.samadUsername || parsed?.samadUsername || params.username.trim()),
+    roles: Array.isArray(verified.roles) && verified.roles.length
+      ? verified.roles
+      : Array.isArray(parsed?.roles) && parsed.roles.length
+        ? parsed.roles
+        : ['visitor'],
+    canRefresh: Boolean(verified.canRefresh ?? true),
+    refreshExpiresAt: verified.refreshExpiresAt || parsed?.refreshExpiresAt || null,
+    accessExpireMs: verified.accessExpireMs ?? (typeof parsed?.accessExpireMs === 'number' ? parsed.accessExpireMs : undefined),
+    idleExpireMs: verified.idleExpireMs ?? (typeof parsed?.idleExpireMs === 'number' ? parsed.idleExpireMs : undefined),
   };
   broadcastAuthEvent({ type: 'login', auth: state });
   return state;
+}
+
+export interface RegisterAccountResult {
+  username: string;
+  roles: string[];
+  autoLoggedIn: boolean;
+  sessionState: AuthSessionState | null;
+}
+
+export async function registerAccount(params: {
+  username: string;
+  password: string;
+  role?: string;
+  rememberMe?: boolean;
+  autoLogin?: boolean;
+  alreadyAuthenticated?: boolean;
+}): Promise<RegisterAccountResult> {
+  const cleanUser = params.username.trim();
+  const cleanRole = typeof params.role === 'string' && params.role.trim() ? params.role.trim() : undefined;
+  const shouldAutoLogin = params.autoLogin !== false && !params.alreadyAuthenticated;
+
+  const bodyPayload: Record<string, any> = {
+    username: cleanUser,
+    password: params.password,
+    rememberMe: Boolean(params.rememberMe),
+    autoLogin: shouldAutoLogin,
+  };
+  if (cleanRole) {
+    bodyPayload.role = cleanRole;
+  }
+
+  const res = await fetch('/api/auth/register', {
+    method: 'POST',
+    cache: 'no-store',
+    credentials: 'include',
+    headers: {
+      'content-type': 'application/json',
+      accept: 'application/json',
+    },
+    body: JSON.stringify(bodyPayload),
+  });
+
+  const text = await res.text().catch(() => '');
+  let parsed: any = null;
+  try {
+    parsed = text ? unwrapPartPayload(JSON.parse(text)) : null;
+  } catch {
+    parsed = { message: text };
+  }
+
+  if (!res.ok) {
+    const err: any = new Error(extractPartErrorMessage(parsed, res.status));
+    err.status = res.status;
+    err.payload = parsed;
+    throw err;
+  }
+
+  const roles = Array.isArray(parsed?.roles) && parsed.roles.length
+    ? parsed.roles
+    : [cleanRole || 'visitor'];
+
+  if (!shouldAutoLogin) {
+    return {
+      username: String(parsed?.username || cleanUser),
+      roles,
+      autoLoggedIn: false,
+      sessionState: null,
+    };
+  }
+
+  let verified = await getAuthStatus().catch(() => null);
+  if (!verified?.authenticated) {
+    if (verified?.canRefresh) {
+      const refreshed = await refreshSession().catch(() => null);
+      if (refreshed?.authenticated) {
+        verified = refreshed;
+      }
+    }
+    if (!verified?.authenticated) {
+      try {
+        verified = await loginWithPassword({
+          username: cleanUser,
+          password: params.password,
+          rememberMe: params.rememberMe,
+        });
+      } catch {
+        verified = null;
+      }
+    }
+  }
+
+  if (verified?.authenticated) {
+    broadcastAuthEvent({ type: 'login', auth: verified });
+    return {
+      username: String(verified.username || parsed?.username || cleanUser),
+      roles: verified.roles?.length ? verified.roles : roles,
+      autoLoggedIn: true,
+      sessionState: verified,
+    };
+  }
+
+  return {
+    username: String(parsed?.username || cleanUser),
+    roles,
+    autoLoggedIn: false,
+    sessionState: null,
+  };
 }
 
 export async function logoutSession(): Promise<void> {

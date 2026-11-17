@@ -97,6 +97,18 @@ function redirectToLogin(request: NextRequest, reason?: string, extraSetCookies?
   return res;
 }
 
+function buildBackendClientHeaders(request: NextRequest, cookieValue: string): Record<string, string> {
+  const headers: Record<string, string> = {
+    cookie: cookieValue,
+    accept: 'application/json',
+  };
+  for (const key of ['user-agent', 'x-forwarded-for', 'x-real-ip']) {
+    const val = request.headers.get(key);
+    if (val) headers[key] = val;
+  }
+  return headers;
+}
+
 /**
  * محافظ سراسری تمام مسیرهای فرانت‌اند:
  * کاربر تنها با داشتن سشن احرازشده اجازهٔ مشاهدهٔ داشبورد و سایر مسیرها را دارد؛
@@ -126,12 +138,10 @@ export async function middleware(request: NextRequest) {
     const meRes = await fetch(new URL('/api/auth/me', backendUrl).toString(), {
       method: 'GET',
       cache: 'no-store',
-      headers: {
-        cookie: cookieHeader,
-        accept: 'application/json',
-      },
+      headers: buildBackendClientHeaders(request, cookieHeader),
     });
 
+    const meCookies = extractSetCookies(meRes.headers);
     const meText = await meRes.text().catch(() => '');
     let meData: any = null;
     try {
@@ -141,21 +151,33 @@ export async function middleware(request: NextRequest) {
     }
 
     if (meRes.ok && meData?.authenticated === true) {
+      if (meCookies.length) {
+        const requestHeaders = new Headers(request.headers);
+        requestHeaders.set('cookie', mergeCookies(cookieHeader, meCookies));
+        const nextRes = NextResponse.next({
+          request: { headers: requestHeaders },
+        });
+        for (const c of meCookies) {
+          nextRes.headers.append('set-cookie', c);
+        }
+        return nextRes;
+      }
       return NextResponse.next();
     }
 
     if (meRes.ok && meData && meData.canRefresh === true) {
+      const mergedForRefresh = meCookies.length ? mergeCookies(cookieHeader, meCookies) : cookieHeader;
       const refreshRes = await fetch(new URL('/api/auth/refresh', backendUrl).toString(), {
         method: 'POST',
         cache: 'no-store',
         headers: {
-          cookie: cookieHeader,
+          ...buildBackendClientHeaders(request, mergedForRefresh),
           'content-type': 'application/json',
-          accept: 'application/json',
         },
         body: '{}',
       });
-      const setCookies = extractSetCookies(refreshRes.headers);
+      const refreshCookies = extractSetCookies(refreshRes.headers);
+      const combinedCookies = [...meCookies, ...refreshCookies];
       const refreshText = await refreshRes.text().catch(() => '');
       let refreshData: any = null;
       try {
@@ -166,21 +188,21 @@ export async function middleware(request: NextRequest) {
 
       if (refreshRes.ok && refreshData?.authenticated === true) {
         const requestHeaders = new Headers(request.headers);
-        requestHeaders.set('cookie', mergeCookies(cookieHeader, setCookies));
+        requestHeaders.set('cookie', mergeCookies(cookieHeader, combinedCookies));
         const nextRes = NextResponse.next({
           request: { headers: requestHeaders },
         });
-        for (const c of setCookies) {
+        for (const c of combinedCookies) {
           nextRes.headers.append('set-cookie', c);
         }
         return nextRes;
       }
 
-      return redirectToLogin(request, 'expired', setCookies);
+      return redirectToLogin(request, 'expired', combinedCookies);
     }
 
     const hadAuthCookie = /(?:^|;\s*)(?:token|ce_refresh)=/.test(cookieHeader);
-    return redirectToLogin(request, hadAuthCookie ? 'expired' : undefined);
+    return redirectToLogin(request, hadAuthCookie ? 'expired' : undefined, meCookies);
   } catch {
     const hasAuthCookie = /(?:^|;\s*)(?:token|ce_refresh)=/.test(cookieHeader);
     if (!hasAuthCookie || pathname !== '/') {

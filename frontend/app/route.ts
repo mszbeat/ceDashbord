@@ -111,6 +111,9 @@ export async function GET(request: NextRequest) {
     for (const key of [
       'cookie',
       'authorization',
+      'user-agent',
+      'x-forwarded-for',
+      'x-real-ip',
       'x-user-role',
       'x-user-roles',
       'x-part-roles',

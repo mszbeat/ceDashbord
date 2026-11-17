@@ -18,7 +18,7 @@ module.exports = {
   handlers: {
     register: {
       needProtocolRef: false,
-      params: ['_protocolRef.request.data', '_trackingHeaders', '_session'],
+      params: ['_protocolRef.request.data', '_trackingHeaders', '_session', '_protocolRef.request', '_protocolRef.response'],
     },
     login: {
       needProtocolRef: false,

@@ -1,8 +1,8 @@
 module.exports={
   global: {
     tokenLength: 25,
-    sessionExpireTime: 120000,
-    maxIdleTime: 20000,
+    sessionExpireTime: Number(process.env.SESSION_EXPIRE_MS || 300000),
+    maxIdleTime: Number(process.env.SESSION_IDLE_MS || 120000),
     maxFailedLogins: 4,
     loginFailedTimeLimit: 20000,
     multiAccessTime: 5000,

@@ -39,6 +39,18 @@ exports.register = {
       username: usernameSchema,
       password: passwordSchema,
       role: roleSchema,
+      rememberMe: {
+        type: 'boolean',
+        errorMessages: {
+          type: 'rememberMe must be a boolean',
+        },
+      },
+      autoLogin: {
+        type: 'boolean',
+        errorMessages: {
+          type: 'autoLogin must be a boolean',
+        },
+      },
     },
     required: ['username', 'password'],
     additionalProperties: false,

@@ -133,15 +133,31 @@ test('auth-controller: register/login/refresh/logout/me/role/removeUser با ت�
   const sessionManager = new SessionManager({ useMemoryOnly: true });
   const controller = new AuthController({}, {}, authConfig, authService, sessionManager, samadService);
 
-  // register
-  const registerOut = await invoke(controller, authConfig, 'register', {
-    data: { username: 'ali', password: 'p1', role: 'creditEvaluation' },
-    session,
+  // register (بدون دستکاری سشن در حالت autoLogin: false + ورود خودکار و صدور رفرش‌توکن در حالت پیش‌فرض)
+  const regNoAutoSession = { samadUsername: 'visitor', roles: ['visitor'] };
+  const regNoAutoObj = {
+    set(values, cb) { Object.assign(regNoAutoSession, values); cb(null, regNoAutoSession); },
+    get(keys, cb) { const out = {}; for (const k of keys) out[k] = regNoAutoSession[k]; cb(null, out); },
+    remove(cb) { cb(null, ['OK']); },
+  };
+  const regNoAutoOut = await invoke(controller, authConfig, 'register', {
+    data: { username: 'sara', password: 'p2', role: 'visitor', autoLogin: false },
+    session: regNoAutoObj,
   }).promise;
+  assert.deepEqual(regNoAutoOut, { status: 'ok', username: 'sara', roles: ['visitor'] });
+  assert.equal(regNoAutoSession.samadUsername, 'visitor');
+
+  // register با ورود خودکار + صدور رفرش‌توکن
+  const regCall = invoke(controller, authConfig, 'register', {
+    data: { username: 'ali', password: 'p1', role: 'creditEvaluation', rememberMe: true },
+    session,
+  });
+  const registerOut = await regCall.promise;
   assert.deepEqual(registerOut, { status: 'ok', username: 'ali', roles: ['creditEvaluation'] });
   assert.equal(sessionStore.samadUsername, 'ali');
   assert.deepEqual(samadUsers.get('ali'), 'creditEvaluation');
-  assert.equal(authCalls[0][0], 'add');
+  assert.equal(authCalls.some(([kind, payload]) => kind === 'add' && payload.username === 'ali'), true);
+  assert.ok(extractRefreshCookieValue(regCall.response), 'register auto-login must issue refresh cookie');
 
   // me
   const meOut = await invoke(controller, authConfig, 'me', { session }).promise;

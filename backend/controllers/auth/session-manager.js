@@ -31,7 +31,13 @@ function isSecureRequest(request) {
 
 function appendSetCookies(response, newCookies) {
   if (!response || typeof response.setHeader !== 'function') return;
-  const existingRaw = typeof response.getHeader === 'function' ? response.getHeader('Set-Cookie') : undefined;
+  let existingRaw;
+  if (typeof response.getHeader === 'function') {
+    existingRaw = response.getHeader('Set-Cookie');
+    if (existingRaw === undefined) {
+      existingRaw = response.getHeader('set-cookie');
+    }
+  }
   const existing = Array.isArray(existingRaw)
     ? existingRaw.map(String)
     : existingRaw
