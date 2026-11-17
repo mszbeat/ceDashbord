@@ -11,7 +11,8 @@
     "ingest": "node services/ingestion/run-ingest.js",
     "ingest:mellat": "node services/ingestion/run-ingest.js --bank=tavan_mellat",
     "verify": "node scripts/verify-pd2.js",
-    "test": "node --test tests/*.test.js && node scripts/verify-pd2.js"
+    "test": "node --test tests/*.test.js && node scripts/verify-pd2.js",
+    "check:env": "node scripts/check-env.js"
   },
   "keywords": [],
   "author": "",

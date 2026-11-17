@@ -4,7 +4,7 @@ const { getActionLogger } = require('../../services/logger/action-logger.service
 class SamadService {
   constructor(httpClient) {
     this.httpClient = httpClient;
-    this.org = process.env.SAMAD_ORG || process.env.org || 'mohammadsadeghZarei';
+    this.org = process.env.SAMAD_ORG || process.env.org || '';
   }
 
   #assertReady() {

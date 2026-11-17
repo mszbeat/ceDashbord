@@ -18,7 +18,6 @@ backend/
 ├── index.js                     # نقطهٔ ورود (MODE=dev|prod|test)
 ├── Program.js                   # بوت‌استرپ partFramework + تزریق وابستگی‌ها
 ├── routes.js                    # ۲۷ روت مرکزی + validate + checkAccess
-├── asigne.samad.access.to.role.js # تخصیص دسترسی‌های routes.js به نقش‌های سمد
 ├── project-config/
 │   ├── index.js
 │   ├── dev/                     # routerConf (با accessControl), servers, loaderConf, ...
@@ -30,6 +29,7 @@ backend/
 │   ├── creditEvaluationController/  # credit-evaluation-controller: سطح ۲ (جزئیات نمونه)
 │   └── adminController/         # admin-controller: سطح ۳ (فقط admin)
 ├── services/                    # دامنه: db, evaluator, ingestion, summary, admin, http helpers
+├── scripts/check-env.js         # راستیآزمایی متغیرهای محیطی پیش از اجرا
 ├── scripts/verify-pd2.js        # تست سرتاسری PGlite + بررسی ساختار
 └── tests/                       # node --test (قرارداد روتر + رفتار کنترلرها + لایهٔ auth/refresh)
 ```
@@ -55,13 +55,13 @@ backend/
 cd backend
 npm install                   # از رجیستری سازمانی پارت + PostgreSQL driver
 cp .env.example .env          # تنظیم DATABASE_URL / SAMAD_* / PART_AUTH_* / CE_API_*
-npm run migrate               # ساخت جداول PostgreSQL (شامل auth_refresh_tokens)
-npm run samad:assign          # تخصیص دسترسی‌های routes.js به نقش‌های سمد
+npm run check:env             # existence/placeholder check for required env vars
+npm run migrate               # ساخت جداول PostgreSQL (شامل auth_refresh_tokens و admin_jobs)
 npm start                     # http://0.0.0.0:3000/api
 ```
 
 تست‌ها (بدون نیاز به رجیستری پارت — پکیج‌های فریم‌ورک mock می‌شوند):
 
 ```bash
-npm test                      # node --test + scripts/verify-pd2.js (PGlite)
+npm test                      # node --test + scripts/verify-pd2.js (بخش PGlite در صورت نصب)
 ```

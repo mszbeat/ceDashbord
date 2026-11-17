@@ -5,3 +5,4 @@ echo "=== backend: نصب وابستگی‌ها (partFramework) ==="
 npm install
 echo ""
 echo "✅ backend آماده است: ./start.sh"
+echo "   ابتدا: cp .env.example .env و سپس مقادیر واقعی را تنظیم کن"

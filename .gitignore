@@ -1,6 +1,13 @@
 # قدیمی
 reports*/
 
+# کلید خصوصی / گواهی TLS — هرگز کامیت نشود (از مسیر خارج ریپو یا secret manager خوانده شود)
+backend/certificate/
+*.pem
+*.key
+*.p12
+*.pfx
+
 # نسخه سروری
 node_modules/
 dist/

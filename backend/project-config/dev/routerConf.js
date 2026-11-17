@@ -14,7 +14,7 @@ module.exports = {
     partSessionManagerConfig: require('./dependencies/partSessionManagerConfig'),
     partSecurityConfig: require('./dependencies/partSecurityConfig'),
     config: {
-      org: process.env.SAMAD_ORG || process.env.org || 'mohammadsadeghZarei'
+      org: process.env.SAMAD_ORG || process.env.org || ''
     }
   }
 };

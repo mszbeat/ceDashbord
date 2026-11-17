@@ -91,9 +91,10 @@ export async function middleware(request: NextRequest) {
       return NextResponse.next();
     }
 
-    const canAttemptRefresh =
-      probe.data?.canRefresh === true ||
-      (hasCookie(probe.cookieHeader, 'ce_refresh') && probe.data?.canRefresh !== false);
+    // پاسخ unauthenticated /api/auth/me ممکن است canRefresh:false بدهد، چون اکسس توکن
+    // منقضی شده و فریمورک پیش از خواندن کوکی رفرش، سشن visitor ساخته است. تنها وجود
+    // کوکی ce_refresh شرط تلاش تمدید است؛ نتیجهٔ نهایی را POST /api/auth/refresh مشخص میکند.
+    const canAttemptRefresh = hasCookie(probe.cookieHeader, 'ce_refresh');
 
     if (canAttemptRefresh) {
       const refreshed = await performRefreshWithRecovery(backendUrl, request.headers, probe.cookieHeader, probe);
@@ -134,7 +135,9 @@ export async function middleware(request: NextRequest) {
     ]);
     return redirectToLogin(request, 'expired', clearStale);
   } catch {
-    if (!hasAuthTokens || pathname !== '/') {
+    // خطای موقت ارتباط با بکاند نباید کاربر دارای رفرش توکن را به لاگین بفرستد؛
+    // لایهٔ SSR/route همان درخواست را دوباره بررسی یا خطای مناسب را نشان میدهد.
+    if (!hasAuthTokens) {
       return redirectToLogin(request);
     }
     return NextResponse.next();

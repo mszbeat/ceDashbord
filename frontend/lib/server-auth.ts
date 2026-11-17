@@ -604,17 +604,24 @@ async function executeRefreshWithRecovery(
     return { res, setCookies, rawText: cleanText, rawJson: cleanJson, data };
   };
 
-  let attempt = await postRefresh(probe.cookieHeader);
+  // اکسس توکن منقضی/visitor نباید همراه درخواست تمدید ارسال شود؛ برخی نسخه‌های
+  // partFramework پیش از اجرای کنترلر refresh، توکن نامعتبر را ۴۰۱ میکنند.
+  const refreshBaseCookies =
+    probe.ok && probe.data?.authenticated === true
+      ? probe.cookieHeader
+      : stripCookie(probe.cookieHeader, 'token');
+
+  let attempt = await postRefresh(refreshBaseCookies);
   let allSetCookies = dedupeSetCookies([...probe.setCookies, ...attempt.setCookies]);
-  let liveCookies = mergeCookieHeader(probe.cookieHeader, attempt.setCookies);
+  let liveCookies = mergeCookieHeader(refreshBaseCookies, attempt.setCookies);
 
   if (!attempt.res.ok) {
     const metaCode = extractPartMetaCode(attempt.rawJson);
-    if (!REFRESH_TOKEN_ERROR_CODES.has(metaCode) && hasCookie(probe.cookieHeader, 'token')) {
+    if (!REFRESH_TOKEN_ERROR_CODES.has(metaCode) && hasCookie(refreshBaseCookies, 'token')) {
       const freshProbe = await probeSessionWithCleanRecovery(
         backendUrl,
         incomingHeaders,
-        stripCookie(probe.cookieHeader, 'token'),
+        stripCookie(refreshBaseCookies, 'token'),
       );
       attempt = await postRefresh(freshProbe.cookieHeader);
       allSetCookies = dedupeSetCookies([...allSetCookies, ...freshProbe.setCookies, ...attempt.setCookies]);

@@ -200,6 +200,12 @@ async function waitForJob(adminConfig, adminHelpers, jobId, timeoutMs = 8000) {
   assert.ok(routerConf.accessControl?.partSessionManagerConfig);
   assert.ok(routerConf.accessControl?.partSecurityConfig);
 
+  const serversSource = fs.readFileSync(path.join(ROOT, 'project-config', 'dev', 'servers.js'), 'utf8');
+  assert.doesNotMatch(serversSource, /'Access-Control-Allow-Origin'\s*:\s*'\*'/);
+  assert.match(serversSource, /'Access-Control-Allow-Credentials'\s*:\s*'true'/);
+  const schemaSource = fs.readFileSync(path.join(ROOT, 'services', 'db', 'schema.sql'), 'utf8');
+  assert.match(schemaSource, /CREATE TABLE IF NOT EXISTS admin_jobs/);
+
   for (const dir of Object.values(controllers)) {
     const mainSource = fs.readFileSync(path.join(ROOT, 'controllers', dir, 'main.js'), 'utf8');
     assert.equal(/@Route|@HTTP/.test(mainSource), false, `${dir}/main.js must be decorator-free`);
@@ -413,6 +419,8 @@ async function waitForJob(adminConfig, adminHelpers, jobId, timeoutMs = 8000) {
     assert.equal(capturedQueries.some((q) => q.nationalCode === '0099887766' && q.limit === '25'), true);
 
     assert.equal(parseResult(await invokeWithConfigParams(adminConfig, adminHelpers, 'listJobs').promise).length >= 1, true);
+    const persistedJobs = await db.query('SELECT COUNT(*)::int AS cnt FROM admin_jobs');
+    assert.ok(persistedJobs.rows[0].cnt >= 1, 'admin job history must survive in PostgreSQL');
 
     const cronNowJob = parseResult(await invokeWithConfigParams(adminConfig, adminHelpers, 'runCronNow').promise);
     const doneCronJob = await waitForJob(adminConfig, adminHelpers, cronNowJob.id);

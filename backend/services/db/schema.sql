@@ -228,3 +228,14 @@ CREATE INDEX IF NOT EXISTS idx_backend_action_logs_action ON backend_action_logs
 CREATE INDEX IF NOT EXISTS idx_backend_action_logs_level ON backend_action_logs(level, occurred_at DESC);
 CREATE INDEX IF NOT EXISTS idx_backend_action_logs_actor ON backend_action_logs(actor, occurred_at DESC);
 
+-- تاریخچهٔ اجراهای پنل مدیریت؛ قبلاً فقط در Map حافظه نگهداری میشد و با restart پاک میشد.
+CREATE TABLE IF NOT EXISTS admin_jobs (
+  id           TEXT PRIMARY KEY,
+  source       TEXT NOT NULL,
+  status       TEXT NOT NULL,
+  created_at   TIMESTAMPTZ NOT NULL,
+  finished_at  TIMESTAMPTZ,
+  payload      JSONB NOT NULL,
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_admin_jobs_created_at ON admin_jobs(created_at DESC);

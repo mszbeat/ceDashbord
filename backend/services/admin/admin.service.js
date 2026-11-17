@@ -47,6 +47,7 @@ class AdminService {
     this.ingestion = ingestion;
     this.jobs = new Map();
     this.cronTableReady = false;
+    this.jobsTableReady = false;
   }
 
   async onModuleInit() {
@@ -58,6 +59,18 @@ class AdminService {
         action: 'admin.cron_table_deferred',
         errorCode: err?.code || 'DB_INIT_DEFERRED',
         message: 'DB unavailable on startup; cron_configs will be ensured on first use',
+        meta: { cause: err?.code || err?.message || String(err) },
+      });
+    }
+    try {
+      await this.ensureJobsTable();
+      await this.recoverInterruptedJobs();
+    } catch (err) {
+      getActionLogger().warn({
+        category: 'admin',
+        action: 'admin.jobs_table_deferred',
+        errorCode: err?.code || 'DB_INIT_DEFERRED',
+        message: 'DB unavailable on startup; admin_jobs will be ensured on first use',
         meta: { cause: err?.code || err?.message || String(err) },
       });
     }
@@ -92,6 +105,112 @@ class AdminService {
       [CRON_ID],
     );
     this.cronTableReady = true;
+  }
+
+  async ensureJobsTable() {
+    if (this.jobsTableReady) return;
+    await this.db.query(`
+      CREATE TABLE IF NOT EXISTS admin_jobs (
+        id           TEXT PRIMARY KEY,
+        source       TEXT NOT NULL,
+        status       TEXT NOT NULL,
+        created_at   TIMESTAMPTZ NOT NULL,
+        finished_at  TIMESTAMPTZ,
+        payload      JSONB NOT NULL,
+        updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+      )
+    `);
+    await this.db.query('CREATE INDEX IF NOT EXISTS idx_admin_jobs_created_at ON admin_jobs(created_at DESC)');
+    this.jobsTableReady = true;
+  }
+
+  /** فقط فیلدهای ایمن و نمایشی job ذخیره میشوند؛ کدملی/داده خام هرگز وارد JSONB نمیشود. */
+  sanitizeJobForStorage(job) {
+    return {
+      ...job,
+      filters: this.sanitizeFilters(job.filters || {}),
+      steps: (job.steps || []).map((step) => ({
+        bank: step.bank,
+        bankLabel: step.bankLabel,
+        day: step.day,
+        status: step.status,
+        startedAt: step.startedAt,
+        finishedAt: step.finishedAt,
+        error: step.error ? String(step.error).slice(0, 1000) : undefined,
+        result: step.result
+          ? {
+              source_total: step.result.source_total,
+              processed: step.result.processed,
+              success: step.result.success,
+              fail: step.result.fail,
+              skipped: step.result.skipped,
+              deleted: step.result.deleted,
+              rebuild: step.result.rebuild,
+            }
+          : undefined,
+      })),
+    };
+  }
+
+  hydrateStoredJob(row) {
+    if (!row) return null;
+    let job = row.payload;
+    if (typeof job === 'string') {
+      try { job = JSON.parse(job); } catch { return null; }
+    }
+    if (!job || typeof job !== 'object') return null;
+    const hydrated = { ...job, id: row.id || job.id, status: row.status || job.status };
+    if (hydrated.status === 'running' && !this.jobs.has(hydrated.id)) {
+      hydrated.status = 'interrupted';
+      hydrated.finishedAt = row.updated_at || new Date().toISOString();
+      for (const step of hydrated.steps || []) {
+        if (step.status === 'running') step.status = 'interrupted';
+      }
+    }
+    return hydrated;
+  }
+
+  async persistJob(job) {
+    try {
+      await this.ensureJobsTable();
+      await this.db.query(
+        `INSERT INTO admin_jobs (id, source, status, created_at, finished_at, payload, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6::jsonb, now())
+         ON CONFLICT (id) DO UPDATE SET
+           source = EXCLUDED.source,
+           status = EXCLUDED.status,
+           finished_at = EXCLUDED.finished_at,
+           payload = EXCLUDED.payload,
+           updated_at = now()`,
+        [
+          job.id,
+          job.source || 'manual',
+          job.status,
+          job.createdAt,
+          job.finishedAt || null,
+          JSON.stringify(this.sanitizeJobForStorage(job)),
+        ],
+      );
+    } catch (err) {
+      this.jobsTableReady = false;
+      getActionLogger().warn({
+        category: 'admin',
+        action: 'admin.job.persist_deferred',
+        errorCode: err?.code || 'JOB_PERSIST_FAILED',
+        message: 'Could not persist admin job history; in-memory state is still available',
+        meta: { jobId: job.id, cause: err?.code || err?.message || String(err) },
+      });
+    }
+  }
+
+  async recoverInterruptedJobs() {
+    await this.ensureJobsTable();
+    const res = await this.db.query("SELECT id, payload, updated_at FROM admin_jobs WHERE status = 'running'");
+    for (const row of res.rows || []) {
+      const job = this.hydrateStoredJob(row);
+      if (!job || job.status !== 'interrupted') continue;
+      await this.persistJob(job);
+    }
   }
 
   resolveBanks(banksInput, singleBank) {
@@ -412,7 +531,7 @@ class AdminService {
     };
   }
 
-  trimJobHistory() {
+  async trimJobHistory() {
     if (this.jobs.size <= 35) return;
     const finished = [...this.jobs.values()]
       .filter((j) => j.status !== 'running')
@@ -420,6 +539,16 @@ class AdminService {
     while (this.jobs.size > 30 && finished.length) {
       const oldest = finished.shift();
       this.jobs.delete(oldest.id);
+    }
+    try {
+      await this.ensureJobsTable();
+      await this.db.query(`
+        DELETE FROM admin_jobs
+        WHERE status <> 'running'
+          AND id NOT IN (SELECT id FROM admin_jobs ORDER BY created_at DESC LIMIT 30)
+      `);
+    } catch {
+      // پاکسازی تاریخچه بهترینتلاش است؛ اجرای جاری نباید متوقف شود.
     }
   }
 
@@ -453,7 +582,7 @@ class AdminService {
     });
   }
 
-  enqueueJob(params) {
+  async enqueueJob(params) {
     const id = `job-${Date.now().toString(36)}-${randomUUID().slice(0, 6)}`;
     const steps = [];
     if (params.dateScope === 'filter_only') {
@@ -496,7 +625,8 @@ class AdminService {
     };
 
     this.jobs.set(id, job);
-    this.trimJobHistory();
+    await this.trimJobHistory();
+    await this.persistJob(job);
 
     getActionLogger().info({
       category: 'admin',
@@ -525,6 +655,7 @@ class AdminService {
       for (const step of job.steps) {
         step.status = 'running';
         step.startedAt = new Date().toISOString();
+        await this.persistJob(job);
         try {
           let result;
           if (job.dateScope === 'filter_only') {
@@ -540,6 +671,7 @@ class AdminService {
           step.status = 'done';
           step.finishedAt = new Date().toISOString();
           job.completedSteps++;
+          await this.persistJob(job);
           getActionLogger().info({
             category: 'admin',
             action: 'admin.job.step_done',
@@ -558,6 +690,7 @@ class AdminService {
           step.status = 'failed';
           step.finishedAt = new Date().toISOString();
           job.failedSteps++;
+          await this.persistJob(job);
           getActionLogger().error({
             category: 'admin',
             action: 'admin.job.step_failed',
@@ -574,6 +707,7 @@ class AdminService {
       if (job.failedSteps === 0) job.status = 'completed';
       else if (job.completedSteps > 0) job.status = 'partial_error';
       else job.status = 'failed';
+      await this.persistJob(job);
 
       getActionLogger().logEvent({
         level: job.failedSteps > 0 ? (job.completedSteps === 0 ? 'error' : 'warn') : 'info',
@@ -636,15 +770,41 @@ class AdminService {
   }
 
   async getJob(jobId) {
-    const job = this.jobs.get(jobId);
-    if (!job) throw adminError.jobNotFound(jobId);
-    return this.enrichJobWithLiveProgress(job);
+    const liveJob = this.jobs.get(jobId);
+    if (liveJob) return this.enrichJobWithLiveProgress(liveJob);
+    try {
+      await this.ensureJobsTable();
+      const res = await this.db.query('SELECT * FROM admin_jobs WHERE id = $1', [jobId]);
+      const stored = this.hydrateStoredJob(res.rows?.[0]);
+      if (stored) {
+        this.jobs.set(stored.id, stored);
+        return this.enrichJobWithLiveProgress(stored);
+      }
+    } catch {
+      // DB موقتاً در دسترس نیست؛ فقط jobNotFound گزارش میشود.
+    }
+    throw adminError.jobNotFound(jobId);
   }
 
   async listJobs(limit = 15) {
-    const sorted = [...this.jobs.values()]
-      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-      .slice(0, limit);
+    const safeLimit = Math.min(Math.max(Number(limit) || 15, 1), 100);
+    const merged = new Map(this.jobs);
+    try {
+      await this.ensureJobsTable();
+      const res = await this.db.query(
+        'SELECT * FROM admin_jobs ORDER BY created_at DESC LIMIT $1',
+        [safeLimit],
+      );
+      for (const row of res.rows || []) {
+        const stored = this.hydrateStoredJob(row);
+        if (stored && !merged.has(stored.id)) merged.set(stored.id, stored);
+      }
+    } catch {
+      // در صورت نبود DB، همان تاریخچهٔ در حال اجرا/همین پروسه برگردانده میشود.
+    }
+    const sorted = [...merged.values()]
+      .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
+      .slice(0, safeLimit);
     return Promise.all(sorted.map((j) => this.enrichJobWithLiveProgress(j)));
   }
 
@@ -727,6 +887,15 @@ class AdminService {
       (j) => (j.source === 'cron' || j.source === 'cron_manual') && j.status === 'running',
     );
     if (runningCron) return null;
+    try {
+      await this.ensureJobsTable();
+      const persistedRunning = await this.db.query(
+        "SELECT 1 FROM admin_jobs WHERE status = 'running' AND source IN ('cron','cron_manual') LIMIT 1",
+      );
+      if (persistedRunning.rows?.length) return null;
+    } catch {
+      // اگر جدول jobs آماده نبود، claim کردن cron_configs همچنان از اجرای همزمان جلوگیری میکند.
+    }
 
     const claim = await this.db.query(
       `UPDATE cron_configs

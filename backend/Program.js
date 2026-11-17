@@ -6,20 +6,13 @@ const PartRequest = require('partRequest');
 const pr = new PartRequest();
 
 const { getServices } = require('./services/container');
-const { config } = require('./services/config');
+const { config, cleanEnv, requiredEnv } = require('./services/config');
 
 const SessionManager = require('./controllers/auth/session-manager');
 const SamadService = require('./controllers/auth/samad.service');
 const { installHttpCookiePathNormalizer } = require('./services/http/cookie-normalize');
 const { installHttpAuditLogger } = require('./services/logger/http-audit');
 const { getActionLogger } = require('./services/logger/action-logger.service');
-
-function cleanEnv(value) {
-  if (typeof value !== 'string') return undefined;
-  const trimmed = value.trim();
-  if (!trimmed || /[\u0600-\u06FF]/.test(trimmed)) return undefined;
-  return trimmed;
-}
 
 /**
  * بوت‌استرپ بک‌اند داشبورد روی `partFramework` — الگوی `samplePF`.
@@ -49,8 +42,10 @@ class Program {
   async #loadDependencies() {
     this.#core.loader.load('sessionManager', SessionManager);
 
-    const samadBaseUrl = process.env.SAMAD_SERVICE_URL ;
+    const samadBaseUrl = cleanEnv(process.env.SAMAD_SERVICE_URL) || 'http://samad-v8-dev.partdp.ir';
     const samadProtocol = samadBaseUrl.startsWith('https://') ? 'https' : 'http';
+    const samadUser = requiredEnv('SAMAD_USER');
+    const samadPass = requiredEnv('SAMAD_PASS');
 
     // کلاینت HTTP سرویس سمد (تخصیص/خواندن/حذف نقش کاربران)
     this.#core.loader.load('samadService', SamadService).inject(
@@ -58,8 +53,8 @@ class Program {
         defaultHttpRequestOptions: {
           baseURL: samadBaseUrl,
           headers: {
-            user: cleanEnv(process.env.SAMAD_USER) || 'mohammadsadeghZarei',
-            pass: cleanEnv(process.env.SAMAD_PASS) || 'mohammadsadeghZarei',
+            user: samadUser,
+            pass: samadPass,
           },
           timeout: Number(cleanEnv(process.env.SAMAD_TIMEOUT_MS) || 7000),
           protocol: samadProtocol,

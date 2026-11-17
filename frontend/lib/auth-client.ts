@@ -172,9 +172,8 @@ async function runLockedRefresh(): Promise<AuthSessionState | null> {
     if (current && current.authenticated) {
       return current;
     }
-    if (current && current._ok && current.canRefresh === false) {
-      return null;
-    }
+    // canRefresh:false در پاسخ unauthenticated /me صرفاً یعنی اکسس توکن منقضی شده؛
+    // تنها POST /api/auth/refresh میتواند معتبر بودن کوکی رفرش را تعیین کند.
 
     const res = await fetch('/api/auth/refresh', {
       method: 'POST',
@@ -230,7 +229,7 @@ export function refreshSession(): Promise<AuthSessionState | null> {
 
 export async function ensureAuthenticated(): Promise<AuthSessionState> {
   const me = await getAuthStatus();
-  if (!me.authenticated && (me.canRefresh || !me._ok)) {
+  if (!me.authenticated) {
     const refreshed = await refreshSession();
     if (refreshed && refreshed.authenticated) {
       return refreshed;
@@ -301,7 +300,7 @@ export async function loginWithPassword(params: {
 
   if (!verified?.authenticated) {
     verified = await getAuthStatus().catch(() => null);
-    if (!verified?.authenticated && verified?.canRefresh) {
+    if (!verified?.authenticated) {
       const refreshed = await refreshSession().catch(() => null);
       if (refreshed?.authenticated) {
         verified = refreshed;
@@ -310,7 +309,7 @@ export async function loginWithPassword(params: {
     if (!verified?.authenticated) {
       parsed = await postLoginRequest(params);
       verified = await getAuthStatus().catch(() => null);
-      if (!verified?.authenticated && verified?.canRefresh) {
+      if (!verified?.authenticated) {
         const refreshed = await refreshSession().catch(() => null);
         if (refreshed?.authenticated) {
           verified = refreshed;
@@ -407,11 +406,10 @@ export async function registerAccount(params: {
 
   let verified = await getAuthStatus().catch(() => null);
   if (!verified?.authenticated) {
-    if (verified?.canRefresh) {
-      const refreshed = await refreshSession().catch(() => null);
-      if (refreshed?.authenticated) {
-        verified = refreshed;
-      }
+    // حتی اگر /me بگوید canRefresh:false، رفرش توکن HttpOnly ممکن است معتبر باشد.
+    const refreshed = await refreshSession().catch(() => null);
+    if (refreshed?.authenticated) {
+      verified = refreshed;
     }
     if (!verified?.authenticated) {
       try {

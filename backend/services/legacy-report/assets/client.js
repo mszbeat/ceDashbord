@@ -73,10 +73,7 @@
         authState = current;
         return true;
       }
-      if (current && !current._httpError && current.canRefresh === false) {
-        authState = current;
-        return false;
-      }
+      // canRefresh:false از /me پس از انقضای اکسس توکن قطعی نیست؛ حتماً رفرش امتحان شود.
       const res = await fetch('/api/auth/refresh', {
         method: 'POST',
         cache: 'no-store',
@@ -211,7 +208,7 @@
 
   async function syncAuthState() {
     let me = await fetchAuthMe();
-    if (!me || me._httpError || (!me.authenticated && me.canRefresh !== false)) {
+    if (!me || me._httpError || !me.authenticated) {
       const refreshed = await refreshSession();
       if (refreshed) {
         me = authState || (await fetchAuthMe());

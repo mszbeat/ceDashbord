@@ -798,3 +798,129 @@
     transform: rotate(360deg);
   }
 }
+
+/* ── Glass redesign: professional translucent surfaces ── */
+:root {
+  --glass-panel: rgba(255, 255, 255, 0.7);
+  --glass-panel-2: rgba(244, 248, 254, 0.54);
+  --glass-border: rgba(255, 255, 255, 0.64);
+  --glass-line: rgba(120, 160, 210, 0.26);
+  --glass-shadow: 0 24px 64px rgba(2, 24, 70, 0.13), inset 0 1px 0 rgba(255, 255, 255, 0.68);
+}
+:root[data-theme="dark"] {
+  --glass-panel: rgba(10, 27, 60, 0.68);
+  --glass-panel-2: rgba(16, 38, 82, 0.52);
+  --glass-border: rgba(125, 190, 245, 0.18);
+  --glass-line: rgba(125, 190, 245, 0.16);
+  --glass-shadow: 0 28px 76px rgba(0, 4, 20, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+.adm-root {
+  background:
+    radial-gradient(circle at 8% 2%, rgba(14, 165, 233, 0.15), transparent 32rem),
+    radial-gradient(circle at 92% 20%, rgba(56, 189, 248, 0.12), transparent 36rem),
+    radial-gradient(circle at 50% 100%, rgba(0, 62, 164, 0.09), transparent 40rem),
+    var(--adm-bg);
+}
+:root[data-theme="dark"] .adm-root {
+  background:
+    radial-gradient(circle at 8% 2%, rgba(34, 211, 238, 0.13), transparent 32rem),
+    radial-gradient(circle at 92% 20%, rgba(11, 94, 215, 0.16), transparent 36rem),
+    radial-gradient(circle at 50% 100%, rgba(0, 62, 164, 0.12), transparent 40rem),
+    var(--adm-bg);
+}
+.adm-card,
+.adm-hero,
+.adm-toast,
+.adm-job-card,
+.adm-step-item,
+.adm-modal,
+.adm-modal-backdrop,
+.adm-gate-card,
+.adm-cron-status-box,
+.adm-details,
+.adm-table-wrap,
+.adm-clock-chip,
+.adm-metric-box,
+.adm-bank-foot,
+.adm-bank-metrics,
+.adm-privacy-note {
+  border-color: var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: blur(22px) saturate(155%);
+  backdrop-filter: blur(22px) saturate(155%);
+}
+.adm-card,
+.adm-job-card,
+.adm-step-item,
+.adm-modal,
+.adm-gate-card,
+.adm-cron-status-box,
+.adm-details,
+.adm-table-wrap,
+.adm-clock-chip,
+.adm-metric-box,
+.adm-bank-foot,
+.adm-bank-metrics,
+.adm-privacy-note {
+  background: var(--glass-panel);
+}
+.adm-hero {
+  background:
+    radial-gradient(circle at 72% 8%, rgba(126, 232, 250, 0.26), transparent 38%),
+    radial-gradient(circle at 6% 108%, rgba(14, 116, 255, 0.32), transparent 48%),
+    linear-gradient(118deg, rgba(0, 16, 66, 0.9) 0%, rgba(0, 39, 118, 0.86) 56%, rgba(0, 65, 172, 0.86) 100%);
+  border: 1px solid rgba(126, 232, 250, 0.24);
+}
+.adm-input,
+.adm-select,
+.adm-btn,
+.adm-pill,
+.adm-choice-btn,
+.adm-quick-days,
+.adm-badge {
+  background: var(--glass-panel-2);
+  border-color: var(--glass-line);
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
+  backdrop-filter: blur(16px) saturate(150%);
+}
+.adm-input:focus,
+.adm-select:focus {
+  background: var(--glass-panel);
+}
+.adm-btn-primary {
+  background: linear-gradient(135deg, rgba(0, 62, 164, 0.94), rgba(11, 94, 215, 0.92) 58%, rgba(14, 165, 233, 0.94));
+  border-color: rgba(126, 232, 250, 0.34);
+  box-shadow: 0 16px 34px rgba(6, 70, 170, 0.26), inset 0 1px 0 rgba(255, 255, 255, 0.24);
+}
+.adm-table {
+  background: transparent;
+}
+.adm-table th {
+  background: var(--glass-panel-2);
+}
+.adm-table th,
+.adm-table td {
+  border-bottom-color: var(--glass-line);
+}
+.adm-toast.success,
+.adm-toast.error {
+  background: var(--glass-panel);
+}
+.adm-progress-track {
+  background: var(--glass-panel-2);
+  border: 1px solid var(--glass-line);
+}
+.adm-progress-bar {
+  box-shadow: 0 0 18px rgba(14, 165, 233, 0.42);
+}
+.adm-section-head {
+  border-bottom: 1px solid var(--glass-line);
+}
+@media (prefers-reduced-motion: reduce) {
+  .adm-root *,
+  .adm-root *::before,
+  .adm-root *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

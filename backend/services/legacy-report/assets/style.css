@@ -634,3 +634,101 @@ th, td { padding:7px 10px; }
   .page { max-width:none;padding:0; }
   .hero,.headline-card,.panel,.insight-chart { box-shadow:none!important; }
 }
+
+/* ── Glass redesign: appearance only, data/logic untouched ── */
+:root {
+  --glass-surface: rgba(255, 255, 255, 0.7);
+  --glass-surface-2: rgba(244, 248, 254, 0.56);
+  --glass-border: rgba(255, 255, 255, 0.66);
+  --glass-shadow: 0 22px 58px rgba(2, 24, 70, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  --surface: var(--glass-surface);
+  --surface-2: var(--glass-surface-2);
+  --line: rgba(120, 160, 210, 0.28);
+  --line-light: rgba(120, 160, 210, 0.18);
+  --shadow: var(--glass-shadow);
+}
+:root[data-theme="dark"] {
+  --glass-surface: rgba(10, 27, 60, 0.68);
+  --glass-surface-2: rgba(16, 38, 82, 0.54);
+  --glass-border: rgba(125, 190, 245, 0.18);
+  --glass-shadow: 0 26px 70px rgba(0, 4, 20, 0.48), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --surface: var(--glass-surface);
+  --surface-2: var(--glass-surface-2);
+  --line: rgba(125, 190, 245, 0.18);
+  --line-light: rgba(125, 190, 245, 0.12);
+  --shadow: var(--glass-shadow);
+}
+body {
+  background:
+    radial-gradient(circle at 8% 2%, rgba(14, 165, 233, 0.13), transparent 32rem),
+    radial-gradient(circle at 92% 16%, rgba(56, 189, 248, 0.11), transparent 36rem),
+    radial-gradient(circle at 50% 100%, rgba(0, 62, 164, 0.08), transparent 40rem),
+    var(--bg);
+}
+.hero {
+  border: 1px solid rgba(126, 232, 250, 0.22);
+  background:
+    radial-gradient(circle at 52% -35%, rgba(34, 211, 238, 0.3), transparent 48%),
+    linear-gradient(116deg, rgba(0, 16, 66, 0.92) 0%, rgba(0, 40, 120, 0.88) 56%, rgba(0, 65, 172, 0.88) 100%);
+  box-shadow: 0 28px 70px rgba(0, 22, 80, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+.hero-footer,
+.headline-card,
+.sidebar,
+.scopebar,
+.panel,
+.card,
+.insight-card,
+.insight-chart,
+.table-wrap,
+.table-tools,
+.note,
+.kpi-card,
+.stat-card,
+.chart-card,
+.badge,
+.pill,
+.details,
+.toolbar {
+  background: var(--glass-surface);
+  border-color: var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: blur(22px) saturate(155%);
+  backdrop-filter: blur(22px) saturate(155%);
+}
+.sidebar-foot,
+.scope-buttons,
+.panel-heading,
+.headline-card small,
+.scopebar p {
+  background: var(--glass-surface-2);
+}
+.icon-button,
+.nav-button,
+.scope-buttons button,
+button,
+input,
+select {
+  -webkit-backdrop-filter: blur(14px) saturate(145%);
+  backdrop-filter: blur(14px) saturate(145%);
+}
+.scopebar.floating {
+  box-shadow: 0 20px 48px rgba(2, 24, 70, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+.table th,
+.table td,
+table th,
+table td {
+  border-bottom-color: var(--line-light);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root { --surface: #fff; --surface-2: #f4f8fe; }
+  :root[data-theme="dark"] { --surface: #0a1938; --surface-2: #10244d; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -2,9 +2,31 @@
 
 پیادهسازی صفر تا صد PRD `CE-Dashboard-Server-PRD.md` با ساختار `frontend/` + `backend/`، **بدون Docker**. نصب Node.js و PostgreSQL بر عهده شماست؛ اسکریپتها فقط پروژه را نصب، مایگریشن، اجرا و Ingestion میکنند.
 
-> خروجی یک **صفحهٔ زنده آنلاین** است، نه فایل HTML برای دانلود. ظاهر، چینش، کارتها، جداول، نمودارها، RTL، تعاملات، Scope موفق/ناموفق و تب جزئیات دقیقاً همان `report.html` قدیمی است؛ منبع داده بهجای پوشهٔ `reports/`، دیتابیس جانبی و API اصلی است.
+> خروجی یک **صفحهٔ زنده آنلاین** است، نه فایل HTML برای دانلود. چینش، کارتها، جداول، نمودارها، RTL، تعاملات، Scope موفق/ناموفق و تب جزئیات بر اساس همان رندرر قدیمی `report.html` بازسازی شدهاند؛ منبع داده بهجای پوشهٔ `reports/`، دیتابیس جانبی و API اصلی است.
 >
-> فایل `report.html` موجود در ریپو نمونهٔ **بانک رسالت** است. ظاهر برای هر سه بانک یکسان است و شاخصها مستقیماً از `banks/*.js` خوانده میشوند؛ یعنی انتخاب رسالت همان ۱۲ بخش قدیمی (شامل «خروجی مدل») را میدهد و ملت/پستبانک همان موتور را با بخشها و شاخصهای مخصوص خودشان اجرا میکنند.
+> `report.html` و ابزارهای A/B قدیمی در این checkout وجود ندارند؛ `README.legacy.md` فقط سند تاریخی نسخهٔ پیشین است. رجیستری تحلیل هر سه بانک در `backend/services/evaluator/legacy/src/banks/*.js` نگهداری میشود. پوستهٔ بصری اکنون شیشهای/مدرن است، بدون تغییر در منطق یا دادههای تحلیل.
+
+---
+
+## پیشنیازهای محیطی
+
+این ریپو فقط کد است؛ وابستگیهای زیر باید خارج از آن فراهم شوند:
+
+- Node.js 20+ و PostgreSQL (دیتابیس جانبی `DATABASE_URL`).
+- رجیستری خصوصی پارت برای `@partFramework/*`, `partAuthenticationInterface` و سایر پکیجها.
+- دسترسی شبکهای به سرویس سمد و هاستهای `*.partdp.ir` / گیتوی هر بانک.
+- فایل `backend/.env` ساختهشده از `backend/.env.example` با مقادیر واقعی (هیچ رمز/توکن/کلید خصوصی کامیت نمیشود).
+- `frontend/.env.local` فقط در صورتی که `BACKEND_URL` غیر از `http://127.0.0.1:3000` باشد.
+
+راستیآزمایی سریع پیش از اجرا:
+
+```bash
+cd backend && npm run check:env
+```
+
+> محیط توسعهٔ این Agent فاقد PostgreSQL، رجیستری خصوصی پارت و هاستهای داخلی است؛
+> بنابراین بکاند واقعی اینجا اجرا نشد و صحت جریان رفرش/UI با بکاند mock و تستهای
+> واحد/ساختاری بررسی شد. جزئیات امنیتی در [`docs/SECURITY.md`](docs/SECURITY.md).
 
 ---
 
@@ -42,10 +64,10 @@ ceDashbord/
 │   ├── index.js            # نقطهٔ ورود (MODE=dev|prod|test)
 │   ├── Program.js          # بوت‌استرپ partFramework + تزریق وابستگی‌ها
 │   ├── routes.js           # ۲۷ روت مرکزی + validate + checkAccess
-│   ├── asigne.samad.access.to.role.js  # تخصیص دسترسی‌های routes.js در سمد
 │   ├── project-config/     # routerConf (accessControl), servers, dependencies
 │   ├── configs/            # تنظیمات global/instance پارت و error configها
 │   ├── controllers/        # auth, summaryController, creditEvaluationController, adminController
+│   ├── scripts/check-env.js  # راستیآزمایی متغیرهای محیطی پیش از اجرا
 │   ├── scripts/verify-pd2.js  # تست سرتاسری + بررسی ساختار (با PGlite در صورت نصب)
 │   ├── tests/              # تست‌های واحد و قرارداد معماری (node --test)
 │   └── services/
@@ -58,11 +80,13 @@ ceDashbord/
 │       ├── summary/        # SummaryService (/api/report, /api/summary, /api/list, ...)
 │       ├── admin/          # AdminService + CronSchedulerService
 │       └── legacy-report/  # render.js/charts.js/common.js/assets/* + report-builder.js
+├── docs/                   # ممیزی تطبیق عددی و چکلیست امنیتی
 └── frontend/
     ├── install.sh
     ├── start.sh
     ├── .env.example
     ├── lib/auth-client.ts  # نشست، رفرش‌توکن خودکار (single-flight) و همگام‌سازی تب‌ها
+    ├── public/images/login-hero.webp  # هیر بهینهشده صفحهٔ ورود (کیفیت بالا، حجم کم)
     ├── app/
     │   ├── layout.tsx      # RTL / فارسی
     │   ├── route.ts        # صفحهٔ زنده: GET / → GET /api/report بکاند
@@ -128,14 +152,15 @@ BACKEND_PORT=3000
 ./frontend/install.sh
 ```
 
-### ۴) ساخت جداول و تخصیص دسترسی سمد
+### ۴) ساخت جداول و راستیآزمایی محیط
 
 ```bash
+cp backend/.env.example backend/.env   # سپس مقادیر واقعی را وارد کنید
+cd backend && npm run check:env
 ./migrate.sh
-cd backend && npm run samad:assign
 ```
 
-جداول: `day_runs`، `samples_mellat`، `samples_resalat`، `samples_postbank`، `message_dict`، `sample_access_logs`، `cron_settings`، `ingestion_jobs`، `auth_refresh_tokens`.
+جداول: `day_runs`، `samples_mellat`، `samples_resalat`، `samples_postbank`، `message_dict`، `sample_access_logs`، `cron_configs`، `auth_refresh_tokens` و `admin_jobs` (تاریخچهٔ اجراهای پنل مدیریت که پس از restart هم باقی میماند).
 
 ### ۵) اجرا
 
@@ -156,7 +181,7 @@ cd backend && npm run samad:assign
 1. `GET /` توسط `frontend/app/route.ts` به `GET /api/report?bank=&from=&to=&rowsCap=` بکاند پروکسی میشود و همان HTML را در لحظه برمیگرداند؛ هیچ فایل HTML نوشته نمیشود.
 2. بکاند ردیفهای تحلیلشده را از `samples_<bank>` با keyset pagination میخواند.
 3. گروهها، چارکها، درصدها، کراسها، کارتها و سطرهای فهرست دقیقاً با `newStats()`/`bump()` قدیمی ساخته میشوند. `percentile_cont`/SQL دیگر منبع حقیقت نیست.
-4. `backend/services/legacy-report/render.js` همان `buildHtml` قدیمی صدا زده میشود؛ `charts.js`، `style.css`، `client.js`، `viewer.js` و `viewer.css` عیناً همان فایلهای قدیمیاند.
+4. `backend/services/legacy-report/render.js` همان `buildHtml` قدیمی صدا زده میشود؛ `charts.js`، `client.js`، `viewer.js` ساختار و منطق قدیمی را حفظ میکنند و `style.css` / `viewer.css` فقط پوستهٔ بصری شیشهای/مدرن گرفتهاند.
 5. فقط متنهای وابسته به «پوشهٔ reports» و «فایل خصوصی جزئیات» به API زنده تغییر کردهاند: `sid` همان `request_id` است و کلیک ردیف `fetch('/api/sample/{requestId}')` میکند و همان viewer را در تب جدید میسازد.
 6. نوار باریک بالای صفحه، بانک/از/تا/بروزرسانی را با همان متغیرهای رنگی legacy اضافه میکند.
 
@@ -269,10 +294,16 @@ curl -X POST http://localhost:3000/api/runs \
 
 ```bash
 cd backend
-npm test              # تست‌های واحد، قرارداد روتر، کنترلرها، لایه auth/refresh و scripts/verify-pd2.js
+npm run check:env     # فقط در محیط واقعی؛ وجود .env و مقادیر لازم
+npm test              # تست‌های واحد، امنیت پیشفرضها، persistence jobها، روتر، کنترلرها، auth/refresh و verify-pd2.js
+npm run verify        # همان بررسی ساختاری؛ بخش PGlite در صورت نصب اجرا میشود
+
+cd ../frontend
+npm test              # سیاست تمدید رفرش توکن در middleware / BFF / کلاینتها
+npx tsc --noEmit      # بررسی تایپ TypeScript
 ```
 
-برای اجرای پیشنمایش محلی بدون نیاز به PostgreSQL سرور، در صورت نصب بودن `@electric-sql/pglite`، اسکریپت `npm run verify` تست سرتاسری دیتابیس + رندر HTML هر سه بانک را نیز اجرا میکند.
+برای اجرای پیشنمایش محلی بدون نیاز به PostgreSQL سرور، در صورت نصب بودن `@electric-sql/pglite`، اسکریپت `npm run verify` تست سرتاسری دیتابیس + رندر HTML هر سه بانک و ذخیرهٔ `admin_jobs` را نیز اجرا میکند.
 
 `verify-pd2.js` بررسی میکند که:
 
@@ -299,51 +330,26 @@ npm test              # تست‌های واحد، قرارداد روتر، ک�
 2. کلید خصوصی بیرون ریپو (`~/.ce-deploy/id_ed25519`) است و هرگز کامیت نمیشود.
 3. دسترسی SSH تست و کامیتها روی `main` پوش شدند؛ `GET /repos/mszbeat/ceDashbord/branches/main` نشان داد `protected:false`.
 4. محدودیت Deploy Key: فقط همین ریپو؛ بعد از انتقال به ریپوی سازمانی حتماً Rotate شود.
-5. هیچ `.env` و هیچ توکنی کامیت نمیشود.
+5. هیچ `.env`، توکن، رمز یا کلید خصوصی TLS کامیت نمیشود؛ چکلیست کامل در [`docs/SECURITY.md`](docs/SECURITY.md).
 
 ---
 
-## ممیزی کامل اختلاف اعداد
+## ممیزی تطبیق عددی
 
-گزارش کامل «صفر تا صد» مقایسهٔ دو خط لولهٔ تحلیل (هش تکتک فایلها، شش فایل
-تغییریافته، فرمولها، تست A/B و تحلیل الگوی اختلاف اسکرینشاتها) در
-[`docs/analysis-parity-audit.md`](docs/analysis-parity-audit.md) است.
+خلاصهٔ وضعیت واقعی ابزارهای تطبیق و محدودیتهای این checkout در
+[`docs/analysis-parity-audit.md`](docs/analysis-parity-audit.md) مستند شده است.
 
-ابزارهای قطعی:
+در این ریپو `report.html`، `backend/scripts/ab-parity.js`،
+`backend/scripts/numeric-parity.js`، `backend/scripts/import-legacy-reports.js`
+و اسکریپتهای npm مربوطه وجود **ندارند**؛ بنابراین هیچ دستور/لینکی به آنها اجرا
+نمیشود. تستهای موجود همان قرارداد روتر، کنترلرها، موتور ارزیابی، حذف کد ملی،
+لایهٔ auth/refresh و ساختار HTML زنده را پوشش میدهند.
 
-```bash
-cd backend
-npm run test:ab-parity                                  # تست اتوماتیک روی ۱۲۰ نمونه
-node scripts/ab-parity.js /path/to/reports             # مقایسهٔ همان پوشهٔ reports/ از هر دو مسیر
-node scripts/import-legacy-reports.js /path/to/reports # وارد کردن همان اسنپشاپ به PostgreSQL
-```
-
-`ab-parity` هر دو خروجی را با **یک رندرر** میسازد و جداول تجمیعی را سلولبهسلول
-مقایسه میکند؛ نتیجهٔ موفق `identical: true` یعنی اختلاف اعداد دو اجرای واقعی
-از **اسنپشاپ متفاوت API** آمده، نه از کد تحلیل.
-
-## بررسی تطبیق عددی قدیم / جدید
-
-اسکریپت `backend/scripts/numeric-parity.js` همان نمونهها را یکبار از مسیر قدیمی
-(`scan → analyzeOne → bump`) و یکبار از مسیر زنده
-(`normalizeSample → evaluate → جدول samples_* → consumeRow → bump`) عبور میدهد و
-**تکتک شاخصهای عددی** (count/min/p25/median/mean/p75/max)، فلگها، دستهها،
-شمارندهها، سرویسها، مسیرها، وضعیت موفق/ناموفق و اولین/آخرین درخواست را مقایسه میکند:
-
-```bash
-cd backend
-npm run test:numeric-parity
-# خروجی موفق: "problems": []   (پیشفرض ۱۲۰ نمونه؛ PARITY_N=1000 برای تست سنگینتر)
-```
-
-نتیجهٔ این تست: موتور تحلیل عددی (`newStats`/`bump`/`quantile`/`histogram`/`banks/*.js`)
-بین دو نسخه **هیچ تفاوتی ندارد**. اختلافهای جزئی اعداد در دو اجرای واقعی، از
-**ردیفهای ورودی** میآیند، نه از کد تحلیل، چون نسخهٔ زنده شاخصها را هنگام
-**Ingestion** محاسبه و ذخیره میکند و گزارش فقط همان مقادیر ذخیرهشده را `bump` میکند.
-اگر ingestion در زمان دیگری از API زنده اجرا شود، یا صفحهبندی API پایدار نباشد
-(PRD D-01)، یا ردیفها با نسخهٔ قدیمیتر کد ذخیره شدهباشند، چند ردیف نزدیک مرز
-بازهها جابهجا میشوند و میانگین/چارکها کمی تغییر میکند. برای قضاوت دقیق، هر دو
-خروجی باید از **یک اسنپشاپ یکسان** ساخته شوند.
+نتیجهٔ مهم: موتور تحلیل عددی (`newStats`/`bump`/`quantile`/`histogram`/`banks/*.js`)
+بین دو نسخه تفاوتی ندارد. اختلاف جزئی اعداد دو اجرای واقعی، از **ردیفهای ورودی**
+میآید، نه از کد تحلیل، چون نسخهٔ زنده شاخصها را هنگام **Ingestion** محاسبه و
+ذخیره میکند و گزارش فقط همان مقادیر ذخیرهشده را `bump` میکند. برای قضاوت دقیق،
+هر دو خروجی باید از **یک اسنپشاپ یکسان** ساخته شوند.
 
 ### تفاوتهای کد که برطرف شدند
 

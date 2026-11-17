@@ -45,6 +45,8 @@ export default async function AdminPage() {
   let activeCookieHeader = probe.cookieHeader;
   let authData = probe.data;
 
+  // برخلاف فیلد canRefresh، وجود کوکی ce_refresh کافی است؛ /me ممکن است پس از انقضای
+  // اکسس توکن سشن visitor و canRefresh:false بدهد در حالی که رفرش توکن هنوز معتبر است.
   if ((!probe.ok || authData?.authenticated !== true) && hasCookie(activeCookieHeader, 'ce_refresh')) {
     const refreshed = await performRefreshWithRecovery(
       backendUrl,

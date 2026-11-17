@@ -80,3 +80,71 @@ button:hover { background:var(--soft); }button:focus-visible,summary:focus-visib
 
 th, td, td[dir="ltr"] { text-align:right; padding:7px 10px; }
 .card .value, .card .label { text-align:center; }
+
+/* ── Glass redesign: appearance only, data/logic untouched ── */
+:root {
+  --glass-card: rgba(255, 255, 255, 0.72);
+  --glass-soft: rgba(230, 241, 255, 0.6);
+  --glass-border: rgba(255, 255, 255, 0.66);
+  --glass-shadow: 0 22px 58px rgba(2, 24, 70, 0.13), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  --card: var(--glass-card);
+  --soft: var(--glass-soft);
+  --line: rgba(120, 160, 210, 0.28);
+  --stripe: rgba(239, 245, 253, 0.45);
+  --hover: rgba(221, 235, 251, 0.62);
+}
+:root[data-theme="dark"] {
+  --glass-card: rgba(10, 27, 60, 0.7);
+  --glass-soft: rgba(13, 47, 94, 0.56);
+  --glass-border: rgba(125, 190, 245, 0.18);
+  --glass-shadow: 0 26px 70px rgba(0, 4, 20, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --card: var(--glass-card);
+  --soft: var(--glass-soft);
+  --line: rgba(125, 190, 245, 0.18);
+  --stripe: rgba(14, 32, 70, 0.45);
+  --hover: rgba(23, 52, 109, 0.6);
+}
+body {
+  background:
+    radial-gradient(circle at 8% 2%, rgba(14, 165, 233, 0.13), transparent 30rem),
+    radial-gradient(circle at 92% 18%, rgba(56, 189, 248, 0.11), transparent 34rem),
+    var(--bg);
+}
+.detail-topbar,
+.hero,
+.card,
+.note,
+.table-wrap,
+.toolbar,
+button,
+.chip,
+.flag {
+  border-color: var(--glass-border);
+  -webkit-backdrop-filter: blur(20px) saturate(155%);
+  backdrop-filter: blur(20px) saturate(155%);
+}
+.detail-topbar,
+.card,
+.note,
+.table-wrap,
+.toolbar,
+button {
+  background: var(--glass-card);
+  box-shadow: var(--glass-shadow);
+}
+.hero {
+  box-shadow: 0 26px 66px rgba(0, 22, 80, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+table {
+  background: transparent;
+}
+th {
+  background: var(--glass-soft);
+}
+td,
+th {
+  border-bottom-color: var(--line);
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}

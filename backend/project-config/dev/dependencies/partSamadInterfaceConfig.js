@@ -23,8 +23,8 @@ module.exports = {
   instance: {
     cacheTtl: 60 * 60 * 1000,
     auth: {
-      user: cleanEnv(process.env.SAMAD_USER) || 'mohammadsadeghZarei',
-      pass: cleanEnv(process.env.SAMAD_PASS) || 'mohammadsadeghZarei',
+      user: cleanEnv(process.env.SAMAD_USER) || '',
+      pass: cleanEnv(process.env.SAMAD_PASS) || '',
     },
   },
 };

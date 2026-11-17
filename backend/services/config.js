@@ -50,6 +50,10 @@ function required(name, fallback) {
   return value;
 }
 
+function requiredEnv(name) {
+  return required(name);
+}
+
 const DEFAULT_REPORT_API_URL = 'http://creditevaluation-v2.ara.partdp.ir/creditEvaluation@2/report';
 
 function buildServiceUrlFromHost(hostValue, defaultPath, defaultProtocol) {
@@ -237,6 +241,7 @@ module.exports = {
   config,
   BANKS,
   cleanEnv,
+  requiredEnv,
   parseDurationMs,
   buildServiceUrlFromHost,
   resolveBankApiUrl,
