@@ -3,10 +3,36 @@
 const { error: authError } = require('./config');
 const { RefreshTokenService, REFRESH_COOKIE_NAME } = require('./refresh-token.service');
 
+function readCookieHeader(request) {
+  const candidates = [
+    request?.headers?.cookie,
+    request?.header?.cookie,
+    request?.req?.headers?.cookie,
+    request?.request?.headers?.cookie,
+  ];
+  for (const cand of candidates) {
+    if (typeof cand === 'string' && cand.trim()) return cand;
+  }
+  const rawHeaders = request?.rawHeaders || request?.req?.rawHeaders;
+  if (Array.isArray(rawHeaders)) {
+    for (let i = 0; i < rawHeaders.length - 1; i += 2) {
+      if (String(rawHeaders[i]).toLowerCase() === 'cookie' && rawHeaders[i + 1]) {
+        return String(rawHeaders[i + 1]);
+      }
+    }
+  }
+  return '';
+}
+
 function parseCookies(request) {
-  const rawCookie = request?.headers?.cookie || request?.header?.cookie || '';
-  if (!rawCookie || typeof rawCookie !== 'string') return {};
   const out = {};
+  if (request?.cookies && typeof request.cookies === 'object' && !Array.isArray(request.cookies)) {
+    for (const [k, v] of Object.entries(request.cookies)) {
+      if (k && typeof v === 'string') out[k] = v;
+    }
+  }
+  const rawCookie = readCookieHeader(request);
+  if (!rawCookie || typeof rawCookie !== 'string') return out;
   for (const part of rawCookie.split(';')) {
     const eqIndex = part.indexOf('=');
     if (eqIndex <= 0) continue;
@@ -22,20 +48,38 @@ function parseCookies(request) {
   return out;
 }
 
+function resolveResponseTarget(response) {
+  const candidates = [
+    response?.response?.res,
+    response?.response,
+    response?.res,
+    response,
+  ];
+  for (const target of candidates) {
+    if (target && typeof target.setHeader === 'function') return target;
+  }
+  return null;
+}
+
 function isSecureRequest(request) {
   if (process.env.COOKIE_SECURE === 'true') return true;
   if (process.env.COOKIE_SECURE === 'false') return false;
-  const proto = request?.headers?.['x-forwarded-proto'] || request?.protocol || '';
+  const proto =
+    request?.headers?.['x-forwarded-proto'] ||
+    request?.req?.headers?.['x-forwarded-proto'] ||
+    request?.protocol ||
+    '';
   return String(proto).toLowerCase().split(',')[0].trim() === 'https';
 }
 
 function appendSetCookies(response, newCookies) {
-  if (!response || typeof response.setHeader !== 'function') return;
+  const target = resolveResponseTarget(response);
+  if (!target) return;
   let existingRaw;
-  if (typeof response.getHeader === 'function') {
-    existingRaw = response.getHeader('Set-Cookie');
+  if (typeof target.getHeader === 'function') {
+    existingRaw = target.getHeader('Set-Cookie');
     if (existingRaw === undefined) {
-      existingRaw = response.getHeader('set-cookie');
+      existingRaw = target.getHeader('set-cookie');
     }
   }
   const existing = Array.isArray(existingRaw)
@@ -44,7 +88,7 @@ function appendSetCookies(response, newCookies) {
       ? [String(existingRaw)]
       : [];
   const next = [...existing, ...newCookies.map(String)];
-  response.setHeader('Set-Cookie', next);
+  target.setHeader('Set-Cookie', next);
 }
 
 /**
@@ -188,7 +232,7 @@ class SessionManager {
   }
 
   #setRefreshCookie(response, request, rawToken, ttlMs, expiresAt) {
-    if (!response || typeof response.setHeader !== 'function') return;
+    if (!resolveResponseTarget(response)) return;
     const maxAgeSec = Math.max(1, Math.floor(Number(ttlMs) / 1000));
     const securePart = isSecureRequest(request) ? ' Secure;' : '';
     const domainEnv = process.env.COOKIE_DOMAIN ? ` Domain=${process.env.COOKIE_DOMAIN};` : '';
@@ -198,7 +242,7 @@ class SessionManager {
   }
 
   clearRefreshCookie(response, request) {
-    if (!response || typeof response.setHeader !== 'function') return;
+    if (!resolveResponseTarget(response)) return;
     const securePart = isSecureRequest(request) ? ' Secure;' : '';
     const cookies = [
       `${REFRESH_COOKIE_NAME}=; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Lax;${securePart}`,
@@ -212,7 +256,7 @@ class SessionManager {
   }
 
   #clearCookie(response, request) {
-    if (!response || typeof response.setHeader !== 'function') return;
+    if (!resolveResponseTarget(response)) return;
     const domain = process.env.COOKIE_DOMAIN || 'localhost';
     const securePart = isSecureRequest(request) ? ' Secure;' : '';
     const cookies = [

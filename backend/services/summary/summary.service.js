@@ -1,5 +1,6 @@
 'use strict';
-const { BANKS, config } = require('../config');
+const { BANKS, config, resolveBankApiUrl, bankUsesGateway } = require('../config');
+const { fetchBankJson } = require('../http/gateway-client');
 const { error: summaryError } = require('../../controllers/summaryController/config');
 const { error: ceError } = require('../../controllers/creditEvaluationController/config');
 const { defaultRange, jalaliStampDigitsOf, normalizeDay } = require('../utils/date');
@@ -621,36 +622,7 @@ class SummaryService {
     };
   }
 
-  async sample(requestId, req) {
-    const url = new URL(config.apiBaseUrl);
-    url.searchParams.set('page', '1');
-    url.searchParams.set('limit', '1');
-    url.searchParams.set('requestId', requestId);
-    const response = await fetch(url.toString(), {
-      headers: {
-        'gateway-system': config.apiSystem,
-        'gateway-token': config.apiToken,
-        accept: 'application/json',
-      },
-      signal: AbortSignal.timeout(config.requestTimeoutMs),
-    });
-    if (!response.ok) {
-      throw ceError.creditEvaluationBaseServiceError({ status: response.status, requestId });
-    }
-    const body = await response.json();
-    const data = body?.data ?? body;
-    const raw = data?.reportResults?.[0] ?? data?.reports?.[0] ?? null;
-    await this.db
-      .query('INSERT INTO sample_access_logs(request_id, ip, user_agent) VALUES($1,$2,$3)', [
-        requestId,
-        req?.ip ?? null,
-        String(req?.headers?.['user-agent'] ?? '').slice(0, 500),
-      ])
-      .catch(() => undefined);
-
-    if (!raw) return { requestId, found: false, fetchedAt: new Date().toISOString(), meta: {}, sample: null };
-    const normalized = this.evaluator.normalizeSample(raw, { fromApi: true });
-    const inferredBank = this.evaluator.bankKeyOfSample(normalized);
+  async sample(requestId, req, bankHint) {
     const stored = await this.db
       .query(
         `SELECT * FROM (
@@ -662,7 +634,71 @@ class SummaryService {
       )
       .catch(() => ({ rows: [] }));
     const row = stored.rows[0];
-    const bankKey = String(row?.bank || inferredBank);
+
+    const prioritized = [
+      row?.bank,
+      bankHint && BANKS[bankHint] ? bankHint : null,
+      ...Object.keys(BANKS),
+    ].filter((key) => key && BANKS[key]);
+    const candidates = [];
+    const seenEndpoints = new Set();
+    for (const key of prioritized) {
+      const apiUrl = resolveBankApiUrl(key);
+      const endpointSig = `${apiUrl}|${bankUsesGateway(key) ? 'gw' : 'direct'}`;
+      if (seenEndpoints.has(endpointSig)) continue;
+      seenEndpoints.add(endpointSig);
+      candidates.push({ bankKey: key, apiUrl });
+    }
+
+    let raw = null;
+    let lastError = null;
+    let matchedFromBank = null;
+    for (const candidate of candidates) {
+      const url = new URL(candidate.apiUrl);
+      url.searchParams.set('page', '1');
+      url.searchParams.set('limit', '1');
+      url.searchParams.set('requestId', requestId);
+      try {
+        const data = await fetchBankJson(candidate.bankKey, url.toString(), {
+          timeoutMs: config.requestTimeoutMs,
+          retryCount: 1,
+        });
+        const hit = data?.reportResults?.[0] ?? data?.reports?.[0] ?? null;
+        if (hit) {
+          raw = hit;
+          matchedFromBank = candidate.bankKey;
+          break;
+        }
+      } catch (err) {
+        lastError = err;
+      }
+    }
+
+    if (!raw && lastError && !matchedFromBank && candidates.length === 1) {
+      throw ceError.creditEvaluationBaseServiceError({
+        status: lastError.statusCode || 502,
+        requestId,
+      });
+    }
+    if (!raw && lastError && row?.bank) {
+      throw ceError.creditEvaluationBaseServiceError({
+        status: lastError.statusCode || 502,
+        requestId,
+      });
+    }
+
+    await this.db
+      .query('INSERT INTO sample_access_logs(request_id, ip, user_agent) VALUES($1,$2,$3)', [
+        requestId,
+        req?.ip ?? null,
+        String(req?.headers?.['user-agent'] ?? '').slice(0, 500),
+      ])
+      .catch(() => undefined);
+
+    if (!raw) return { requestId, found: false, fetchedAt: new Date().toISOString(), meta: {}, sample: null };
+    const normalized = this.evaluator.normalizeSample(raw, { fromApi: true });
+    const inferredBank = this.evaluator.bankKeyOfSample(normalized);
+    const bankKey = String(row?.bank || matchedFromBank || inferredBank);
     const status = row
       ? row.is_success
         ? 'success'
@@ -707,7 +743,6 @@ class SummaryService {
       fetchedAt: new Date().toISOString(),
       meta,
       sample: redactSensitive(safeSample),
-      note: 'جزئیات فقط در لحظه از API اصلی گرفته میشود و در دیتابیس جانبی ذخیره نمیشود.',
     };
   }
 
@@ -720,23 +755,16 @@ class SummaryService {
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;');
     const rawMsg = error?.data?.message?.fa ?? error?.message ?? error;
-    const message = escape(String(rawMsg).slice(0, 1200));
-    const databaseUrl = process.env.DATABASE_URL ? 'تنظیم شده' : 'تنظیم نشده';
-    return `<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>داشبورد زنده در دسترس نیست</title><style>
+    const message = escape(String(rawMsg).slice(0, 600));
+    return `<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>گزارش در دسترس نیست</title><style>
       body{margin:0;background:#f3f6f8;color:#1a2935;font:14px/1.9 Tahoma,"Segoe UI",sans-serif;padding:40px}
-      main{max-width:820px;margin:auto;background:#fff;border:1px solid #dfe7e9;border-radius:16px;padding:28px 32px;box-shadow:0 14px 36px rgba(20,52,64,.06)}
-      h1{color:#af711e;font-size:22px;margin:0 0 12px}p{color:#627484}code,pre{direction:ltr;text-align:left;background:#f7f9fa;border:1px solid #ebeff0;border-radius:8px;padding:8px 12px;white-space:pre-wrap;word-break:break-word}
-      ul{line-height:2}a{color:#087b72;font-weight:700}.badge{display:inline-block;background:#fff5e3;color:#af711e;border-radius:8px;padding:2px 10px;font-size:12px}
-    </style></head><body><main><span class="badge">HTTP 503</span><h1>صفحهٔ زنده ساخته نشد</h1>
-      <p>بکاند (partFramework) در دسترس است، ولی هنگام خواندن دیتابیس جانبی یا ساخت گزارش خطا داد. متن فنی:</p>
+      main{max-width:640px;margin:auto;background:#fff;border:1px solid #dfe7e9;border-radius:16px;padding:28px 32px;box-shadow:0 14px 36px rgba(20,52,64,.06)}
+      h1{color:#af711e;font-size:20px;margin:0 0 12px}p{color:#627484}pre{direction:ltr;text-align:left;background:#f7f9fa;border:1px solid #ebeff0;border-radius:8px;padding:8px 12px;white-space:pre-wrap;word-break:break-word;font-size:12px}
+      a{color:#087b72;font-weight:700}.badge{display:inline-block;background:#fff5e3;color:#af711e;border-radius:8px;padding:2px 10px;font-size:12px}
+    </style></head><body><main><span class="badge">HTTP 503</span><h1>در حال حاضر امکان ساخت گزارش وجود ندارد</h1>
+      <p>لطفاً چند لحظه دیگر دوباره تلاش کنید.</p>
       <pre>${message}</pre>
-      <p><b>وضعیت متغیرها:</b> <code>DATABASE_URL</code>=${escape(databaseUrl)} · بکاند روی پورت <code>${escape(config.backendPort)}</code> · API اصلی <code dir="ltr">${escape(config.apiBaseUrl)}</code></p>
-      <p>چکلیست:</p><ul>
-        <li><code>cp backend/.env.example backend/.env</code> و تنظیم <code>DATABASE_URL</code> واقعی</li>
-        <li><code>cd backend && npm run migrate</code> برای ساخت جداول</li>
-        <li><code>cd backend && npm run ingest -- --bank=tavan_resalat --mode=nightly</code></li>
-      </ul>
-      <p><a href="/api/diagnostics">گزارش تشخیصی دیتابیس</a> · <a href="/admin">پنل مدیریت</a> · <a href="/">تلاش دوباره</a></p>
+      <p><a href="/">تلاش دوباره</a></p>
     </main></body></html>`;
   }
 
@@ -756,7 +784,13 @@ class SummaryService {
       generatedAt: new Date().toISOString(),
       databaseUrlConfigured: !!process.env.DATABASE_URL,
       apiBaseUrlConfigured: !!process.env.CE_API_BASE_URL,
+      apiUrlsConfigured: {
+        tavan_mellat: !!resolveBankApiUrl('tavan_mellat'),
+        tavan_resalat: !!resolveBankApiUrl('tavan_resalat'),
+        tavan_postbank: !!resolveBankApiUrl('tavan_postbank'),
+      },
       apiTokenConfigured: !!config.apiToken,
+      gatewayAutoTokenConfigured: !!(config.gateway.tokenUrl && config.gateway.username && config.gateway.password),
       backendPort: config.backendPort,
       banks: Object.keys(BANKS),
       databaseConnected: false,

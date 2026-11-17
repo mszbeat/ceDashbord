@@ -319,11 +319,11 @@ function flagSamples(topicId, scope, ctx) {
   const { bank } = ctx.scan;
   const relevant = bank.flags.filter((spec) => (spec.topic || 'overview') === topicId && spec.inspect !== false);
   if (!relevant.length) return '';
-  let html = '<h3>مشاهدهٔ گزارش‌های هر شاخص <small>انتخاب یک ردیف، دادهٔ کامل همان گزارش را از API اصلی در زبانهٔ جدید باز می‌کند.</small></h3>'
-    + `<p class="explain review-limit-note">در هر فهرستِ شاخص و محدودهٔ انتخابی، حداکثر <strong>${nf(ctx.options.rowsCap)} گزارش</strong> قابل مشاهده است؛ این سقف همان سقف نمایش زنده است (پیشفرض: 100). عدد روی شاخص و عنوان فهرست، تعداد کل گزارشهای واجد شرایط است، نه تعداد ردیفهای نمایشدادهشده. بنابراین کمتر بودن ردیفهای قابل مشاهده از عدد شاخص به معنی حذف آن گزارشها از شمارش و آمار نیست.</p>`
+  let html = '<h3>مشاهدهٔ گزارش‌های هر شاخص <small>با انتخاب یک ردیف، جزئیات همان گزارش باز می‌شود.</small></h3>'
+    + `<p class="explain review-limit-note">سقف نمایش فهرست: <strong>${nf(ctx.options.rowsCap)} گزارش</strong> (عدد روی شاخص، تعداد کل گزارش‌های واجد شرایط است).</p>`
     + (bank.key === 'tavan_mellat' && topicId === 'loans'
       ? '<p class="explain">فهرست‌های این بخش شامل گزارش‌های بدون سابقهٔ وام و پایش پوشش تاریخ پرداخت هستند؛ نبود سابقه یا تاریخ پرداخت null به‌تنهایی نقص داده یا وضعیت نامطلوب اعتباری نیست.</p>'
-      : '<p class="explain">فهرست‌های منتخب برای بررسی گزارش‌ها در دسترس‌اند؛ شمارش وضعیت‌های عادی در جدول‌ها و کارت‌ها باقی می‌ماند. گزارش موفق نیز ممکن است دارای تأخیر یا نقص داده باشد.</p>');
+      : '<p class="explain">شمارش وضعیت‌های عادی در جدول‌ها و کارت‌ها باقی می‌ماند؛ گزارش موفق نیز ممکن است دارای تأخیر یا نقص داده باشد.</p>');
   for (const spec of relevant) {
     const entry = selectedRows(ctx.data.flags[spec.id], scope, ctx.options.rowsCap);
     const id = `flag_${safeId(spec.id)}_${scope}`;
@@ -366,7 +366,6 @@ function listsContent(ctx) {
     const id = `list_${index}`;
     const rows = entry.rows.map((row, idx) => ({ '#': idx + 1, ...row }));
     return `<h3>${h(spec.title)} <small>${nf(entry.total)} گزارش</small></h3>`
-      + (entry.total > ctx.options.rowsCap ? `<p class="table-caption">شناسهٔ همهٔ گزارشها نمایش داده میشود؛ جزئیات کامل هر ردیف با همان requestId از API اصلی قابل دریافت است.</p>` : '')
       + (rows.length ? tools(id) : '') + table(rows, { id, code: ['uniqueKey', 'requestId'], ltr: ['model_name', 'تاریخ و ساعت'], scroll: true });
   }).join('');
 }
@@ -408,7 +407,7 @@ function buildHtml(scan, data, options, assets) {
       ${typeof topic.extraHtml === 'function' ? topic.extraHtml() : ''}${content}</section>`;
   }).join('');
   const alerts = [
-    bank.auto ? `<div class="alert info"><b>گزارش عمومی:</b> برای متد <code>${h(bank.id)}</code> فایل تحلیل اختصاصی موجود نیست. برای افزودن شاخص‌های بانک، از <code>banks/_template.js</code> استفاده کنید.</div>` : '',
+    bank.auto ? `<div class="alert info"><b>گزارش عمومی:</b> تحلیل با الگوی عمومی متد <code>${h(bank.id)}</code> انجام شده است.</div>` : '',
     scan.ignoredRows.length ? `<div class="alert"><b>محدودهٔ گزارش:</b> فقط گزارش‌های بانک ${h(bank.label)} تحلیل شده‌اند. متدهای دیگر در فایل‌های ورودی وجود داشته‌اند:${table(scan.ignoredRows, { ltr: ['input.method'] })}</div>` : '',
     scan.invalidSamples ? `<div class="alert"><b>گزارش نامعتبر:</b> ${nf(scan.invalidSamples)} مقدار غیرشیء/آرایهٔ تو‌در‌تو از تحلیل کنار گذاشته شده است.</div>` : '',
     Object.keys(data.evaluatorErrors).length ? `<div class="alert"><b>خطا در محاسبهٔ برخی شاخص‌ها:</b> لطفاً تعریف‌های بانک را بررسی کنید.${table(Object.entries(data.evaluatorErrors).map(([key, entry]) => ({ 'شاخص': key, 'تعداد رخداد': entry.count })))}</div>` : '',
@@ -424,10 +423,10 @@ function buildHtml(scan, data, options, assets) {
   <div class="hero-footer"><div><span>اولین درخواست</span><b dir="ltr">${h(data.ranges.first?.display || '—')}</b></div><div><span>آخرین درخواست</span><b dir="ltr">${h(data.ranges.last?.display || '—')}</b></div><div><span>اجراهای پوشش‌داده‌شده</span><b>${nf(data.processedFiles)}</b></div></div>
   <section class="headline-cards" aria-label="خلاصهٔ گزارش"><div class="headline-card"><span class="kpi-icon neutral">▦</span><div><small>گزارش‌های تحلیل‌شده</small><strong>${nf(total)}</strong><span>از ${nf(scan.totalSamples)} ورودی شناسایی‌شده</span></div></div><div class="headline-card"><span class="kpi-icon positive">✓</span><div><small>گزارش‌های موفق</small><strong>${nf(ok)}</strong><span>${pct(ok, total)} از گزارش‌های این بانک</span></div></div><div class="headline-card"><span class="kpi-icon caution">!</span><div><small>گزارش‌های ناموفق</small><strong>${nf(failed)}</strong><span>${pct(failed, total)} از گزارش‌های این بانک</span></div></div></section>
   ${alerts}
-  <div class="workspace"><aside class="sidebar"><div class="sidebar-label"><span>بخش‌های گزارش</span><span>${nf(topics.length)} بخش</span></div><nav class="navigation" aria-label="بخش‌های گزارش">${nav}</nav><div class="sidebar-foot"><span>◇</span> جزئیات کامل در HTML نیست؛ با کلیک روی شناسهٔ درخواست از API اصلی گرفته میشود.</div></aside>
+  <div class="workspace"><aside class="sidebar"><div class="sidebar-label"><span>بخش‌های گزارش</span><span>${nf(topics.length)} بخش</span></div><nav class="navigation" aria-label="بخش‌های گزارش">${nav}</nav><div class="sidebar-foot"><span>◇</span> با انتخاب هر ردیف، جزئیات گزارش باز می‌شود.</div></aside>
     <main class="main-content"><div class="scope-slot"><div class="scopebar"><div class="scope-intro"><span class="scope-dot"></span><div><b>محدودهٔ نمایش</b><small>گزارش‌ها را بر اساس وضعیت مقایسه کنید</small></div></div><div class="scope-buttons" role="group" aria-label="فیلتر وضعیت"><button type="button" data-scope="ALL" aria-pressed="true">همه <span>${nf(total)}</span></button><button type="button" data-scope="success" aria-pressed="false">موفق <span>${nf(ok)}</span></button><button type="button" data-scope="fail" aria-pressed="false">ناموفق <span>${nf(failed)}</span></button></div><p>بخش بدهی و چک فقط گزارش‌های موفق را نشان می‌دهد؛ فهرست ویژه و روند روزانه مستقل از این فیلتر هستند.</p></div></div>${panels}</main></div>
   ${errors.length ? `<section class="errors"><h2>فایل‌های خوانده‌نشده <small>${nf(errors.length)} مورد</small></h2>${table(errors.map((_, index) => ({ 'فایل ورودی': index + 1, 'وضعیت': 'خواندن یا پردازش فایل ممکن نبود' })))}</section>` : ''}
-  <footer class="footer"><span>نــمـا / گزارش تحلیل داده — نسخهٔ ${h(require('../../package.json').version)}</span><span>جزئیات کامل فقط با درخواست requestId از API اصلی گرفته می‌شود و در دیتابیس جانبی ذخیره نمی‌شود. شناسه‌ها، جمع مبلغ هشدارهای اعتباری هر گزارش و متن پیام‌های نمایشی در همین صفحه وجود دارند؛ پیش از انتشار آن‌ها را بررسی کنید.</span></footer>
+  <footer class="footer"><span>نــمـا / گزارش تحلیل داده — نسخهٔ ${h(require('../../package.json').version)}</span><span>پایش و تحلیل کیفیت داده‌های اعتبارسنجی</span></footer>
 </div><script>window.__CE_DASHBOARD_PUBLIC__=${safeJson(options.api || { mode: 'api' })};window.__VIEWER_CSS=${safeJson(assets.viewerCss)};</script><script>${assets.viewerJs}</script><script>${assets.client}</script></body></html>`;
 }
 module.exports = { buildHtml, table, quantile, selectedRows };

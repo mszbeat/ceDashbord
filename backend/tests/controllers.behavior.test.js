@@ -147,15 +147,16 @@ test('auth-controller: register/login/refresh/logout/me/role/removeUser با ت�
   assert.deepEqual(regNoAutoOut, { status: 'ok', username: 'sara', roles: ['visitor'] });
   assert.equal(regNoAutoSession.samadUsername, 'visitor');
 
-  // register با ورود خودکار + صدور رفرش‌توکن
+  // register با ورود خودکار + صدور رفرش‌توکن (نقش همواره visitor است حتی اگر ورودی دیگری بفرستند)
   const regCall = invoke(controller, authConfig, 'register', {
-    data: { username: 'ali', password: 'p1', role: 'creditEvaluation', rememberMe: true },
+    data: { username: 'ali', password: 'p1', role: 'admin', rememberMe: true },
     session,
   });
   const registerOut = await regCall.promise;
-  assert.deepEqual(registerOut, { status: 'ok', username: 'ali', roles: ['creditEvaluation'] });
+  assert.deepEqual(registerOut, { status: 'ok', username: 'ali', roles: ['visitor'] });
   assert.equal(sessionStore.samadUsername, 'ali');
-  assert.deepEqual(samadUsers.get('ali'), 'creditEvaluation');
+  assert.deepEqual(sessionStore.roles, ['visitor']);
+  assert.deepEqual(samadUsers.get('ali'), 'visitor');
   assert.equal(authCalls.some(([kind, payload]) => kind === 'add' && payload.username === 'ali'), true);
   assert.ok(extractRefreshCookieValue(regCall.response), 'register auto-login must issue refresh cookie');
 
@@ -509,6 +510,140 @@ test('session-guard: تمام روت‌های داشبورد/جزئیات/مدی
     assert.equal(banks.length, 3);
   } finally {
     container.setServicesForTest(undefined);
+  }
+});
+
+test('gateway-client & per-bank URL: لینک اختصاصی هر بانک + توکن گیت‌وی خودکار فقط برای ملت و پست‌بانک و بدون گیت‌وی برای رسالت', async () => {
+  const { GatewayTokenManager, isGatewayInvalidTokenResponse, fetchBankJson } = require(path.join(ROOT, 'services', 'http', 'gateway-client'));
+  const { resolveBankApiUrl, bankUsesGateway, parseDurationMs } = require(path.join(ROOT, 'services', 'config'));
+
+  assert.equal(parseDurationMs('30m', 1000), 1800000);
+  assert.equal(parseDurationMs('14d', 1000), 14 * 86400000);
+  assert.equal(
+    isGatewayInvalidTokenResponse(401, {
+      data: { message: { en: 'Gateway token is not valid!', fa: 'توکن ارتباط با gateway معتبر نیست!' } },
+      meta: { code: 'invalidToken', sourceName: 'apiGateway' },
+    }),
+    true,
+  );
+  assert.equal(bankUsesGateway('tavan_mellat'), true);
+  assert.equal(bankUsesGateway('tavan_postbank'), true);
+  assert.equal(bankUsesGateway('tavan_resalat'), false);
+
+  const prevEnv = {
+    mellat: process.env.CE_API_URL_MELLAT,
+    resalat: process.env.CE_API_URL_RESALAT,
+    postbank: process.env.CE_API_URL_POSTBANK,
+    gwUrl: process.env.CE_GATEWAY_TOKEN_URL,
+    gwSys: process.env.CE_GATEWAY_SYSTEM,
+    gwUser: process.env.CE_GATEWAY_USERNAME,
+    gwPass: process.env.CE_GATEWAY_PASSWORD,
+    gwToken: process.env.CE_GATEWAY_TOKEN,
+  };
+
+  process.env.CE_API_URL_MELLAT = 'https://mellat.example.test/report';
+  process.env.CE_API_URL_RESALAT = 'https://resalat.example.test/report';
+  process.env.CE_API_URL_POSTBANK = 'https://postbank.example.test/report';
+  process.env.CE_GATEWAY_TOKEN_URL = 'https://gw.example.test/service/gateway@3/token';
+  process.env.CE_GATEWAY_SYSTEM = 'creditEvalSys';
+  process.env.CE_GATEWAY_USERNAME = 'gw_user';
+  process.env.CE_GATEWAY_PASSWORD = 'gw_pass';
+  process.env.CE_GATEWAY_TOKEN = 'stale-token-0';
+
+  assert.equal(resolveBankApiUrl('tavan_mellat'), 'https://mellat.example.test/report');
+  assert.equal(resolveBankApiUrl('tavan_resalat'), 'https://resalat.example.test/report');
+  assert.equal(resolveBankApiUrl('tavan_postbank'), 'https://postbank.example.test/report');
+
+  const calls = [];
+  const origFetch = global.fetch;
+  let tokenIssueCount = 0;
+
+  global.fetch = async (url, init = {}) => {
+    const u = String(url);
+    calls.push({ url: u, method: init.method || 'GET', headers: init.headers || {}, body: init.body });
+
+    if (u === 'https://gw.example.test/service/gateway@3/token') {
+      tokenIssueCount += 1;
+      assert.equal(init.method, 'POST');
+      assert.equal(init.headers.pass, '');
+      assert.equal(init.headers['Content-Type'], 'application/json');
+      const parsedBody = JSON.parse(init.body);
+      assert.deepEqual(parsedBody, {
+        system: 'creditEvalSys',
+        authenticationPack: { username: 'gw_user', password: 'gw_pass' },
+      });
+      return {
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ data: { token: `fresh-gw-token-${tokenIssueCount}` } }),
+      };
+    }
+
+    if (u.startsWith('https://mellat.example.test/')) {
+      assert.equal(init.headers['gateway-system'], 'creditEvalSys');
+      if (init.headers['gateway-token'] === 'stale-token-0') {
+        return {
+          ok: false,
+          status: 401,
+          text: async () =>
+            JSON.stringify({
+              data: { message: { en: 'Gateway token is not valid!', fa: 'توکن ارتباط با gateway معتبر نیست!' } },
+              meta: { code: 'invalidToken', sourceType: 'launcher', sourceName: 'apiGateway' },
+            }),
+        };
+      }
+      assert.equal(init.headers['gateway-token'], 'fresh-gw-token-1');
+      return { ok: true, status: 200, text: async () => JSON.stringify({ data: { count: 1, bank: 'mellat' } }) };
+    }
+
+    if (u.startsWith('https://postbank.example.test/')) {
+      assert.equal(init.headers['gateway-system'], 'creditEvalSys');
+      assert.equal(init.headers['gateway-token'], 'fresh-gw-token-1');
+      return { ok: true, status: 200, text: async () => JSON.stringify({ data: { count: 1, bank: 'postbank' } }) };
+    }
+
+    if (u.startsWith('https://resalat.example.test/')) {
+      assert.equal('gateway-token' in init.headers, false, 'resalat must NOT send gateway-token');
+      assert.equal('gateway-system' in init.headers, false, 'resalat must NOT send gateway-system');
+      return { ok: true, status: 200, text: async () => JSON.stringify({ data: { count: 1, bank: 'resalat' } }) };
+    }
+
+    throw new Error(`unexpected fetch url: ${u}`);
+  };
+
+  try {
+    // ریست کش برای شروع پاک تست
+    const gm = new GatewayTokenManager();
+    assert.equal(typeof gm.getToken, 'function');
+
+    const mellatData = await fetchBankJson('tavan_mellat', `${resolveBankApiUrl('tavan_mellat')}?page=1&limit=1`, { retryCount: 1 });
+    assert.equal(mellatData.bank, 'mellat');
+    assert.equal(tokenIssueCount, 1);
+
+    // پست‌بانک باید از توکن کش‌شدهٔ fresh-gw-token-1 بدون فراخوانی مجدد گیت‌وی استفاده کند
+    const postbankData = await fetchBankJson('tavan_postbank', `${resolveBankApiUrl('tavan_postbank')}?page=1&limit=1`, { retryCount: 1 });
+    assert.equal(postbankData.bank, 'postbank');
+    assert.equal(tokenIssueCount, 1);
+
+    // رسالت باید بدون هیچ هدر گیت‌وی درخواست بزند
+    const resalatData = await fetchBankJson('tavan_resalat', `${resolveBankApiUrl('tavan_resalat')}?page=1&limit=1`, { retryCount: 1 });
+    assert.equal(resalatData.bank, 'resalat');
+    assert.equal(tokenIssueCount, 1);
+  } finally {
+    global.fetch = origFetch;
+    for (const [k, envKey] of [
+      ['mellat', 'CE_API_URL_MELLAT'],
+      ['resalat', 'CE_API_URL_RESALAT'],
+      ['postbank', 'CE_API_URL_POSTBANK'],
+      ['gwUrl', 'CE_GATEWAY_TOKEN_URL'],
+      ['gwSys', 'CE_GATEWAY_SYSTEM'],
+      ['gwUser', 'CE_GATEWAY_USERNAME'],
+      ['gwPass', 'CE_GATEWAY_PASSWORD'],
+      ['gwToken', 'CE_GATEWAY_TOKEN'],
+    ]) {
+      if (prevEnv[k] === undefined) delete process.env[envKey];
+      else process.env[envKey] = prevEnv[k];
+    }
   }
 });
 

@@ -1,21 +1,21 @@
 'use strict';
 
 const crypto = require('node:crypto');
-const { config } = require('../../services/config');
+const { config, parseDurationMs } = require('../../services/config');
 const { error: authError } = require('./config');
 
 const REFRESH_COOKIE_NAME = 'ce_refresh';
 
 function loadSessionTimings() {
-  let sessionExpireTime = Number(process.env.SESSION_EXPIRE_MS || 120000);
-  let maxIdleTime = Number(process.env.SESSION_IDLE_MS || 20000);
+  let sessionExpireTime = parseDurationMs(process.env.SESSION_EXPIRE_MS, config.sessionExpireMs || 300000);
+  let maxIdleTime = parseDurationMs(process.env.SESSION_IDLE_MS, config.sessionIdleMs || 120000);
   try {
     const smCfg = require('../../project-config/dev/dependencies/partSessionManagerConfig');
-    if (Number.isFinite(Number(smCfg?.global?.sessionExpireTime))) {
-      sessionExpireTime = Number(process.env.SESSION_EXPIRE_MS || smCfg.global.sessionExpireTime);
+    if (!process.env.SESSION_EXPIRE_MS && Number.isFinite(Number(smCfg?.global?.sessionExpireTime))) {
+      sessionExpireTime = Number(smCfg.global.sessionExpireTime);
     }
-    if (Number.isFinite(Number(smCfg?.global?.maxIdleTime))) {
-      maxIdleTime = Number(process.env.SESSION_IDLE_MS || smCfg.global.maxIdleTime);
+    if (!process.env.SESSION_IDLE_MS && Number.isFinite(Number(smCfg?.global?.maxIdleTime))) {
+      maxIdleTime = Number(smCfg.global.maxIdleTime);
     }
   } catch {
     // استفاده از مقادیر پیشفرض
@@ -78,11 +78,27 @@ class RefreshTokenService {
   constructor(options = {}) {
     this._explicitDb = options.db;
     this.useMemoryOnly = Boolean(options.useMemoryOnly);
-    this.ttlMs = Number(options.ttlMs || config.refreshTokenTtlMs || 24 * 60 * 60 * 1000);
-    this.rememberTtlMs = Number(options.rememberTtlMs || config.refreshTokenRememberTtlMs || 14 * 24 * 60 * 60 * 1000);
+    this._fixedTtlMs = options.ttlMs !== undefined ? Number(options.ttlMs) : null;
+    this._fixedRememberTtlMs = options.rememberTtlMs !== undefined ? Number(options.rememberTtlMs) : null;
     this._mem = new Map();
     this._ensurePromise = null;
     this._ensuredDb = null;
+  }
+
+  get ttlMs() {
+    if (this._fixedTtlMs !== null) return this._fixedTtlMs;
+    return parseDurationMs(
+      process.env.REFRESH_TOKEN_TTL_MS || process.env.REFRESH_TOKEN_TTL,
+      config.refreshTokenTtlMs || 24 * 60 * 60 * 1000,
+    );
+  }
+
+  get rememberTtlMs() {
+    if (this._fixedRememberTtlMs !== null) return this._fixedRememberTtlMs;
+    return parseDurationMs(
+      process.env.REFRESH_TOKEN_REMEMBER_TTL_MS || process.env.REFRESH_TOKEN_REMEMBER_TTL,
+      config.refreshTokenRememberTtlMs || 14 * 24 * 60 * 60 * 1000,
+    );
   }
 
   #resolveDb() {

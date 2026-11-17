@@ -38,7 +38,6 @@ exports.register = {
     properties: {
       username: usernameSchema,
       password: passwordSchema,
-      role: roleSchema,
       rememberMe: {
         type: 'boolean',
         errorMessages: {

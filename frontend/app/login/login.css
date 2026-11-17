@@ -183,20 +183,15 @@
 
 .lgn-stage {
   margin: auto 0;
-  padding: 18px 0;
-  display: grid;
-  grid-template-columns: 1.05fr 0.95fr;
-  gap: 24px;
-  align-items: stretch;
-}
-
-@media (max-width: 880px) {
-  .lgn-stage {
-    grid-template-columns: 1fr;
-  }
+  padding: 24px 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
 
 .lgn-card {
+  width: 100%;
+  max-width: 480px;
   background: var(--login-surface);
   border: 1px solid var(--login-line);
   border-radius: 20px;

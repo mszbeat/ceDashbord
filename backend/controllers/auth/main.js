@@ -23,7 +23,7 @@ exports.controller = class AuthController extends BaseController {
     const payload = readBody(body);
     if (!payload.username || !payload.password) throw authError.invalidAuthInput;
 
-    const role = typeof payload.role === 'string' && payload.role.trim() ? payload.role.trim() : 'visitor';
+    const role = 'visitor';
     const shouldAutoLogin = payload.autoLogin !== false;
     let rollback = null;
 
@@ -132,8 +132,7 @@ exports.controller = class AuthController extends BaseController {
           await this.sessionManager.revokeRefreshToken(rawRefresh, response, request);
           throw authError.invalidRefreshToken;
         }
-        // اگر سرویس سمد موقتاً 503 داد، از نقش ذخیره‌شدهٔ همین سشن استفاده می‌کنیم
-        if (err?.statusCode !== 503) throw err;
+        // در خطاهای موقت سمد (503/5xx/شبکه)، از نقش ذخیره‌شدهٔ همین سشن استفاده می‌کنیم
       }
     }
 

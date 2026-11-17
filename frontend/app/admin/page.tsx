@@ -543,8 +543,8 @@ export default function AdminPage() {
           <div className="adm-brand">
             <span className="adm-brand-mark" aria-hidden="true">⚙</span>
             <div>
-              <strong>پنل مدیریت و زمان‌بندی تحلیل نَما</strong>
-              <small>کنترل کران شبانه، تحلیل دستی روز/بازه و پایش پایگاه داده</small>
+              <strong>پنل مدیریت و زمان‌بندی تحلیل</strong>
+              <small>اجرای تحلیل دستی و زمان‌بندی روزانهٔ بانک‌ها</small>
             </div>
           </div>
 
@@ -584,9 +584,9 @@ export default function AdminPage() {
         {/* Hero Banner */}
         <section className="adm-hero">
           <div>
-            <h1>مدیریت یکپارچهٔ واکشی و تحلیل گزارش‌های اعتبارسنجی</h1>
+            <h1>مدیریت و زمان‌بندی تحلیل بانک‌ها</h1>
             <p>
-              تنظیم اجرای خودکار شبانه (بر مبنای تقویم تهران) یا اجرای دستی تحلیل برای هر روز، بازهٔ زمانی و فیلتر دلخواه با بررسی هوشمند داده‌های موجود در PostgreSQL پیش از اجرا.
+              اجرای دستی تحلیل بر اساس بانک، تاریخ و فیلترهای گزارش یا تنظیم اجرای خودکار روزانه.
             </p>
           </div>
           <div className="adm-clock-strip">
@@ -680,9 +680,9 @@ export default function AdminPage() {
           <section className="adm-card">
             <div className="adm-section-head">
               <div>
-                <h2>اجرای دستی تحلیل (تک‌روز، بازهٔ تاریخ یا فیلتر موردی)</h2>
+                <h2>اجرای دستی تحلیل</h2>
                 <p>
-                  پیش از شروع، وضعیت دیتابیس بررسی می‌شود و در صورت وجود دادهٔ قبلی برای آن روز، بین بازسازی کامل (Rebuild) و بروزرسانی (Upsert) حق انتخاب دارید.
+                  انتخاب بانک، بازهٔ زمانی و فیلترها برای اجرای تحلیل.
                 </p>
               </div>
             </div>
@@ -807,8 +807,7 @@ export default function AdminPage() {
 
                 {dateScope === 'filter_only' && (
                   <div className="adm-privacy-note">
-                    در حالت بدون قید تاریخ، حداقل یکی از فیلترهای <b>شناسهٔ درخواست (requestId)</b>،{' '}
-                    <b>کلید یکتا (uniqueKey)</b> یا <b>کد ملی</b> را در بخش زیر وارد کنید. روز شمسی هر رکورد به‌صورت خودکار از تاریخ ثبت آن استخراج و Upsert می‌شود.
+                    حداقل یکی از فیلترهای <b>شناسهٔ درخواست (requestId)</b>، <b>کلید یکتا (uniqueKey)</b> یا <b>کد ملی</b> را وارد کنید.
                   </div>
                 )}
               </div>
@@ -817,7 +816,7 @@ export default function AdminPage() {
               {dateScope !== 'filter_only' && (
                 <div className="adm-field-group">
                   <label className="adm-label" htmlFor="adm-run-mode">
-                    ۳. حالت ثبت اجرا در جدول وضعیت (mode)
+                    ۳. نوع اجرای تحلیل
                   </label>
                   <select
                     id="adm-run-mode"
@@ -825,8 +824,8 @@ export default function AdminPage() {
                     value={runMode}
                     onChange={(e) => setRunMode(e.target.value as 'nightly' | 'intraday')}
                   >
-                    <option value="nightly">شبانه / کامل (nightly — ثبت وضعیت نهایی complete)</option>
-                    <option value="intraday">طی روز / میانی (intraday — برای روز جاری در حال تکمیل)</option>
+                    <option value="nightly">کامل / نهایی (nightly)</option>
+                    <option value="intraday">میانی / روز جاری (intraday)</option>
                   </select>
                 </div>
               )}
@@ -834,7 +833,7 @@ export default function AdminPage() {
               {/* Upstream API Filters */}
               <details className="adm-details" open={dateScope === 'filter_only'}>
                 <summary>
-                  فیلترهای پیشرفتهٔ API بالادستی (وضعیت، شناسه درخواست، کلید یکتا، کد ملی، سقف تعداد)
+                  فیلترهای تحلیل (وضعیت، شناسه درخواست، کلید یکتا، کد ملی، سقف تعداد)
                 </summary>
                 <div className="adm-details-body">
                   <div className="adm-row-2" style={{ marginBottom: 12 }}>
@@ -867,7 +866,7 @@ export default function AdminPage() {
                   <div className="adm-row-2" style={{ marginBottom: 12 }}>
                     <div>
                       <label className="adm-label" htmlFor="adm-f-national-code">
-                        کد ملی (صرفاً جهت فیلتر API اصلی)
+                        کد ملی
                       </label>
                       <input
                         id="adm-f-national-code"
@@ -880,14 +879,14 @@ export default function AdminPage() {
                     </div>
                     <div>
                       <label className="adm-label" htmlFor="adm-f-status">
-                        فیلتر پارامتر status در API
+                        وضعیت گزارش (status)
                       </label>
                       <input
                         id="adm-f-status"
                         className="adm-input adm-ltr"
                         value={filterStatus}
                         onChange={(e) => setFilterStatus(e.target.value)}
-                        placeholder="خالی = همه رکوردها"
+                        placeholder="خالی = همه"
                       />
                     </div>
                   </div>
@@ -895,34 +894,30 @@ export default function AdminPage() {
                   <div className="adm-row-2">
                     <div>
                       <label className="adm-label" htmlFor="adm-f-max-count">
-                        سقف تعداد رکورد (maxCount)
+                        سقف تعداد رکورد
                       </label>
                       <input
                         id="adm-f-max-count"
                         className="adm-input adm-ltr"
                         value={filterMaxCount}
                         onChange={(e) => setFilterMaxCount(e.target.value)}
-                        placeholder="خالی = بدون سقف (کل روز)"
+                        placeholder="خالی = کل روز"
                         inputMode="numeric"
                       />
                     </div>
                     <div>
                       <label className="adm-label" htmlFor="adm-f-page-size">
-                        اندازهٔ هر صفحه واکشی (pageSize: ۱ تا ۲۰۰)
+                        اندازه صفحه (۱ تا ۲۰۰)
                       </label>
                       <input
                         id="adm-f-page-size"
                         className="adm-input adm-ltr"
                         value={filterPageSize}
                         onChange={(e) => setFilterPageSize(e.target.value)}
-                        placeholder="پیش‌فرض سرور (۱۰۰)"
+                        placeholder="۱۰۰"
                         inputMode="numeric"
                       />
                     </div>
-                  </div>
-
-                  <div className="adm-privacy-note">
-                    🔒 تضمین حریم خصوصی: <b>کد ملی</b> و متن خام پیام‌های خطا هرگز در دیتابیس PostgreSQL یا لاگ‌های سرور ذخیره نمی‌شوند؛ کد ملی صرفاً به‌عنوان پارامتر جستجو به API بالادستی ارسال شده و بلافاصله از حافظه پاک می‌شود.
                   </div>
                 </div>
               </details>
@@ -933,9 +928,7 @@ export default function AdminPage() {
                 style={{ width: '100%', minHeight: 44, fontSize: 14 }}
                 disabled={checkingRun || startingConfirmed}
               >
-                {checkingRun
-                  ? 'در حال بررسی وضعیت دیتابیس...'
-                  : 'بررسی دیتابیس و شروع تحلیل'}
+                {checkingRun ? 'در حال بررسی...' : 'بررسی و شروع تحلیل'}
               </button>
             </form>
           </section>
@@ -945,10 +938,10 @@ export default function AdminPage() {
             <div className="adm-section-head">
               <div>
                 <h2>زمان‌بند خودکار شبانه (Cron)</h2>
-                <p>واکشی و تحلیل خودکار داده‌های روز قبل بر اساس ساعت رسمی تهران</p>
+                <p>زمان‌بندی تحلیل خودکار روزانهٔ بانک‌ها</p>
               </div>
               {overview?.cron?.enabled ? (
-                <span className="adm-badge ok">● زمان‌بند فعال</span>
+                <span className="adm-badge ok">● فعال</span>
               ) : (
                 <span className="adm-badge muted">○ غیرفعال</span>
               )}
@@ -988,9 +981,6 @@ export default function AdminPage() {
               <div className="adm-switch-row">
                 <div>
                   <strong style={{ display: 'block', fontSize: 13.5 }}>فعال‌سازی اجرای خودکار شبانه</strong>
-                  <small style={{ color: 'var(--adm-muted)', fontSize: 11.5 }}>
-                    اجرای منظم بدون نیاز به cron خارجی سیستم‌عامل
-                  </small>
                 </div>
                 <input
                   type="checkbox"
@@ -1170,17 +1160,14 @@ export default function AdminPage() {
         <section className="adm-card" style={{ marginBottom: 22 }} ref={jobsSectionRef}>
           <div className="adm-section-head">
             <div>
-              <h2>مانیتور زندهٔ جاب‌های تحلیل در سرور</h2>
-              <p>
-                وضعیت گام‌به‌گام جاب‌های دستی و شبانه در این نشست سرور (بروزرسانی خودکار هر ۲ ثانیه هنگام اجرا)
-              </p>
+              <h2>وضعیت اجراهای تحلیل</h2>
             </div>
-            {hasRunningJobs && <span className="adm-badge run">⟳ در حال واکشی و تحلیل...</span>}
+            {hasRunningJobs && <span className="adm-badge run">⟳ در حال تحلیل...</span>}
           </div>
 
           {!overview?.jobs?.length ? (
             <p style={{ color: 'var(--adm-muted)', margin: 0, fontSize: 13 }}>
-              هنوز جابی در این نشست اجرا نشده است. از فرم بالا تحلیل دستی یا اجرای فوری کران را آغاز کنید.
+              اجرایی ثبت نشده است.
             </p>
           ) : (
             overview.jobs.map((job) => {
@@ -1264,12 +1251,11 @@ export default function AdminPage() {
           )}
         </section>
 
-        {/* Recent day_runs Table in PostgreSQL */}
+        {/* Recent day_runs Table */}
         <section className="adm-card">
           <div className="adm-section-head">
             <div>
-              <h2>تاریخچهٔ آخرین اجراهای ثبت‌شده در پایگاه داده (day_runs)</h2>
-              <p>۳۰ اجرای اخیر در PostgreSQL با امکان انتخاب سریع جهت تحلیل یا بازسازی مجدد</p>
+              <h2>تاریخچهٔ آخرین اجراهای تحلیل</h2>
             </div>
           </div>
 
@@ -1292,7 +1278,7 @@ export default function AdminPage() {
                 {!(overview?.recentDayRuns?.length) ? (
                   <tr>
                     <td colSpan={9} style={{ textAlign: 'center', color: 'var(--adm-muted)', padding: 24 }}>
-                      هیچ سابقهٔ اجرایی در جدول day_runs ثبت نشده است.
+                      سابقه‌ای ثبت نشده است.
                     </td>
                   </tr>
                 ) : (
@@ -1366,10 +1352,10 @@ export default function AdminPage() {
         >
           <div className="adm-modal">
             <h3 id="adm-conflict-title">
-              ⚠ دادهٔ قبلی برای {faNum(conflictCheck.existingCount)} مورد از {faNum(conflictCheck.totalTargets)} هدف انتخاب‌شده در دیتابیس وجود دارد
+              ⚠ دادهٔ قبلی برای {faNum(conflictCheck.existingCount)} مورد از {faNum(conflictCheck.totalTargets)} هدف انتخاب‌شده وجود دارد
             </h3>
             <p style={{ margin: '0 0 12px', fontSize: 13, color: 'var(--adm-muted)' }}>
-              پیش از اجرای تحلیل، لطفاً مشخص کنید با داده‌های ثبت‌شدهٔ فعلی در PostgreSQL چگونه برخورد شود:
+              نحوهٔ برخورد با داده‌های قبلی را انتخاب کنید:
             </p>
 
             <div className="adm-table-wrap" style={{ maxHeight: 220, overflowY: 'auto', border: '1px solid var(--adm-line)', borderRadius: 10 }}>
@@ -1426,10 +1412,8 @@ export default function AdminPage() {
                 disabled={startingConfirmed}
                 onClick={() => void launchManualRun(pendingPayload, 'upsert', true)}
               >
-                <strong>۱. بروزرسانی بدون حذف داده‌های قبلی (Upsert) — پیشنهادی برای تکمیل یا اصلاح</strong>
-                <span>
-                  رکوردهای موجود حفظ می‌شوند؛ رکوردهای واکشی‌شده با کلید (day, request_id) درج یا بروزرسانی می‌گردند.
-                </span>
+                <strong>۱. بروزرسانی بدون حذف داده‌های قبلی (Upsert)</strong>
+                <span>رکوردهای موجود حفظ و موارد جدید اضافه یا بروزرسانی می‌شوند.</span>
               </button>
 
               <button
@@ -1438,10 +1422,10 @@ export default function AdminPage() {
                 disabled={startingConfirmed || !conflictCheck.canRebuild}
                 onClick={() => void launchManualRun(pendingPayload, 'rebuild', true)}
               >
-                <strong>۲. بازسازی کامل روز از صفر (Rebuild اتمیک)</strong>
+                <strong>۲. بازسازی کامل روز (Rebuild)</strong>
                 <span>
                   {conflictCheck.canRebuild
-                    ? 'تمام رکوردهای قبلی روز(های) هدف در یک تراکنش حذف و از ابتدا تحلیل می‌شوند (در صورت خطای API، داده‌های قبلی Rollback و حفظ می‌شوند).'
+                    ? 'داده‌های قبلی آن روز حذف و تحلیل از ابتدا انجام می‌شود.'
                     : 'در حالت بدون قید تاریخ امکان حذف کل روز وجود ندارد.'}
                 </span>
               </button>
@@ -1456,7 +1440,7 @@ export default function AdminPage() {
                   setPendingPayload(null);
                 }}
               >
-                ۳. انصراف و لغو عملیات
+                ۳. انصراف
               </button>
             </div>
           </div>

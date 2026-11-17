@@ -93,6 +93,15 @@ test('SessionManager: set/get/remove + رفرش‌توکن + حفظ کوکی ف�
     (err) => err.statusCode === 401 && err.meta.code === 'refreshTokenRevoked',
   );
 
+  // تست بازیابی کوکی از rawHeaders و ست کردن Set-Cookie روی wrapper پاسخ (response.res)
+  const wrappedResInner = createMockResponse();
+  const wrappedRes = { response: { res: wrappedResInner } };
+  const freshForWrapped = await manager.issueRefreshToken({ username: 'wrapped_u', roles: ['admin'] }, wrappedRes, {});
+  assert.ok(wrappedResInner.headers['set-cookie'].some((c) => c.startsWith('ce_refresh=')));
+  const rawReq2 = { rawHeaders: ['Host', 'localhost', 'Cookie', `ce_refresh=${encodeURIComponent(freshForWrapped.rawToken)}`] };
+  const statusFromRaw = await manager.getSessionStatus(createMockSession(), rawReq2);
+  assert.equal(statusFromRaw.canRefresh, true);
+
   // خروج و پاک‌سازی کوکی‌ها
   let cookies = null;
   await manager.removeSession(session, { setHeader: (name, value) => { if (name === 'Set-Cookie') cookies = value; } });

@@ -1,69 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-
-function extractSetCookies(headers: Headers): string[] {
-  const getSetCookie = (headers as any).getSetCookie;
-  if (typeof getSetCookie === 'function') {
-    return getSetCookie.call(headers) as string[];
-  }
-  const single = headers.get('set-cookie');
-  return single ? [single] : [];
-}
-
-function mergeCookies(rawCookieHeader: string, setCookieHeaders: string[]): string {
-  const jar = new Map<string, string>();
-  if (rawCookieHeader) {
-    for (const part of rawCookieHeader.split(';')) {
-      const idx = part.indexOf('=');
-      if (idx <= 0) continue;
-      const name = part.slice(0, idx).trim();
-      const val = part.slice(idx + 1).trim();
-      if (name) jar.set(name, val);
-    }
-  }
-  for (const sc of setCookieHeaders) {
-    const firstSemi = sc.indexOf(';');
-    const pair = firstSemi >= 0 ? sc.slice(0, firstSemi) : sc;
-    const eq = pair.indexOf('=');
-    if (eq <= 0) continue;
-    const name = pair.slice(0, eq).trim();
-    const val = pair.slice(eq + 1).trim();
-    const maxAgeZero = /;\s*max-age=0\b/i.test(sc);
-    if (!val || maxAgeZero) {
-      jar.delete(name);
-    } else {
-      jar.set(name, val);
-    }
-  }
-  return Array.from(jar.entries())
-    .map(([k, v]) => `${k}=${v}`)
-    .join('; ');
-}
-
-function unwrapAuthPayload(raw: any): any {
-  let cur = raw;
-  for (let i = 0; i < 3; i += 1) {
-    if (
-      cur &&
-      typeof cur === 'object' &&
-      !Array.isArray(cur) &&
-      'data' in cur &&
-      cur.data !== undefined &&
-      !('authenticated' in cur)
-    ) {
-      cur = cur.data;
-      if (typeof cur === 'string') {
-        try {
-          cur = JSON.parse(cur);
-        } catch {
-          break;
-        }
-      }
-      continue;
-    }
-    break;
-  }
-  return cur;
-}
+import {
+  dedupeSetCookies,
+  hasCookie,
+  performRefreshWithRecovery,
+  probeSessionWithCleanRecovery,
+  resolveBackendOrigin,
+} from '@/lib/server-auth';
 
 function buildPublicOrigin(request: NextRequest): string {
   const forwardedHost = request.headers.get('x-forwarded-host');
@@ -90,29 +32,17 @@ function redirectToLogin(request: NextRequest, reason?: string, extraSetCookies?
   const res = NextResponse.redirect(target, 307);
   res.headers.set('cache-control', 'no-store');
   if (extraSetCookies) {
-    for (const c of extraSetCookies) {
+    for (const c of dedupeSetCookies(extraSetCookies)) {
       res.headers.append('set-cookie', c);
     }
   }
   return res;
 }
 
-function buildBackendClientHeaders(request: NextRequest, cookieValue: string): Record<string, string> {
-  const headers: Record<string, string> = {
-    cookie: cookieValue,
-    accept: 'application/json',
-  };
-  for (const key of ['user-agent', 'x-forwarded-for', 'x-real-ip']) {
-    const val = request.headers.get(key);
-    if (val) headers[key] = val;
-  }
-  return headers;
-}
-
 /**
- * محافظ سراسری تمام مسیرهای فرانت‌اند:
- * کاربر تنها با داشتن سشن احرازشده اجازهٔ مشاهدهٔ داشبورد و سایر مسیرها را دارد؛
- * در غیر این صورت به صفحهٔ `/login` هدایت می‌شود.
+ * محافظ سراسری مسیرهای فرانت‌اند:
+ * کاربر تنها با داشتن سشن معتبر یا رفرش‌توکن معتبر اجازهٔ مشاهدهٔ صفحات را دارد؛
+ * در صورت انقضای سشن، تمدید خودکار انجام و کوکی‌ها بدون اختلال به‌روزرسانی می‌شوند.
  */
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -132,32 +62,19 @@ export async function middleware(request: NextRequest) {
     return redirectToLogin(request);
   }
 
-  const backendUrl = process.env.BACKEND_URL || 'http://127.0.0.1:3000';
+  const backendUrl = resolveBackendOrigin();
 
   try {
-    const meRes = await fetch(new URL('/api/auth/me', backendUrl).toString(), {
-      method: 'GET',
-      cache: 'no-store',
-      headers: buildBackendClientHeaders(request, cookieHeader),
-    });
+    const probe = await probeSessionWithCleanRecovery(backendUrl, request.headers, cookieHeader);
 
-    const meCookies = extractSetCookies(meRes.headers);
-    const meText = await meRes.text().catch(() => '');
-    let meData: any = null;
-    try {
-      meData = meText ? unwrapAuthPayload(JSON.parse(meText)) : null;
-    } catch {
-      meData = null;
-    }
-
-    if (meRes.ok && meData?.authenticated === true) {
-      if (meCookies.length) {
+    if (probe.ok && probe.data?.authenticated === true) {
+      if (probe.setCookies.length) {
         const requestHeaders = new Headers(request.headers);
-        requestHeaders.set('cookie', mergeCookies(cookieHeader, meCookies));
+        requestHeaders.set('cookie', probe.cookieHeader);
         const nextRes = NextResponse.next({
           request: { headers: requestHeaders },
         });
-        for (const c of meCookies) {
+        for (const c of probe.setCookies) {
           nextRes.headers.append('set-cookie', c);
         }
         return nextRes;
@@ -165,50 +82,33 @@ export async function middleware(request: NextRequest) {
       return NextResponse.next();
     }
 
-    if (meRes.ok && meData && meData.canRefresh === true) {
-      const mergedForRefresh = meCookies.length ? mergeCookies(cookieHeader, meCookies) : cookieHeader;
-      const refreshRes = await fetch(new URL('/api/auth/refresh', backendUrl).toString(), {
-        method: 'POST',
-        cache: 'no-store',
-        headers: {
-          ...buildBackendClientHeaders(request, mergedForRefresh),
-          'content-type': 'application/json',
-        },
-        body: '{}',
-      });
-      const refreshCookies = extractSetCookies(refreshRes.headers);
-      const combinedCookies = [...meCookies, ...refreshCookies];
-      const refreshText = await refreshRes.text().catch(() => '');
-      let refreshData: any = null;
-      try {
-        refreshData = refreshText ? unwrapAuthPayload(JSON.parse(refreshText)) : null;
-      } catch {
-        refreshData = null;
-      }
+    const canAttemptRefresh =
+      probe.data?.canRefresh === true ||
+      (hasCookie(probe.cookieHeader, 'ce_refresh') && probe.data?.canRefresh !== false);
 
-      if (refreshRes.ok && refreshData?.authenticated === true) {
+    if (canAttemptRefresh) {
+      const refreshed = await performRefreshWithRecovery(backendUrl, request.headers, probe.cookieHeader, probe);
+      if (refreshed.ok && refreshed.data?.authenticated === true) {
         const requestHeaders = new Headers(request.headers);
-        requestHeaders.set('cookie', mergeCookies(cookieHeader, combinedCookies));
+        requestHeaders.set('cookie', refreshed.cookieHeader);
         const nextRes = NextResponse.next({
           request: { headers: requestHeaders },
         });
-        for (const c of combinedCookies) {
+        for (const c of refreshed.setCookies) {
           nextRes.headers.append('set-cookie', c);
         }
         return nextRes;
       }
-
-      return redirectToLogin(request, 'expired', combinedCookies);
+      return redirectToLogin(request, 'expired', refreshed.setCookies);
     }
 
-    const hadAuthCookie = /(?:^|;\s*)(?:token|ce_refresh)=/.test(cookieHeader);
-    return redirectToLogin(request, hadAuthCookie ? 'expired' : undefined, meCookies);
+    const hadAuthCookie = hasCookie(cookieHeader, 'token') || hasCookie(cookieHeader, 'ce_refresh');
+    return redirectToLogin(request, hadAuthCookie ? 'expired' : undefined, probe.setCookies);
   } catch {
-    const hasAuthCookie = /(?:^|;\s*)(?:token|ce_refresh)=/.test(cookieHeader);
+    const hasAuthCookie = hasCookie(cookieHeader, 'token') || hasCookie(cookieHeader, 'ce_refresh');
     if (!hasAuthCookie || pathname !== '/') {
       return redirectToLogin(request);
     }
-    // در صورت قطعی کامل بکاند روی مسیر اصلی با وجود کوکی سشن، route.ts پیام تشخیصی را نمایش می‌دهد.
     return NextResponse.next();
   }
 }

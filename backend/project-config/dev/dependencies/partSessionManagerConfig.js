@@ -1,8 +1,10 @@
+const { parseDurationMs } = require('../../../services/config');
+
 module.exports={
   global: {
     tokenLength: 25,
-    sessionExpireTime: Number(process.env.SESSION_EXPIRE_MS || 300000),
-    maxIdleTime: Number(process.env.SESSION_IDLE_MS || 120000),
+    sessionExpireTime: parseDurationMs(process.env.SESSION_EXPIRE_MS, 300000),
+    maxIdleTime: parseDurationMs(process.env.SESSION_IDLE_MS, 120000),
     maxFailedLogins: 4,
     loginFailedTimeLimit: 20000,
     multiAccessTime: 5000,

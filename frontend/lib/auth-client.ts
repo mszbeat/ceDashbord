@@ -129,7 +129,7 @@ function broadcastAuthEvent(event: { type: 'login' | 'logout' | 'refreshed'; aut
   }
 }
 
-export async function getAuthStatus(): Promise<AuthSessionState> {
+export async function getAuthStatus(): Promise<AuthSessionState & { _ok?: boolean }> {
   const res = await fetch('/api/auth/me', {
     method: 'GET',
     cache: 'no-store',
@@ -150,6 +150,7 @@ export async function getAuthStatus(): Promise<AuthSessionState> {
       samadUsername: 'visitor',
       roles: ['visitor'],
       canRefresh: false,
+      _ok: false,
     };
   }
   return {
@@ -161,6 +162,7 @@ export async function getAuthStatus(): Promise<AuthSessionState> {
     refreshExpiresAt: parsed.refreshExpiresAt || null,
     accessExpireMs: typeof parsed.accessExpireMs === 'number' ? parsed.accessExpireMs : undefined,
     idleExpireMs: typeof parsed.idleExpireMs === 'number' ? parsed.idleExpireMs : undefined,
+    _ok: true,
   };
 }
 
@@ -170,7 +172,7 @@ async function runLockedRefresh(): Promise<AuthSessionState | null> {
     if (current && current.authenticated) {
       return current;
     }
-    if (current && current.canRefresh === false) {
+    if (current && current._ok && current.canRefresh === false) {
       return null;
     }
 
@@ -228,7 +230,7 @@ export function refreshSession(): Promise<AuthSessionState | null> {
 
 export async function ensureAuthenticated(): Promise<AuthSessionState> {
   const me = await getAuthStatus();
-  if (!me.authenticated && me.canRefresh) {
+  if (!me.authenticated && (me.canRefresh || !me._ok)) {
     const refreshed = await refreshSession();
     if (refreshed && refreshed.authenticated) {
       return refreshed;
@@ -337,24 +339,18 @@ export interface RegisterAccountResult {
 export async function registerAccount(params: {
   username: string;
   password: string;
-  role?: string;
   rememberMe?: boolean;
   autoLogin?: boolean;
-  alreadyAuthenticated?: boolean;
 }): Promise<RegisterAccountResult> {
   const cleanUser = params.username.trim();
-  const cleanRole = typeof params.role === 'string' && params.role.trim() ? params.role.trim() : undefined;
-  const shouldAutoLogin = params.autoLogin !== false && !params.alreadyAuthenticated;
+  const shouldAutoLogin = params.autoLogin !== false;
 
-  const bodyPayload: Record<string, any> = {
+  const bodyPayload = {
     username: cleanUser,
     password: params.password,
     rememberMe: Boolean(params.rememberMe),
     autoLogin: shouldAutoLogin,
   };
-  if (cleanRole) {
-    bodyPayload.role = cleanRole;
-  }
 
   const res = await fetch('/api/auth/register', {
     method: 'POST',
@@ -384,7 +380,7 @@ export async function registerAccount(params: {
 
   const roles = Array.isArray(parsed?.roles) && parsed.roles.length
     ? parsed.roles
-    : [cleanRole || 'visitor'];
+    : ['visitor'];
 
   if (!shouldAutoLogin) {
     return {

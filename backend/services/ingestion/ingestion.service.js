@@ -1,5 +1,6 @@
 'use strict';
-const { BANKS, config } = require('../config');
+const { BANKS, config, resolveBankApiUrl } = require('../config');
+const { fetchBankJson } = require('../http/gateway-client');
 const { error: adminError } = require('../../controllers/adminController/config');
 const {
   jalaliStampDigitsOf,
@@ -52,8 +53,9 @@ class IngestionService {
     this.evaluator = evaluator;
   }
 
-  async fetchPage(page, limit, day, filters) {
-    const url = new URL(config.apiBaseUrl);
+  async fetchPage(page, limit, day, filters, bankKey = 'tavan_mellat') {
+    const baseUrl = resolveBankApiUrl(bankKey);
+    const url = new URL(baseUrl);
     url.searchParams.set('page', String(page));
     url.searchParams.set('limit', String(limit));
     if (day) url.searchParams.set('date', toApiDate(day));
@@ -61,35 +63,24 @@ class IngestionService {
     if (filters?.requestId?.trim()) url.searchParams.set('requestId', filters.requestId.trim());
     if (filters?.uniqueKey?.trim()) url.searchParams.set('uniqueKey', filters.uniqueKey.trim());
     if (filters?.nationalCode?.trim()) url.searchParams.set('nationalCode', filters.nationalCode.trim());
-    const headers = {
-      'gateway-system': config.apiSystem,
-      'gateway-token': config.apiToken,
-      accept: 'application/json',
-    };
-    let lastError;
-    for (let attempt = 1; attempt <= config.retryCount; attempt++) {
-      try {
-        const response = await fetch(url.toString(), {
-          headers,
-          signal: AbortSignal.timeout(config.requestTimeoutMs),
-        });
-        if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText}`);
-        const body = await response.json();
-        return body?.data ?? body;
-      } catch (error) {
-        lastError = error;
-        if (attempt < config.retryCount) await new Promise((r) => setTimeout(r, 500 * 2 ** (attempt - 1)));
-      }
+
+    try {
+      return await fetchBankJson(bankKey, url.toString(), {
+        timeoutMs: config.requestTimeoutMs,
+        retryCount: config.retryCount,
+      });
+    } catch (lastError) {
+      throw adminError.creditEvaluationBaseServiceError({
+        bank: bankKey,
+        page,
+        day: day || null,
+        cause: lastError?.message ?? String(lastError),
+      });
     }
-    throw adminError.creditEvaluationBaseServiceError({
-      page,
-      day: day || null,
-      cause: lastError?.message ?? String(lastError),
-    });
   }
 
-  async sourceTotal(day, filters) {
-    const data = await this.fetchPage(1, 1, day, filters);
+  async sourceTotal(day, filters, bankKey = 'tavan_mellat') {
+    const data = await this.fetchPage(1, 1, day, filters, bankKey);
     const raw = data?.count ?? data?.totalCount ?? data?.total ?? data?.reportResults?.length ?? 0;
     const total = Number(raw);
     return Number.isFinite(total) ? total : 0;
@@ -179,7 +170,7 @@ class IngestionService {
 
     try {
       await client.query('SELECT pg_advisory_lock(hashtext($1))', [lockKey]);
-      const preflight = await this.sourceTotal(day, filters);
+      const preflight = await this.sourceTotal(day, filters, bankKey);
       if (rebuild && !preflight) {
         throw adminError.emptyRebuildAborted(day);
       }
@@ -258,7 +249,7 @@ class IngestionService {
       while (checkpoint < sourceTotal) {
         const page = Math.floor(checkpoint / pageSize) + 1;
         const skip = checkpoint % pageSize;
-        const data = await this.fetchPage(page, pageSize, day, filters);
+        const data = await this.fetchPage(page, pageSize, day, filters, bankKey);
         const liveRaw = data?.count ?? data?.totalCount ?? data?.total;
         const liveTotal = Number(liveRaw);
         if (Number.isFinite(liveTotal)) {
@@ -308,7 +299,7 @@ class IngestionService {
           Math.ceil(sourceTotal / pageSize),
         );
         for (let headPage = 1; headPage <= headPages; headPage++) {
-          const headData = await this.fetchPage(headPage, pageSize, day, filters);
+          const headData = await this.fetchPage(headPage, pageSize, day, filters, bankKey);
           const headReports = Array.isArray(headData?.reportResults)
             ? headData.reportResults
             : Array.isArray(headData?.reports)
@@ -414,12 +405,12 @@ class IngestionService {
     const seenStatus = new Map();
 
     try {
-      const preflight = await this.sourceTotal(null, filters);
+      const preflight = await this.sourceTotal(null, filters, bankKey);
       sourceTotal = Math.min(preflight, maxCount);
       while (checkpoint < sourceTotal) {
         const page = Math.floor(checkpoint / pageSize) + 1;
         const skip = checkpoint % pageSize;
-        const data = await this.fetchPage(page, pageSize, null, filters);
+        const data = await this.fetchPage(page, pageSize, null, filters, bankKey);
         const reports = Array.isArray(data?.reportResults)
           ? data.reportResults
           : Array.isArray(data?.reports)

@@ -58,7 +58,7 @@
         credentials: 'include',
         headers: { accept: 'application/json' },
       });
-      if (!res.ok) return null;
+      if (!res.ok) return { _httpError: res.status };
       const raw = await res.json().catch(() => null);
       return unwrapEnvelope(raw);
     } catch {
@@ -73,7 +73,7 @@
         authState = current;
         return true;
       }
-      if (current && current.canRefresh === false) {
+      if (current && !current._httpError && current.canRefresh === false) {
         authState = current;
         return false;
       }
@@ -88,7 +88,9 @@
         body: '{}',
       });
       if (!res.ok) {
-        authState = { authenticated: false, username: 'visitor', roles: ['visitor'], canRefresh: false };
+        if (res.status === 401 || res.status === 403) {
+          authState = { authenticated: false, username: 'visitor', roles: ['visitor'], canRefresh: false };
+        }
         return false;
       }
       const raw = await res.json().catch(() => null);
@@ -128,11 +130,11 @@
     const roles = Array.isArray(state?.roles) ? state.roles : ['visitor'];
     const isAdmin = roles.includes('admin');
     if (adminLink) {
-      if (state?.authenticated && !isAdmin) {
-        adminLink.style.display = 'none';
-      } else {
+      if (state?.authenticated && isAdmin) {
         adminLink.style.display = '';
-        adminLink.href = state?.authenticated ? '/admin' : '/login?next=%2Fadmin';
+        adminLink.href = '/admin';
+      } else {
+        adminLink.style.display = 'none';
       }
     }
 
@@ -209,13 +211,15 @@
 
   async function syncAuthState() {
     let me = await fetchAuthMe();
-    if (me && !me.authenticated && me.canRefresh) {
+    if (!me || me._httpError || (!me.authenticated && me.canRefresh !== false)) {
       const refreshed = await refreshSession();
       if (refreshed) {
         me = authState || (await fetchAuthMe());
+      } else if (me?._httpError === 401 || me?._httpError === 403) {
+        me = { authenticated: false, username: 'visitor', roles: ['visitor'], canRefresh: false };
       }
     }
-    if (me) {
+    if (me && !me._httpError) {
       authState = me;
       renderAuthBar(me);
       if (me.authenticated) {
@@ -362,7 +366,8 @@
   });
 
   async function loadSample(requestId) {
-    const url = `/api/sample/${encodeURIComponent(requestId)}`;
+    const bankParam = document.body.dataset.bank ? `?bank=${encodeURIComponent(document.body.dataset.bank)}` : '';
+    const url = `/api/sample/${encodeURIComponent(requestId)}${bankParam}`;
     const doFetch = () => fetch(url, {
       cache: 'no-store',
       credentials: 'include',

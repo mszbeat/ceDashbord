@@ -54,7 +54,7 @@ function controlsHtml(controls = {}) {
     <label for="ce-to">تا روز</label><input id="ce-to" name="to" value="${h(to)}" placeholder="1405-08-19" inputmode="numeric" maxlength="10">
     <input type="hidden" name="rowsCap" value="${h(rowsCap)}">
     <button type="submit">⟳ بروزرسانی</button>
-    <a href="/admin" class="ce-admin-link" id="ce-admin-nav-link">⚙ پنل مدیریت</a>
+    <a href="/admin" class="ce-admin-link" id="ce-admin-nav-link" style="display:none">⚙ پنل مدیریت</a>
     ${note ? `<span class="ce-live-status">${note}</span>` : ''}
   </form><div class="ce-auth-slot" id="ce-auth-slot"><a href="/login" class="ce-auth-link ce-auth-link-primary">ورود به حساب</a></div></div>`;
 }
