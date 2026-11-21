@@ -263,7 +263,11 @@ function scopedContent(topicId, scope, ctx) {
     if (!total) continue;
     const hasChart = ['statusCode', 'scoreCategory', 'scoreRange'].includes(spec.id);
     html += categoryChart(spec,stats);
-    const split = topicId !== 'status' && spec.splitByStatus && scope === 'ALL', message = ['messageSuccess', 'messageFail'].includes(spec.id);
+    const split = topicId !== 'status' && spec.splitByStatus && scope === 'ALL';
+    // ستون‌های چندخطی/فنی هر دسته با خودِ spec تعیین می‌شود (پیام‌های خروجی و خطاهای سرویس‌های بیرونی).
+    const messageCats = ['messageSuccess', 'messageFail'];
+    const multilineCols = spec.multiline || (messageCats.includes(spec.id) ? ['دسته / مقدار'] : []);
+    const tableClass = spec.tableClass || (messageCats.includes(spec.id) ? 'message-table' : '');
     const categories = Object.entries(stats.cats[spec.id] || {}).sort((a, b) => b[1] - a[1]);
     const rows = categories.map(([key, value]) => {
       const row = { ...(spec.id === 'scoreRange' && /[0-9۰-۹٠-٩]/.test(key) ? {__ltrCategory:true}:{}), 'دسته / مقدار': spec.values && own(spec.values, key) ? spec.values[key] : key,
@@ -282,7 +286,8 @@ function scopedContent(topicId, scope, ctx) {
     if (!hasChart) {
       html += `<h3>${h(spec.label)} <small>${nf(total)} گزارش</small></h3>`
         + (spec.note ? `<p class="explain">${h(spec.note)}</p>` : '')
-        + table(rows, { multiline: message ? ['دسته / مقدار'] : [], className: message ? 'message-table' : '' });
+        + table(rows, { multiline: multilineCols, className: tableClass,
+          code: spec.codeColumns || [], ltr: spec.ltrColumns || [], scroll: !!spec.codeColumns });
     } else if (spec.note) {
       html += `<p class="explain">${h(spec.note)}</p>`;
     }
@@ -295,7 +300,9 @@ function scopedContent(topicId, scope, ctx) {
       html += `<details class="sample-details"><summary><span>${spec.id === 'modelName' ? 'گزارش‌های مدل' : 'مشاهدهٔ گزارش‌های دستهٔ'} «${h(label)}»</span><span class="detail-badge">${nf(entry.total)} گزارش</span></summary>`;
       if (entry.total > entry.rows.length) html += `<p class="table-caption">نمایش ${nf(entry.rows.length)} مورد نخست از ${nf(entry.total)} گزارش (سقف MAX_ROWS).</p>`;
       html += entry.rows.length ? tools(id) + table(entry.rows.map((row, index) => ({ '#': index + 1, ...row })),
-        { id, code: ['uniqueKey', 'requestId'], ltr: ['model_name', 'تاریخ و ساعت'], scroll: true })
+        { id, code: [...(spec.codeColumns || []), 'uniqueKey', 'requestId'],
+          ltr: [...(spec.ltrColumns || []), 'model_name', 'تاریخ و ساعت'],
+          multiline: multilineCols, scroll: true })
         : empty('گزارشی در این دسته و محدوده وجود ندارد.');
       html += '</details>';
     }

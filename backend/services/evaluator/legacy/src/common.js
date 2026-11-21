@@ -37,6 +37,141 @@ function messageOf(sample) {
   return firstString(sample, ['output.message', 'output.data.message']) || 'پیامی ثبت نشده است';
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// خطاهای دریافت داده از سرویس‌های بیرونی
+// ساختار داده در گزارش:  collectedData.<provider>Error = { meta, data: {
+//   additionalInfo: { timestamp, path, status, message, error },
+//   message: { fa, en } } }
+// هر خطا به سرویس (provider) متناظرش نسبت داده می‌شود تا در بخش «وضعیت و
+// پیام‌ها» جدا و به تفکیک سرویس نمایش داده شود.
+// ─────────────────────────────────────────────────────────────────────────────
+const PROVIDER_SERVICES = [
+  { service: 'EstelamAsliRows', label: 'استعلام سمات (تسهیلات)',
+    keys: ['samatFacilitiesError'] },
+  { service: 'chequeList', label: 'چک‌های برگشتی (سمات)',
+    keys: ['samatChequeError'] },
+  { service: 'iran', label: 'رتبه‌بندی اعتباری (ایران)',
+    keys: ['rotbebandiStandardError'] },
+  { service: 'rotbebandiScore', label: 'امتیاز رتبه‌بندی',
+    keys: ['rotbebandiScoreError'] },
+  { service: 'historical_loans', label: 'سوابق وام‌ها',
+    keys: ['postBankLoansDataError', 'sepahLoansError', 'resalatLoansError'] },
+  { service: 'averageDeposit', label: 'میانگین سپرده',
+    keys: ['postBankDepositAverageError', 'sepahDepositAverageError', 'ResalatDepositAverageError'] },
+  { service: 'merat', label: 'اطلاعات مرات',
+    keys: ['meratInformationError'] },
+];
+const PROVIDER_BY_KEY = new Map();
+for (const source of PROVIDER_SERVICES) for (const key of source.keys) PROVIDER_BY_KEY.set(key.toLowerCase(), source.service);
+const PROVIDER_LABEL = new Map(PROVIDER_SERVICES.map((source) => [source.service, source.label]));
+const PROVIDER_NONE = 'بدون خطا';
+
+const providerServiceOf = (rawKey) => {
+  const key = String(rawKey).toLowerCase();
+  if (PROVIDER_BY_KEY.has(key)) return PROVIDER_BY_KEY.get(key);
+  return key.endsWith('error') ? key.slice(0, -5) : key;
+};
+const providerLabelOf = (service) => PROVIDER_LABEL.get(service) || service;
+
+/** همهٔ خطاهای «دریافت داده از سرویس بیرونی» را از collectedData بیرون می‌کشد. */
+function providerErrorsOf(collected) {
+  if (!collected || typeof collected !== 'object' || Array.isArray(collected)) return [];
+  const found = [];
+  for (const rawKey of Object.keys(collected)) {
+    if (!/error$/i.test(rawKey)) continue;
+    const entry = collected[rawKey];
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
+    const status = get(entry, 'data.additionalInfo.status');
+    const path = firstString(entry, ['data.additionalInfo.path', 'additionalInfo.path']);
+    const serviceMessage = firstString(entry, ['data.additionalInfo.message', 'additionalInfo.message']);
+    const serviceError = firstString(entry, ['data.additionalInfo.error', 'additionalInfo.error']);
+    const fa = firstString(entry, ['data.message.fa', 'message.fa']);
+    const en = firstString(entry, ['data.message.en', 'message.en']);
+    if (status == null && !path && !serviceMessage && !serviceError && !fa && !en) continue;
+    found.push({
+      key: rawKey,
+      service: providerServiceOf(rawKey),
+      status: status == null || status === '' ? null : String(status),
+      path,
+      message: serviceMessage,
+      error: serviceError,
+      fa,
+      en,
+      text: fa || serviceMessage || en || serviceError || 'پیامی ثبت نشده است',
+      timestamp: firstString(entry, ['data.additionalInfo.timestamp', 'additionalInfo.timestamp']),
+    });
+  }
+  return found.sort((a, b) => a.service.localeCompare(b.service) || a.key.localeCompare(b.key));
+}
+
+/** کلید دسته‌بندی یک خطا؛ خطاهای هم‌شکل در یک ردیف شمرده می‌شوند. */
+const providerErrorKeyOf = (error) => {
+  const head = error.status ? `HTTP ${error.status}` : 'بدون کد وضعیت';
+  const tail = error.fa || error.message || error.error || error.en;
+  return `${head} · ${tail || 'پیامی ثبت نشده است'}`;
+};
+
+/** ستون‌های ریز خطای همان سرویس برای جدول گزارش‌های دسته. */
+function providerErrorColumns(collected, service) {
+  const list = providerErrorsOf(collected).filter((entry) => entry.service === service);
+  if (!list.length) return {};
+  const join = (picker) => [...new Set(list.map(picker).filter((value) => value != null && value !== ''))].join(' | ') || '—';
+  return {
+    'مسیر سرویس': join((entry) => entry.path),
+    'کد وضعیت سرویس': join((entry) => entry.status),
+    'پیام سرویس': join((entry) => [entry.fa, entry.en].filter(Boolean).join('\n') || entry.message),
+    'جزئیات فنی': join((entry) => [entry.message, entry.error].filter(Boolean).join(' — ')),
+    'کلید خطا': join((entry) => entry.key),
+  };
+}
+
+const providerErrorNote = (label) => `مأخذ: کلیدهای خطای گزارش در collectedData (مثلاً postBankLoansDataError). `
+  + `هر خطا فقط به سرویس ${label} نسبت داده می‌شود؛ کد وضعیت از data.additionalInfo.status، `
+  + 'مسیر فراخوانی از data.additionalInfo.path و متن پیام از data.message.fa و data.message.en خوانده می‌شود. '
+  + 'گزارش‌های موفق و ناموفق هر دو شمرده می‌شوند؛ شکست یک سرویس الزاماً به معنی شکست گزارش نیست.';
+
+const providerErrorCat = (service) => ({
+  id: `providerError_${service}`,
+  topic: 'status',
+  label: `خطای دریافت داده — ${providerLabelOf(service)}`,
+  note: providerErrorNote(providerLabelOf(service)),
+  inspectAll: true,
+  excludeValues: [PROVIDER_NONE],
+  multiline: ['دسته / مقدار', 'پیام سرویس'],
+  tableClass: 'message-table',
+  codeColumns: ['مسیر سرویس', 'کلید خطا'],
+  ltrColumns: ['مسیر سرویس', 'کلید خطا'],
+  classify: (collected) => {
+    const list = providerErrorsOf(collected).filter((entry) => entry.service === service);
+    return list.length ? providerErrorKeyOf(list[0]) : PROVIDER_NONE;
+  },
+  row: (collected) => providerErrorColumns(collected, service),
+});
+
+const KNOWN_PROVIDER_SERVICES = new Set(PROVIDER_SERVICES.map((source) => source.service));
+const PROVIDER_ERROR_CATS = [
+  ...PROVIDER_SERVICES.map((source) => providerErrorCat(source.service)),
+  { id: 'providerError_other', topic: 'status',
+    label: 'خطای دریافت داده — سرویس‌های دیگر',
+    note: 'هر کلید دیگری در collectedData که به Error ختم شود و در فهرست سرویس‌های شناخته‌شده نباشد، با همان نام کلید و به‌تفکیک سرویس در این بخش نمایش داده می‌شود.',
+    inspectAll: true, excludeValues: [PROVIDER_NONE],
+    multiline: ['دسته / مقدار', 'پیام سرویس'], tableClass: 'message-table',
+    codeColumns: ['مسیر سرویس', 'کلید خطا'], ltrColumns: ['مسیر سرویس', 'کلید خطا'],
+    classify: (collected) => {
+      const list = providerErrorsOf(collected).filter((entry) => !KNOWN_PROVIDER_SERVICES.has(entry.service));
+      return list.length ? providerErrorKeyOf(list[0]) : PROVIDER_NONE;
+    },
+    row: (collected) => {
+      const list = providerErrorsOf(collected).filter((entry) => !KNOWN_PROVIDER_SERVICES.has(entry.service));
+      if (!list.length) return {};
+      const join = (picker) => [...new Set(list.map(picker).filter((v) => v != null && v !== ''))].join(' | ') || '—';
+      return { 'مسیر سرویس': join((e) => e.path), 'کد وضعیت سرویس': join((e) => e.status),
+        'پیام سرویس': join((e) => [e.fa, e.en].filter(Boolean).join('\n') || e.message),
+        'جزئیات فنی': join((e) => [e.message, e.error].filter(Boolean).join(' — ')),
+        'کلید خطا': join((e) => e.key) };
+    } },
+];
+
 const COMMON_CATS = [
   { id: 'statusCode', topic: 'status', label: 'کد وضعیت خروجی (output.statusCode)', splitByStatus: false,
     classify: (_c, report, folderStatus) => {
@@ -52,6 +187,7 @@ const COMMON_CATS = [
     inspectAll: true, excludeValues: ['نام مدل ثبت نشده است'], inspectExcept: ['نام مدل ثبت نشده است'],
     classify: (_c, s) => { const output = get(s, 'output'), name = get(s, 'output.model_name');
       return output && typeof output === 'object' && !Array.isArray(output) && typeof name === 'string' && name.trim() ? name.trim() : 'نام مدل ثبت نشده است'; } },
+  ...PROVIDER_ERROR_CATS,
 ];
 
 const TIERS = [['Excellent', 'عالی'], ['Very_Good', 'خیلی خوب'], ['Good', 'خوب'], ['Medium_Good', 'متوسط رو به خوب'],
@@ -76,7 +212,7 @@ const COMMON_METRICS = [
 const COMMON_TOPICS = {
   overview: { icon: '◈', label: 'نمای کلی', desc: 'حجم داده، نرخ موفقیت و توزیع شاخص‌های اصلی مدل' },
   risk: { icon: '⚠', label: 'بدهی معوق و چک برگشتی', desc: 'موارد تأییدشده در گزارش‌های موفق با تطبیق پیام خروجی و دادهٔ سمات' },
-  status: { icon: '☷', label: 'وضعیت و پیام‌ها', desc: 'کدها، پیام‌های خروجی و کامل بودن وضعیت سرویس‌های ورودی' },
+  status: { icon: '☷', label: 'وضعیت و پیام‌ها', desc: 'کدها، پیام‌های خروجی، کامل بودن وضعیت سرویس‌های ورودی و خطاهای دریافت داده از هر سرویس بیرونی' },
   model: { icon: '◇', label: 'مدل‌های اجراشده', desc: 'تعداد درخواست‌های موفق برای هر نام مدل' },
   empty: { icon: '◫', label: 'کیفیت کلیدها', desc: 'درصد مقدارهای خالی، کلیدهای غایب و نوع نقص داده' },
   lists: { icon: '⚑', label: 'گزارش‌های قابل بررسی', desc: 'فهرست گزارش‌های نیازمند بررسی با امکان جست‌وجو و مشاهدهٔ جزئیات' },
@@ -90,4 +226,5 @@ const ROTBE_DEFAULT = 'input.data.rotbebandiStandard.data';
 const ROTBE_IGNORE = new Set(['inquiryCreatedDate', 'inquiryHistories', 'indirectContracts']);
 
 module.exports = { record, toText, h, safeJson, nf, intFmt, pct, compareReviewRows, safeId, messageOf, COMMON_CATS, COMMON_METRICS,
+  PROVIDER_SERVICES, PROVIDER_ERROR_CATS, PROVIDER_NONE, providerErrorsOf, providerErrorKeyOf, providerErrorColumns, providerLabelOf,
   COMMON_TOPICS, KIND_FA, SERVICE_FA, ROTBE_DEFAULT, ROTBE_IGNORE, TIERS };
