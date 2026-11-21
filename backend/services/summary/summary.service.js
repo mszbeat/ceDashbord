@@ -11,6 +11,7 @@ const { quantile } = require('../legacy-report/render');
 const { getVazirmatnFontCss } = require('../legacy-report/font-face');
 const { getActionLogger } = require('../logger/action-logger.service');
 const { buildReport } = require('../legacy-report/report-builder');
+const createV1Dialect = require('../db/dialect-v1-session');
 
 function rangeOf(from, to) {
   const fallback = defaultRange(30);
@@ -119,9 +120,17 @@ function baseOfRow(row, stamp) {
 }
 
 class SummaryService {
-  constructor(db, evaluator) {
+  /**
+   * @param {object} db آداپتور دیتابیس (query/getClient)
+   * @param {object} evaluator
+   * @param {{dialect?: object}} options
+   *   `dialect` قراداد دسترسی به داده است: `dialect-v1` (jsonb فعلی) یا `dialect-v2`.
+   *   با نبودنش، رفتار دقیقاً همان v1 قبلی است.
+   */
+  constructor(db, evaluator, options = {}) {
     this.db = db;
     this.evaluator = evaluator;
+    this.dialect = options.dialect || createV1Dialect(db);
   }
 
   banks() {
@@ -174,7 +183,10 @@ class SummaryService {
     const restoreCategory = (id, value) => {
       if (id === 'messageSuccess' || id === 'messageFail') {
         const key = String(value);
-        return messageText.get(key) || 'سایر پیامها';
+        const text = messageText.get(key);
+        if (text) return text;
+        // پیام‌هایی که در `message_dict` متن ندارند (مثلاً دیکشنری خالی در تست) → سایر پیام‌ها
+        return 'سایر پیامها';
       }
       return String(value);
     };
@@ -360,8 +372,8 @@ class SummaryService {
     const { from: f, to: t } = rangeOf(from, to);
     const cap = Math.min(Math.max(Number(rowsCap) || 100, 1), 100);
     const bank = this.evaluator.getBank(key);
-    const serviceKeysRes = await this.db
-      .query(`SELECT display_extras, services FROM ${table} WHERE day BETWEEN $1 AND $2`, [f, t])
+    const serviceKeysRes = await this.dialect
+      .serviceDiscovery(table, f, t)
       .catch(() => ({ rows: [] }));
     const presentKeys = new Set(bank.expectedServices ?? []);
     for (const r of serviceKeysRes.rows) {
@@ -377,9 +389,9 @@ class SummaryService {
     const selectedServices = [...presentKeys].sort();
 
     const [countRes, daysRes, runsRes, dictRes] = await Promise.all([
-      this.db.query(`SELECT COUNT(*)::int AS total FROM ${table} WHERE day BETWEEN $1 AND $2`, [f, t]),
-      this.db.query(`SELECT DISTINCT day FROM ${table} WHERE day BETWEEN $1 AND $2 ORDER BY day`, [f, t]),
-      this.db.query('SELECT * FROM day_runs WHERE bank=$1 AND day BETWEEN $2 AND $3 ORDER BY day DESC', [key, f, t]),
+      this.dialect.countRange(table, f, t),
+      this.dialect.days(table, f, t),
+      this.dialect.runsRange(key, f, t),
       this.db.query("SELECT message_key, COALESCE(message_text, label, 'سایر پیامها') AS text FROM message_dict"),
     ]);
     const totalSamples = Number(countRes.rows[0]?.total ?? 0);
@@ -395,14 +407,7 @@ class SummaryService {
     let cursor = ['', '', ''];
     const pageSize = 1000;
     for (;;) {
-      const batch = await this.db.query(
-        `SELECT * FROM ${table}
-         WHERE day BETWEEN $1 AND $2
-           AND (day, COALESCE(stamp_key, ''), request_id) > ($3::text, $4::text, $5::text)
-         ORDER BY day, COALESCE(stamp_key, ''), request_id
-         LIMIT $6`,
-        [f, t, cursor[0], cursor[1], cursor[2], pageSize],
-      );
+      const batch = await this.dialect.cursorPage(table, f, t, cursor, pageSize);
       const rows = batch.rows;
       if (!rows.length) break;
       for (const row of rows) this.consumeRow(row, state);
@@ -533,109 +538,45 @@ class SummaryService {
     const { from, to } = rangeOf(params.from, params.to);
     const limit = Math.min(Math.max(Number(params.limit ?? 100) || 100, 1), 100);
     const offset = Math.max(Number(params.offset ?? 0) || 0, 0);
-    const sqlParams = [from, to];
-    let type = params.type || 'flag';
-    let id = params.id || '';
-    const raw = params.indicator || '';
 
-    if (!params.type && raw.includes(':')) {
-      const [prefix, ...rest] = raw.split(':');
-      if (['flag', 'metric', 'cat', 'service'].includes(prefix)) {
-        type = prefix;
-        id = rest.join(':');
-      }
-    } else if (!params.type && raw) {
-      id = raw;
-    }
-    if (!id && raw === 'slow') {
-      type = 'slow';
-      id = 'slow';
-    }
-    if (!id && raw === 'creditAlert') {
-      type = 'creditAlert';
-      id = 'creditAlert';
-    }
-
-    const add = (value) => {
-      sqlParams.push(value);
-      return `$${sqlParams.length}`;
-    };
-    let where = '';
-    let order = "day, COALESCE(stamp_key, ''), request_id";
-
-    if (type === 'flag' && id) where += ` AND flags->>${add(id)} = 'true'`;
-    else if (type === 'cat' && id) {
-      where += params.value
-        ? ` AND cats->>${add(id)} = ${add(params.value)}`
-        : ` AND cats->>${add(id)} IS NOT NULL`;
-    } else if (type === 'metric' && id) {
-      const col = add(id);
-      where += ` AND (metrics->>${col})::double precision IS NOT NULL`;
-      order = `(metrics->>${col})::double precision DESC NULLS LAST, request_id`;
-    } else if (type === 'service' && id) {
-      where += ` AND services->>${add(id)} IS NOT NULL AND services->>${add(id)} <> 'ok'`;
-    } else if (type === 'slow') {
-      where += ' AND total_time_s > 4';
-      order = 'total_time_s DESC NULLS LAST, request_id';
-    } else if (type === 'creditAlert') {
-      where += ` AND (COALESCE(credit_alerts->'overdue'->>'bool','false') = 'true'
-                  OR COALESCE(credit_alerts->'cheque'->>'bool','false') = 'true')`;
-    } else if (type === 'all') {
-      // بدون فیلتر اضافی
-    } else if (id) {
-      where += ` AND flags->>${add(id)} = 'true'`;
-      type = 'flag';
-    }
-
-    if (params.status === 'success' || params.status === 'fail') {
-      where += ` AND is_success = ${add(params.status === 'success')}`;
-    }
-    const limitParam = add(limit);
-    const offsetParam = add(offset);
-    const result = await this.db.query(
-      `SELECT COUNT(*) OVER() AS total_count,
-        request_id, unique_key, day, inserted_at, stamp_key, is_success, model_name, status_code, error_code,
-        message_key, total_time_s, pd, suggested_amount, amount_kind, score_req, flags, cats, credit_alerts
-       FROM ${table}
-       WHERE day BETWEEN $1 AND $2 ${where}
-       ORDER BY ${order}
-       LIMIT ${limitParam} OFFSET ${offsetParam}`,
-      sqlParams,
-    );
-    const rows = result.rows.map((r) => ({
-      ...r,
-      sid: r.request_id,
-      total_count: Number(r.total_count),
-      true_flags: Object.entries(asObject(r.flags))
-        .filter(([, v]) => v === true)
-        .map(([k]) => k),
-    }));
+    const result = await this.dialect.list({
+      table, params: { ...params, from, to }, from, to, limit, offset,
+    });
     return {
       bank: params.bank,
       from,
       to,
-      type,
-      id,
+      type: result.type,
+      id: result.id,
       value: params.value ?? null,
       limit,
       offset,
-      total: rows[0]?.total_count ?? 0,
-      rows,
+      total: result.total,
+      rows: result.rows.map((row) => (row.true_flags ? row : {
+        ...row,
+        sid: row.sid ?? row.request_id,
+        true_flags: Object.entries(asObject(row.flags))
+          .filter(([, v]) => v === true)
+          .map(([k]) => k),
+      })),
     };
   }
 
   async sample(requestId, req, bankHint) {
-    const stored = await this.db
-      .query(
-        `SELECT * FROM (
-           SELECT 'tavan_mellat'::text AS bank, day, is_success, unique_key FROM samples_mellat WHERE request_id=$1
-           UNION ALL SELECT 'tavan_resalat'::text, day, is_success, unique_key FROM samples_resalat WHERE request_id=$1
-           UNION ALL SELECT 'tavan_postbank'::text, day, is_success, unique_key FROM samples_postbank WHERE request_id=$1
-         ) matched ORDER BY day DESC LIMIT 1`,
-        [requestId],
-      )
-      .catch(() => ({ rows: [] }));
-    const row = stored.rows[0];
+    // جست‌وجوی ردیف ذخیره‌شده در همهٔ بانک‌ها (جزئیات مسیر هر dialect جداست)
+    const banksList = Object.keys(BANKS);
+    const matched = await Promise.all(
+      banksList.map(async (key) => {
+        const found = await this.dialect
+          .byRequestId(BANKS[key].table, requestId)
+          .catch(() => ({ rows: [] }));
+        const hit = found.rows[0];
+        return hit ? { bank: key, day: hit.day, is_success: hit.is_success, unique_key: hit.unique_key } : null;
+      }),
+    );
+    const row = matched
+      .filter(Boolean)
+      .sort((a, b) => String(b.day).localeCompare(String(a.day)))[0];
 
     const prioritized = [
       row?.bank,
@@ -902,7 +843,7 @@ class SummaryService {
   }
 
   async runs() {
-    const result = await this.db.query('SELECT * FROM day_runs ORDER BY day DESC, bank LIMIT 200');
+    const result = await this.dialect.runs(200);
     return result.rows;
   }
 }

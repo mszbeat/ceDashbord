@@ -249,6 +249,11 @@ const config = {
   ),
   sessionExpireMs: parseDurationMs(process.env.SESSION_EXPIRE_MS, 300000),
   sessionIdleMs: parseDurationMs(process.env.SESSION_IDLE_MS, 120000),
+  /**
+   * اسکیمای فعال دیتابیس: `v1` (jsonb فعلی) یا `v2` (جداول typed + پارتیشن).
+   * پیش‌فرض `v1` است تا ارتقا با یک متغیر محیطی و بدون تغییر کد انجام شود.
+   */
+  dbSchema: (process.env.CE_DB_SCHEMA || 'v1').toLowerCase() === 'v2' ? 'v2' : 'v1',
 };
 
 module.exports = {

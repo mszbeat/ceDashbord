@@ -22,6 +22,12 @@ const JSON_COLUMNS = new Set([
   'flags', 'cats', 'counters', 'metrics', 'paths', 'services', 'credit_alerts', 'display_extras',
 ]);
 
+function bankKeyOfTable(table) {
+  const found = Object.entries(BANKS).find(([, bank]) => bank.table === table);
+  if (!found) throw new Error(`جدول ناشناخته: ${table}`);
+  return found[0];
+}
+
 function hasNarrowingFilters(filters) {
   if (!filters) return false;
   return Boolean(
@@ -49,9 +55,15 @@ function inferDayFromSample(sample) {
 }
 
 class IngestionService {
-  constructor(db, evaluator) {
+  constructor(db, evaluator, options = {}) {
     this.db = db;
     this.evaluator = evaluator;
+    /**
+     * مسیر نوشتن جایگزین (اسکیمای v2). وقتی ست شود، `upsertBatch` ردیف‌ها را به‌جای
+     * ستون jsonb در جدول typed/پارتیشن‌شده می‌ریزد؛ بقیهٔ منطق (checkpoint، day_runs،
+     * پیام‌ها) بدون تغییر می‌ماند.
+     */
+    this.writer = options.writer || null;
   }
 
   async fetchPage(page, limit, day, filters, bankKey = 'tavan_mellat') {
@@ -87,8 +99,13 @@ class IngestionService {
     return Number.isFinite(total) ? total : 0;
   }
 
-  async upsertBatch(client, table, rows) {
+  async upsertBatch(client, table, rows, bankKey) {
     if (!rows.length) return;
+    if (this.writer) {
+      // v2: نگاشت و درج با ستون‌های typed + sample_detail + دیکشنری‌ها
+      await this.writer.upsertBatch(client, bankKey || bankKeyOfTable(table), rows);
+      return;
+    }
     const dedupedMap = new Map();
     for (const row of rows) {
       dedupedMap.set(`${row.day}\0${row.request_id}`, row);
@@ -257,7 +274,7 @@ class IngestionService {
             });
           }
         }
-        await this.upsertBatch(client, bank.table, rows);
+        await this.upsertBatch(client, bank.table, rows, bankKey);
         const pending = [...messageTemplates.entries()].filter(([key]) => !writtenTemplates.has(key));
         if (pending.length) {
           await client.query(
@@ -504,7 +521,7 @@ class IngestionService {
             });
           }
         }
-        await this.upsertBatch(client, bank.table, rows);
+        await this.upsertBatch(client, bank.table, rows, bankKey);
         const pending = [...messageTemplates.entries()].filter(([key]) => !writtenTemplates.has(key));
         if (pending.length) {
           await client.query(
