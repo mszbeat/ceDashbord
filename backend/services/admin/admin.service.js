@@ -1,6 +1,7 @@
 'use strict';
 const { randomUUID } = require('node:crypto');
 const { BANKS } = require('../config');
+const { resolveDayRunsSkippedColumn, resolveSamplesUpdatedColumn } = require('../db/schema-columns');
 const { hasNarrowingFilters } = require('../ingestion/ingestion.service');
 const { getActionLogger } = require('../logger/action-logger.service');
 const { error: adminError } = require('../../controllers/adminController/config');
@@ -18,6 +19,34 @@ const {
 
 const CRON_ID = 'nightly_default';
 const ALL_BANKS = Object.keys(BANKS);
+
+/**
+ * روزِ خوانده‌شده از دیتابیس را به شکل **شمسی YYYY-MM-DD** برمی‌گرداند.
+ * در v1 مقدار از قبل متنِ شمسی است؛ در v2 ستون `date` میلادی است و باید تبدیل شود.
+ * بدون این، پنل ادمین «2026-10-23T00:00:00.000Z» نشان می‌داد (اصلاح ۵۰۰/نمایش پنل).
+ */
+function toJalaliDayValue(value, dbSchema) {
+  if (value === null || value === undefined) return value;
+  if (String(dbSchema).toLowerCase() !== 'v2') return value;
+  try {
+    const { toJalaliDay } = require('../db/row-mapper-v2');
+    return toJalaliDay(value);
+  } catch {
+    return value;
+  }
+}
+
+/** همان تبدیل، روی فیلدهای `day`/`minDay`/`maxDay` یک شیء */
+function mapDayFields(row, dbSchema) {
+  if (!row || typeof row !== 'object') return row;
+  const out = { ...row };
+  for (const key of ['day', 'minDay', 'maxDay', 'min_day', 'max_day']) {
+    if (key in out && (typeof out[key] === 'string' || out[key] instanceof Date)) {
+      out[key] = toJalaliDayValue(out[key], dbSchema);
+    }
+  }
+  return out;
+}
 
 const BANK_ALIAS_MAP = {
   tavan_mellat: 'tavan_mellat',
@@ -42,9 +71,11 @@ function normalizeDigitsOnly(s) {
 }
 
 class AdminService {
-  constructor(db, ingestion) {
+  constructor(db, ingestion, options = {}) {
     this.db = db;
     this.ingestion = ingestion;
+    // اسکیمای فعال برای انتخاب نام ستون‌ها (v1: updated_at/skipped_count، v2: created_at/skipped_other_method)
+    this.dbSchema = options.dbSchema || process.env.CE_DB_SCHEMA || 'v1';
     this.jobs = new Map();
     this.cronTableReady = false;
     this.jobsTableReady = false;
@@ -473,16 +504,18 @@ class AdminService {
     }
 
     const items = [];
+    const skippedColumnCheck = await resolveDayRunsSkippedColumn(this.db, this.dbSchema);
     for (const bankKey of banks) {
       const bank = BANKS[bankKey];
+      const updatedColumn = await resolveSamplesUpdatedColumn(this.db, bank.table);
       const countsRes = await this.db.query(
         `SELECT day,
                 COUNT(*)::int AS row_count,
                 COUNT(*) FILTER (WHERE is_success)::int AS success_count,
                 COUNT(*) FILTER (WHERE NOT is_success)::int AS fail_count,
-                MAX(updated_at) AS last_updated_at
+                ${updatedColumn ? `MAX(${updatedColumn})` : 'NULL::timestamptz'} AS last_updated_at
          FROM ${bank.table}
-         WHERE day = ANY($1::text[])
+         WHERE day::text = ANY($1::text[])
          GROUP BY day`,
         [days],
       );
@@ -490,9 +523,10 @@ class AdminService {
 
       const runsRes = await this.db.query(
         `SELECT day, mode, status, source_total, checkpoint, ingested_count,
-                success_count, fail_count, skipped_count, started_at, finished_at, updated_at, error
+                success_count, fail_count, ${skippedColumnCheck} AS skipped_count,
+                started_at, finished_at, updated_at, error
          FROM day_runs
-         WHERE bank = $1 AND day = ANY($2::text[])`,
+         WHERE bank = $1 AND day::text = ANY($2::text[])`,
         [bankKey, days],
       );
       const runsByDay = new Map(runsRes.rows.map((r) => [r.day, r]));
@@ -750,9 +784,14 @@ class AdminService {
     };
     for (const step of cloned.steps) {
       if (step.status !== 'running') continue;
+      // نام ستون «ردشده» در v1/v2 فرق دارد (skipped_count / skipped_other_method)
+      // eslint-disable-next-line no-await-in-loop
+      const skippedColumn = await resolveDayRunsSkippedColumn(this.db, this.dbSchema);
+      // روز در v2 از نوع date است؛ پارامتر متنی به date کست می‌شود
       const r = await this.db.query(
-        `SELECT checkpoint, source_total, ingested_count, success_count, fail_count, skipped_count
-         FROM day_runs WHERE bank = $1 AND day = $2`,
+        `SELECT checkpoint, source_total, ingested_count, success_count, fail_count,
+                ${skippedColumn} AS skipped_count
+         FROM day_runs WHERE bank = $1 AND day = $2::text::date`,
         [step.bank, step.day],
       );
       if (r.rows[0]) {
@@ -921,8 +960,16 @@ class AdminService {
     const yesterday = tehranYesterday(now);
 
     const bankStats = [];
+    /**
+     * نام ستون‌های وابسته به اسکیما (اصلاح ۵۰۰ پنل ادمین).
+     * در v2: نمونه‌ها `created_at` دارند (نه updated_at) و day_runs ستون
+     * `skipped_other_method` (نه skipped_count). این‌ها از دیتابیس خوانده می‌شوند تا
+     * همان کوئری روی هر دو اسکیما کار کند.
+     */
+    const skippedColumn = await resolveDayRunsSkippedColumn(this.db, this.dbSchema);
     for (const key of ALL_BANKS) {
       const bank = BANKS[key];
+      const updatedColumn = await resolveSamplesUpdatedColumn(this.db, bank.table);
       const statsRes = await this.db.query(
         `SELECT COUNT(*)::int AS total_rows,
                 COUNT(DISTINCT day)::int AS days_count,
@@ -930,12 +977,13 @@ class AdminService {
                 MAX(day) AS max_day,
                 COUNT(*) FILTER (WHERE is_success)::int AS success_rows,
                 COUNT(*) FILTER (WHERE NOT is_success)::int AS fail_rows,
-                MAX(updated_at) AS last_updated_at
+                ${updatedColumn ? `MAX(${updatedColumn})` : 'NULL::timestamptz'} AS last_updated_at
          FROM ${bank.table}`,
       );
       const latestRunRes = await this.db.query(
         `SELECT day, mode, status, source_total, checkpoint, ingested_count,
-                success_count, fail_count, skipped_count, started_at, finished_at, updated_at, error
+                success_count, fail_count, ${skippedColumn} AS skipped_count,
+                started_at, finished_at, updated_at, error
          FROM day_runs
          WHERE bank = $1
          ORDER BY updated_at DESC NULLS LAST, day DESC
@@ -949,18 +997,19 @@ class AdminService {
         enName: bank.method,
         totalRows: Number(s.total_rows ?? 0),
         daysCount: Number(s.days_count ?? 0),
-        minDay: s.min_day ?? null,
-        maxDay: s.max_day ?? null,
+        minDay: toJalaliDayValue(s.min_day ?? null, this.dbSchema),
+        maxDay: toJalaliDayValue(s.max_day ?? null, this.dbSchema),
         successRows: Number(s.success_rows ?? 0),
         failRows: Number(s.fail_rows ?? 0),
         lastUpdatedAt: s.last_updated_at ?? null,
-        latestRun: latestRunRes.rows[0] ?? null,
+        latestRun: latestRunRes.rows[0] ? mapDayFields(latestRunRes.rows[0], this.dbSchema) : null,
       });
     }
 
     const recentRunsRes = await this.db.query(
       `SELECT bank, day, mode, status, source_total, checkpoint, ingested_count,
-              success_count, fail_count, skipped_count, started_at, finished_at, updated_at, error
+              success_count, fail_count, ${skippedColumn} AS skipped_count,
+              started_at, finished_at, updated_at, error
        FROM day_runs
        ORDER BY updated_at DESC NULLS LAST, day DESC
        LIMIT 30`,
@@ -981,7 +1030,7 @@ class AdminService {
       cron,
       jobs,
       recentDayRuns: recentRunsRes.rows.map((r) => ({
-        ...r,
+        ...mapDayFields(r, this.dbSchema),
         bankLabel: BANKS[r.bank] ? bankDisplayName(r.bank) : r.bank,
       })),
     };

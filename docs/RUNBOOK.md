@@ -158,3 +158,61 @@ Postgres آن را تاریخ میلادی ۱۴۰۵ می‌فهمد (۷۸۴ شم
 `npm run migrate:v2` با مبدل JS (`toDateIso`) انجام می‌شود و جدول قدیمی `*_v1_backup` می‌شود.
 اگر با `CE_DB_SCHEMA=v2` روی دیتابیس ارتقایافته‌نشده بوت کنید، سرویس با کد
 `V2_SCHEMA_NOT_READY` و پیام «migrate:v2 را اجرا کنید» متوقف می‌شود.
+
+## ۱۱) عیب‌یابی: «استایل‌ها لود نمی‌شوند» (صفحهٔ گزارش بدون CSS)
+
+### نشانه
+صفحهٔ گزارش باز می‌شود، متن فارسی دیده می‌شود، اما هیچ استایلی اعمال نشده و بالای صفحه
+عبارتی مثل `{"data":"` دیده می‌شود. در آن حالت نوار مدیریت/چاپ بدون قالب است.
+
+### علت ریشه‌ای (اندازه‌گیری‌شده)
+ترنسپورت partFramework بدنهٔ رشته‌ای را در پوشش `{"data": "<html>"}` می‌فرستد. اگر هدر
+`Content-Type` روی `text/html` بماند، مرورگر آن بدنه را **به‌عنوان HTML** تجزیه می‌کند.
+در HTML، `class=\"page\"` یعنی: صفت `class` با مقدار `"page` (بک‌اسلش متنی + کوتیشن)،
+پس نام کلاس‌ها `\"page\"` می‌شود و **هیچ سلکتور CSS تطبیق نمی‌خورد**.
+
+اندازه‌گیری با تجزیه‌گر واقعی HTML:
+
+| بدنه | اولین کلاس | `.page` تطبیق |
+|---|---|---|
+| `{"data":"…"}` با هدر `text/html` | `\"page\"` | ❌ |
+| HTML خام | `page` | ✅ |
+
+### اصلاح‌ها (همه در یک مسیر)
+1. `backend/services/http/result.js` — رشته دیگر `JSON.stringify` نمی‌شود و هدر
+   `Content-Type` همیشه (هم روی `HttpResult` و هم روی پاسخ خام) اعمال می‌شود.
+2. `frontend/lib/report-payload.mjs` + `frontend/app/route.ts` — پروکسی گزارش به هدر
+   اعتماد نمی‌کند؛ چند بایت اول بدنه را نگاه می‌کند: HTML ⇒ جریان مستقیم (بدون بافر)،
+   پوشش JSON ⇒ باز می‌شود و HTML درونی با هدر `text/html` فرستاده می‌شود.
+
+### تأیید
+```bash
+# ۱) بدنه نباید با {"data" شروع شود و باید <style> داشته باشد
+curl -s -H "cookie: token=<...>" https://<host>/ | head -c 60
+curl -s -H "cookie: token=<...>" https://<host>/ | grep -c '<style'
+
+# ۲) تست‌های رگرسیون
+cd frontend && npm test          # tests/report-payload.test.mjs
+cd backend  && npm test          # tests/controllers.behavior.test.js
+```
+
+## ۱۲) عیب‌یابی: خطای ۵۰۰ پنل ادمین (`/api/admin/overview`)
+
+### نشانه
+`GET /api/admin/overview … status=500 code=internalServerError` و در لاگ:
+`column "updated_at" does not exist`.
+
+### علت
+`npm run migrate:v2` جدول‌های نمونه را typed می‌سازد که ستون `updated_at` ندارند
+(`created_at` دارند) و `day_runs` ستون `skipped_other_method` دارد (نه `skipped_count`).
+سرویس ادمین این نام‌ها را مستقیم در SQL نوشته بود.
+
+### اصلاح
+`backend/services/db/schema-columns.js` نام ستون‌ها را **از خود دیتابیس** می‌خواند
+(`information_schema`)، و `AdminService` روزِ `date` را با `toJalaliDay` به شمسی برمی‌گرداند.
+رگرسیون: `backend/tests/integration/admin-schema-v2-pg.test.js`.
+
+### تأیید
+```bash
+CE_TEST_PG=1 PGPORT=5433 node --test backend/tests/integration/admin-schema-v2-pg.test.js
+```

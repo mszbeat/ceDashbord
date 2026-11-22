@@ -485,6 +485,37 @@ test('http/result.js: نبود HttpResult در فریم‌ورک باعث باز
     resetHttpResultCacheForTest();
   }
 
+  // ج) HTML نباید در پوشش JSON برود و هدر Content-Type باید واقعاً ست شود
+  //    (باگ واقعی: بدنهٔ {"data":"<html>…"} با هدر text/html به مرورگر می‌رفت و
+  //     چون `class=\"page\"` در HTML می‌شکست، هیچ CSS اعمال نمی‌شد)
+  class CapturingHttpResult {
+    constructor(data, statusCode, headers) {
+      this.data = data;
+      this.statusCode = statusCode;
+      this.headers = headers;
+    }
+  }
+  global.HttpResult = CapturingHttpResult;
+  resetHttpResultCacheForTest();
+  try {
+    const html = '<!doctype html><html><body><div class="page">x</div></body></html>';
+    const target = { headers: {}, statusCode: 0, setHeader(k, v) { this.headers[k] = v; } };
+    const asHtml = sendHtml(html, 200, target);
+
+    assert.equal(typeof asHtml.data, 'string', 'رشته همان‌طور پاس می‌شود');
+    assert.equal(asHtml.data, html, 'HTML بدون escape و بدون JSON.stringify');
+    assert.match(asHtml.headers['Content-Type'], /text\/html/, 'هدر HttpResult');
+    assert.match(target.headers['Content-Type'], /text\/html/, 'هدر روی پاسخ خام');
+
+    const asJson = httpResultMod.sendJson({ ok: true }, 200, null);
+    assert.equal(typeof asJson.data, 'string');
+    assert.deepEqual(JSON.parse(asJson.data), { ok: true });
+    assert.match(asJson.headers['Content-Type'], /application\/json/);
+  } finally {
+    delete global.HttpResult;
+    resetHttpResultCacheForTest();
+  }
+
   // ب) تطبیق امضاهای مختلف سازندهٔ HttpResult
   class PositionalHeaderFirst {
     constructor(body, headers, status) {

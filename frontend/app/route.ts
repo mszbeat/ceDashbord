@@ -2,6 +2,13 @@ import crypto from 'node:crypto';
 import { NextRequest } from 'next/server';
 import { fetchWithHeadersTimeout, isTimeoutError } from '@/lib/upstream-timeout.mjs';
 import {
+  extractHtmlDocument,
+  isHtmlDocument,
+  looksLikeJsonEnvelope,
+  peekStream,
+  readText,
+} from '@/lib/report-payload.mjs';
+import {
   buildExpiredCookieLines,
   dedupeSetCookies,
   extractSetCookies,
@@ -28,39 +35,6 @@ const errorPage = (title: string, detail: string, status?: number) => `<!doctype
 <pre>${escapeHtml(status ? `HTTP ${status}\n` : '')}${escapeHtml(detail)}</pre>
 <p><a href="/login">ورود به سامانه</a> · <a href="/">تلاش دوباره</a></p>
 </main></body></html>`;
-
-const isHtmlDocument = (value: string) => /^\s*(<!doctype\s+html\b|<html\b)/i.test(value);
-
-function extractHtmlDocument(rawBody: string, depth = 0): string | null {
-  if (depth > 4 || typeof rawBody !== 'string') return null;
-  const trimmed = rawBody.trimStart();
-  if (/^<!doctype\s+html\b|^<html\b/i.test(trimmed)) {
-    return rawBody;
-  }
-  if (trimmed.startsWith('{')) {
-    try {
-      const parsed = JSON.parse(trimmed);
-      for (const candidate of [parsed?.data, parsed?.result, parsed?.body, parsed?.html]) {
-        if (typeof candidate === 'string') {
-          if (/<!doctype\s+html\b|<html\b/i.test(candidate)) {
-            return candidate;
-          }
-          const nested = extractHtmlDocument(candidate, depth + 1);
-          if (nested !== null) return nested;
-        } else if (candidate && typeof candidate === 'object') {
-          for (const inner of [candidate.data, candidate.result, candidate.body, candidate.html]) {
-            if (typeof inner === 'string' && /<!doctype\s+html\b|<html\b/i.test(inner)) {
-              return inner;
-            }
-          }
-        }
-      }
-    } catch {
-      // بدنه JSON معتبر نیست
-    }
-  }
-  return null;
-}
 
 function redirectToLoginResponse(request: NextRequest, reason?: string, setCookies: string[] = []) {
   const search = request.nextUrl.search || '';
@@ -184,18 +158,35 @@ export async function GET(request: NextRequest) {
      * کنیم (پاسخ JSON کوچک) بافر می‌کنیم؛ آستانه از `CE_REPORT_INLINE_MAX_BYTES` می‌آید.
      */
     const contentType = response.headers.get('content-type') || '';
-    const looksJson = contentType.includes('application/json');
     const inlineLimit = Number(process.env.CE_REPORT_INLINE_MAX_BYTES || 65536);
 
-    if (!looksJson) {
-      // HTML یا هر چیز دیگر: مستقیم و بدون بافر
+    /**
+     * به `content-type` **اعتماد نمی‌کنیم** — باگ «استایل‌ها لود نشدند» از اینجا آمد.
+     *
+     * ترنسپورت partFramework رشتهٔ HTML را در `{"data": "…"}` می‌پیچد؛ اگر هدر
+     * `text/html` بماند، بدنهٔ JSON به‌عنوان HTML رندر می‌شود: `class=\"page\"` می‌شود
+     * `\"page\"` (با کوتیشن) و هیچ سلکتور CSS تطبیق نمی‌کند ⇒ صفحهٔ بی‌استایل.
+     *
+     * پس اول چند بایت اول بدنه را «نگاه» می‌کنیم:
+     *   • HTML واقعی ⇒ همان جریان، بدون بافر (قواعد F1 حفظ می‌شود)
+     *   • پوشش JSON ⇒ باز می‌کنیم و HTML درونی را با هدر درست می‌فرستیم
+     */
+    const { head, stream } = await peekStream(response.body);
+    const envelope = looksLikeJsonEnvelope(head);
+
+    if (!envelope) {
       headers.set('content-type', contentType || 'text/html; charset=utf-8');
-      return new Response(response.body, { status: response.status, headers });
+      const passthrough = stream ?? response.body;
+      if (passthrough) return new Response(passthrough, { status: response.status, headers });
+      return new Response('', { status: response.status, headers });
     }
 
-    const body = await response.text();
+    // پوشش JSON: حالا مجاز است بدنه را کامل بخوانیم (پاسخ کوچک است).
+    // از استریم بازسازی‌شده می‌خوانیم — `response.text()` بعد از peek غیرقابل استفاده است.
+    const { text: body } = await readText(stream);
     const extractedHtml = extractHtmlDocument(body);
     if (extractedHtml !== null) {
+      headers.set('content-type', 'text/html; charset=utf-8');
       return new Response(extractedHtml, { status: response.status, headers });
     }
     if (body.length <= inlineLimit && isHtmlDocument(body)) {

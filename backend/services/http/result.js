@@ -219,19 +219,49 @@ function instantiateHttpResult(HttpResult, body, statusCode, headers, contentTyp
   return new HttpResult(body, statusCode, headers, contentType);
 }
 
+/**
+ * هدر `Content-Type` را با کلید استاندارد و **مقدار درست** برمی‌گرداند.
+ * اگر فراخوان هدر نداده باشد، از پیش‌فرض همان پاسخ استفاده می‌شود.
+ */
+function normalizeHeaders(headers, contentType) {
+  const out = { ...(headers && typeof headers === 'object' ? headers : {}) };
+  const existingKey = Object.keys(out).find((k) => k.toLowerCase() === 'content-type');
+  const value = existingKey ? out[existingKey] : contentType;
+
+  if (existingKey && existingKey !== 'Content-Type') delete out[existingKey];
+  if (value) out['Content-Type'] = value;
+  return out;
+}
+
 function createHttpResult(data, statusCode = 200, headers = {}, responseTarget = null) {
   const contentType =
     headers['Content-Type'] || headers['content-type'] || 'application/json; charset=utf-8';
-  applyResponseMeta(responseTarget, statusCode, headers);
+  // هدرها همیشه روی پاسخ خام اعمال شوند (حتی وقتی HttpResult فریم‌ورک در دسترس است)
+  const normalizedHeaders = normalizeHeaders(headers, contentType);
+  applyResponseMeta(responseTarget, statusCode, normalizedHeaders);
 
   const Resolved = resolveHttpResultClass();
   if (typeof Resolved === 'function') {
     try {
+      /**
+       * 🐞 اصلاح «استایل‌ها لود نشدند»:
+       * رشته (مثلاً HTML گزارش) نباید JSON.stringify شود. قبلاً هر مقدار غیر-Buffer
+       * رشته‌ای‌سازی می‌شد و در نتیجه ترنسپورت، HTML را در پوشش `{ "data": "…" }`
+       * می‌فرستاد. اگر هدر هم HTML می‌ماند، مرورگر بدنهٔ JSON را به‌عنوان HTML
+       * تجزیه می‌کرد: `class=\"page\"` ⇒ سلکتورهای CSS بی‌اثر ⇒ صفحهٔ بدون استایل.
+       * حالا رشته «همان‌طور که هست» پاس داده می‌شود.
+       */
       const payloadForHttpResult =
-        typeof data === 'object' && data !== null && !Buffer.isBuffer(data)
-          ? JSON.stringify(data)
-          : data;
-      return instantiateHttpResult(Resolved, payloadForHttpResult, statusCode, headers, contentType);
+        typeof data === 'string' || Buffer.isBuffer(data) || typeof data !== 'object' || data === null
+          ? data
+          : JSON.stringify(data);
+      return instantiateHttpResult(
+        Resolved,
+        payloadForHttpResult,
+        statusCode,
+        normalizedHeaders,
+        contentType,
+      );
     } catch {
       // اگر ساختار HttpResult فریم‌ورک ناسازگار بود، به مقدار خام بازگرد
     }
@@ -299,6 +329,7 @@ module.exports = {
   resetHttpResultCacheForTest,
   applyResponseMeta,
   instantiateHttpResult,
+  normalizeHeaders,
   createHttpResult,
   sendJson,
   sendHtml,
