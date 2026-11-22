@@ -2,7 +2,7 @@
 
 const { getServices } = require('../../services/container');
 const { readBody, readRouteParam, readQuery, readQueryParam } = require('../../services/http/request');
-const { requireAuthenticatedSession } = require('../../services/http/session-guard');
+const { requireAdminSession } = require('../../services/http/session-guard');
 const { getActionLogger } = require('../../services/logger/action-logger.service');
 const { error: adminError } = require('./config');
 const { tehranToday, tehranYesterday } = require('../../services/utils/date');
@@ -13,6 +13,12 @@ const { tehranToday, tehranYesterday } = require('../../services/utils/date');
  *
  * همهٔ مسیرهای این کنترلر در `routes.js` با `.checkAccess(true)` محافظت می‌شوند،
  * بنابراین `_session` تزریق می‌شود و نام کاربری ادمین در لاگ اجراها ثبت می‌گردد.
+ *
+ * ⚠️ نکتهٔ امنیتی (اصلاح‌شده): `.checkAccess(true)` فقط «سشن معتبر بودن» را تضمین می‌کند،
+ * نه نقش. پیش‌تر همهٔ هندلرهای این کنترلر از `requireAuthenticatedSession` استفاده
+ * می‌کردند؛ یعنی هر کاربر **ثبت‌نام‌شدهٔ عادی** (نقش `visitor`) می‌توانست زمان‌بند کران را
+ * عوض کند، دریافت گزارش را اجرا کند و تاریخچهٔ jobها را ببیند. حالا همهٔ هندلرها
+ * `requireAdminSession` هستند تا مرز «کاربر» و «ادمین» با خودِ کد هم‌خوان باشد.
  */
 
 function getAdminService() {
@@ -45,7 +51,7 @@ async function executeDirectDayRun(body, actor) {
 }
 
 exports.getOverview = async function (session) {
-  const actor = await requireAuthenticatedSession(session, () => adminError.sessionRequired);
+  const actor = await requireAdminSession(session, () => adminError.sessionRequired);
   getActionLogger().info({
     category: 'admin',
     action: 'admin.overview.viewed',
@@ -56,12 +62,12 @@ exports.getOverview = async function (session) {
 };
 
 exports.getCron = async function (session) {
-  await requireAuthenticatedSession(session, () => adminError.sessionRequired);
+  await requireAdminSession(session, () => adminError.sessionRequired);
   return getAdminService().getCronConfig();
 };
 
 exports.updateCron = async function (body, session) {
-  const actor = await requireAuthenticatedSession(session, () => adminError.sessionRequired);
+  const actor = await requireAdminSession(session, () => adminError.sessionRequired);
   const updated = await getAdminService().updateCronConfig(readBody(body), { actor: actor.username });
   getActionLogger().info({
     category: 'admin',
@@ -82,7 +88,7 @@ exports.updateCron = async function (body, session) {
 };
 
 exports.runCronNow = async function (session) {
-  const actor = await requireAuthenticatedSession(session, () => adminError.sessionRequired);
+  const actor = await requireAdminSession(session, () => adminError.sessionRequired);
   const job = await getAdminService().triggerCronExecution('cron_manual', undefined, { actor: actor.username });
   getActionLogger().info({
     category: 'admin',
@@ -96,7 +102,7 @@ exports.runCronNow = async function (session) {
 };
 
 exports.checkExisting = async function (body, session) {
-  const actor = await requireAuthenticatedSession(session, () => adminError.sessionRequired);
+  const actor = await requireAdminSession(session, () => adminError.sessionRequired);
   const payload = readBody(body);
   const res = await getAdminService().checkExistingData(payload);
   getActionLogger().info({
@@ -117,7 +123,7 @@ exports.checkExisting = async function (body, session) {
 };
 
 exports.startRun = async function (body, session) {
-  const actor = await requireAuthenticatedSession(session, () => adminError.sessionRequired);
+  const actor = await requireAdminSession(session, () => adminError.sessionRequired);
   const job = await getAdminService().startManualRun(readBody(body), { actor: actor.username });
   getActionLogger().info({
     category: 'admin',
@@ -138,12 +144,12 @@ exports.startRun = async function (body, session) {
 };
 
 exports.listJobs = async function (session) {
-  await requireAuthenticatedSession(session, () => adminError.sessionRequired);
+  await requireAdminSession(session, () => adminError.sessionRequired);
   return getAdminService().listJobs(20);
 };
 
 exports.getJob = async function (request, inputData, session) {
-  await requireAuthenticatedSession(session, () => adminError.sessionRequired);
+  await requireAdminSession(session, () => adminError.sessionRequired);
   // مسیر استاتیک است: GET /api/admin/jobs?id=…
   const query = readQuery(request, inputData);
   const jobId =
@@ -155,11 +161,11 @@ exports.getJob = async function (request, inputData, session) {
 };
 
 exports.runAdminDay = async function (body, session) {
-  const actor = await requireAuthenticatedSession(session, () => adminError.sessionRequired);
+  const actor = await requireAdminSession(session, () => adminError.sessionRequired);
   return executeDirectDayRun(body, actor);
 };
 
 exports.run = async function (body, session) {
-  const actor = await requireAuthenticatedSession(session, () => adminError.sessionRequired);
+  const actor = await requireAdminSession(session, () => adminError.sessionRequired);
   return executeDirectDayRun(body, actor);
 };

@@ -203,9 +203,25 @@ export async function getAuthStatus(): Promise<AuthSessionState & { _ok?: boolea
   };
 }
 
-async function runLockedRefresh(): Promise<AuthSessionState | null> {
+async function runLockedRefresh(knownState?: AuthSessionState | null): Promise<AuthSessionState | null> {
   const exec = async (): Promise<AuthSessionState | null> => {
-    const current = await getAuthStatus().catch(() => null);
+    /**
+     * 🐞 اگر فراخواننده همین الان `/api/auth/me` را گرفته و «احرازنشده با canRefresh:false»
+     * دیده است، دوباره پرسیدن همان سؤال یک رفت‌وبرگشت کامل است — و برای بازدیدکنندهٔ مهمان
+     * این یعنی دو `/me` و یک `/refresh` روی هم، فقط برای نمایش فرم ورود.
+     */
+    /**
+     * `canRefresh` در پاسخ `/me` قابل اعتماد نیست (اکسس‌توکن منقضی ⇒ سشن visitor)، پس
+     * نتیجه‌گیری قطعی با `POST /refresh` است. اما اگر فراخواننده همین حالا `/me` را
+     * گرفته باشد، تکرار آن سؤالِ تکراری است و فقط تأخیر می‌سازد.
+     */
+    const canSkipRecheck = Boolean(
+      knownState &&
+      knownState.authenticated === false &&
+      !knownState.canRefresh &&
+      (knownState as any)._ok !== false,
+    );
+    const current = canSkipRecheck ? null : await getAuthStatus().catch(() => null);
     if (current && current.authenticated) {
       return current;
     }
@@ -255,9 +271,9 @@ async function runLockedRefresh(): Promise<AuthSessionState | null> {
   return exec();
 }
 
-export function refreshSession(): Promise<AuthSessionState | null> {
+export function refreshSession(knownState?: AuthSessionState | null): Promise<AuthSessionState | null> {
   if (!refreshInFlight) {
-    refreshInFlight = runLockedRefresh().finally(() => {
+    refreshInFlight = runLockedRefresh(knownState).finally(() => {
       refreshInFlight = null;
     });
   }
@@ -267,7 +283,16 @@ export function refreshSession(): Promise<AuthSessionState | null> {
 export async function ensureAuthenticated(): Promise<AuthSessionState> {
   const me = await getAuthStatus();
   if (!me.authenticated) {
-    const refreshed = await refreshSession();
+    /**
+     * B2 — حالت مهمان دیگر سه رفت‌وبرگشت نمی‌زند.
+     *
+     * `getAuthStatus` وقتی پاسخ `/me` نمی‌آید `_ok:false` می‌گذارد و `canRefresh` را false
+     * می‌کند؛ ولی `canRefresh:false` از یک پاسخ **سالم** یعنی «کوکی رفرش معتبر نیست» و
+     * تلاش تمدید بی‌فایده است. قبلاً در هر دو حالت تمدید زده می‌شد و نتیجه: `/me` → `/me`
+     * → `/refresh` برای هر بازدید مهمان (کاربر چند ثانیه اسپینر «در حال بررسی نشست…»
+     * می‌دید). حالا فقط وقتی actually ممکن است تمدید می‌کنیم.
+     */
+    const refreshed = await refreshSession(me);
     if (refreshed && refreshed.authenticated) {
       return refreshed;
     }

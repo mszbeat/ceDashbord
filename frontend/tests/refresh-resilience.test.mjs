@@ -45,11 +45,39 @@ test('توکن باطل‌شده تا مدتی دوباره ارسال نمی‌
   assert.match(serverAuth, /invalidRefreshTokens/);
   assert.match(serverAuth, /export function isRefreshTokenKnownInvalid/);
   assert.match(serverAuth, /export function markRefreshTokenInvalid/);
-  // علامت‌گذاری فقط روی کدهای قطعی خطای رفرش/۴۰۱/۴۰۳
-  assert.match(
-    serverAuth,
-    /REFRESH_TOKEN_ERROR_CODES\.has\(metaCode\) \|\| attempt\.res\.status === 401 \|\| attempt\.res\.status === 403/,
-  );
+  // علامت‌گذاری فقط روی کدهای قطعی خطای رفرش/۴۰۱/۴۰۳ (از طریق helper مشترک)
+  assert.match(serverAuth, /export function isDefinitiveRefreshFailure/);
+  assert.match(serverAuth, /const definitive = isDefinitiveRefreshFailure\(attempt\.res\.status, metaCode\)/);
+  assert.match(serverAuth, /if \(definitive\) \{\s*markRefreshTokenInvalid\(incomingCookieHeader\);/);
+});
+
+test('BUGFIX: خطای موقت تمدید (۵xx) کاربر را از حساب خارج نمی‌کند', async () => {
+  const { isDefinitiveRefreshFailure, isTransientAuthFailure } = await import('../lib/server-auth.ts')
+    .catch(() => import('../dist-test/server-auth.mjs'))
+    .catch(() => ({}));
+
+  // اگر ماژول TS در Node قابل import نبود، حداقل منطق را از متن فایل می‌سنجیم
+  if (typeof isDefinitiveRefreshFailure !== 'function') {
+    assert.match(serverAuth, /status === 401 \|\| status === 403/);
+    assert.match(serverAuth, /status >= 500/);
+    return;
+  }
+
+  // شکست قطعی نشست
+  assert.equal(isDefinitiveRefreshFailure(401), true);
+  assert.equal(isDefinitiveRefreshFailure(403), true);
+  assert.equal(isDefinitiveRefreshFailure(500, 'refreshTokenRevoked'), true);
+
+  // شکست موقت سرویس ⇒ نباید خروج از حساب شود
+  assert.equal(isDefinitiveRefreshFailure(503), false);
+  assert.equal(isDefinitiveRefreshFailure(502), false);
+  assert.equal(isDefinitiveRefreshFailure(504), false);
+  assert.equal(isDefinitiveRefreshFailure(429), false);
+  assert.equal(isDefinitiveRefreshFailure(0), false);
+
+  assert.equal(isTransientAuthFailure(503), true);
+  assert.equal(isTransientAuthFailure(401), false);
+  assert.equal(isTransientAuthFailure(500, 'invalidRefreshToken'), false);
 });
 
 test('کلاینت ادمین: تمدید پیش‌دستانه و تحمل خطای موقت در keepalive', () => {

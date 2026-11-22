@@ -3,6 +3,7 @@ import {
   buildExpiredCookieLines,
   dedupeSetCookies,
   hasCookie,
+  isDefinitiveRefreshFailure,
   isRequestHttps,
   performRefreshWithRecovery,
   probeSessionWithCleanRecovery,
@@ -145,6 +146,35 @@ export async function middleware(request: NextRequest) {
           isHttps,
         }),
       ]);
+
+      /**
+       * 🐞 ریشهٔ «بعد از لاگین وارد صفحهٔ اصلی نمی‌شوم».
+       *
+       * قبلاً **هر** شکست تمدید (حتی ۵۰۳ موقت سمد/دیتابیس یا تایم‌اوت شبکه) به
+       * `redirectToLogin('expired')` می‌رسید و کوکی‌های سالم را پاک می‌کرد.
+       * چون اکسس‌توکن کوتاه است (SESSION_EXPIRE_MS پیش‌فرض ۵ دقیقه) و middleware در هر
+       * بازدید تمدید می‌کند، یک ۵۰۳ گذرا کافی بود تا کاربر با وجود نشست معتبر، برای
+       * همیشه به `/login?reason=expired` پرتاب شود؛ ورود مجدد هم چون تمدید همچنان
+       * خطا می‌داد، دوباره به همان صفحه برمی‌گشت.
+       *
+       * حالا فقط شکست **قطعی** (۴۰۱/۴۰۳ یا کد `refreshToken*`/انقضای واقعی) منجر به
+       * خروج می‌شود. در خطای موقت، کوکی‌ها دست‌نخورده می‌مانند و کاربر صفحه را —
+       * همراه با خطای قابل‌فهم «سرویس موقتاً در دسترس نیست» — می‌بیند، نه فرم ورود.
+       */
+      const metaCode =
+        (refreshed.rawJson as any)?.meta?.code ||
+        (refreshed.rawJson as any)?.data?.meta?.code ||
+        '';
+      const definitive = isDefinitiveRefreshFailure(refreshed.status, String(metaCode));
+
+      if (!definitive) {
+        console.warn('[middleware] transient refresh failure; keeping session cookies', {
+          status: refreshed.status,
+          metaCode: metaCode || null,
+        });
+        return NextResponse.next();
+      }
+
       return redirectToLogin(request, 'expired', clearAll);
     }
 

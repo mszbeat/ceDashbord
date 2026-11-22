@@ -411,7 +411,7 @@ test('admin-controller: همهٔ ۱۰ هندلر با تزریق _session و dat
     },
   });
   try {
-    const overview = await invoke(controller, config, 'getOverview', { session: { samadUsername: 'adm' } }).promise;
+    const overview = await invoke(controller, config, 'getOverview', { session: { samadUsername: 'adm', roles: ['admin'] } }).promise;
     assert.equal(overview.banks.length, 3);
     assert.equal(overview.actor, 'adm');
 
@@ -419,28 +419,29 @@ test('admin-controller: همهٔ ۱۰ هندلر با تزریق _session و dat
 
     const cronPut = await invoke(controller, config, 'updateCron', {
       data: { enabled: true, schedule_mode: 'daily', hour: 3, minute: 30 },
-      session: { samadUsername: 'adm' },
+      session: { samadUsername: 'adm', roles: ['admin'] },
     }).promise;
     assert.equal(cronPut.effective_cron_expr, '30 3 * * *');
 
-    assert.equal((await invoke(controller, config, 'runCronNow', { session: { samadUsername: 'adm' } }).promise).id, 'job-1');
+    assert.equal((await invoke(controller, config, 'runCronNow', { session: { samadUsername: 'adm', roles: ['admin'] } }).promise).id, 'job-1');
     assert.equal((await invoke(controller, config, 'checkExisting', { data: { banks: ['tavan_mellat'] } }).promise).hasExistingData, true);
     await assert.rejects(
       () => invoke(controller, config, 'startRun', { data: { banks: ['tavan_mellat'] }, session: {} }).promise,
       (err) => err.statusCode === 401,
     );
-    assert.equal((await invoke(controller, config, 'startRun', { data: { banks: ['tavan_mellat'] }, session: { samadUsername: 'adm' } }).promise).id, 'job-1');
-    assert.equal((await invoke(controller, config, 'listJobs').promise).length, 1);
+    assert.equal((await invoke(controller, config, 'startRun', { data: { banks: ['tavan_mellat'] }, session: { samadUsername: 'adm', roles: ['admin'] } }).promise).id, 'job-1');
+    assert.equal((await invoke(controller, config, 'listJobs', { session: { samadUsername: 'adm', roles: ['admin'] } }).promise).length, 1);
 
-    const job = await invoke(controller, config, 'getJob', { url: '/api/admin/jobs?id=job-1', queryString: { id: 'job-1' } }).promise;
+    const job = await invoke(controller, config, 'getJob', { url: '/api/admin/jobs?id=job-1', queryString: { id: 'job-1' }, session: { samadUsername: 'adm', roles: ['admin'] } }).promise;
     assert.equal(job.status, 'completed');
     await assert.rejects(
-      () => invoke(controller, config, 'getJob', { url: '/api/admin/jobs?id=none', queryString: { id: 'none' } }).promise,
+      () => invoke(controller, config, 'getJob', { url: '/api/admin/jobs?id=none', queryString: { id: 'none' }, session: { samadUsername: 'adm', roles: ['admin'] } }).promise,
       (err) => err.statusCode === 404 && err.meta.code === 'jobNotFound',
     );
 
     const runOut = await invoke(controller, config, 'run', {
       data: { bank: 'tavan_mellat', day: '1405-08-20', mode: 'nightly' },
+      session: { samadUsername: 'adm', roles: ['admin'] },
     }).promise;
     assert.equal(runOut.status, 'complete');
     assert.deepEqual(runDayCalls.at(-1), {
@@ -451,7 +452,7 @@ test('admin-controller: همهٔ ۱۰ هندلر با تزریق _session و dat
     });
 
     await assert.rejects(
-      () => invoke(controller, config, 'runAdminDay', { data: { bank: 'tavan_mellat', rebuild: true } }).promise,
+      () => invoke(controller, config, 'runAdminDay', { data: { bank: 'tavan_mellat', rebuild: true }, session: { samadUsername: 'adm', roles: ['admin'] } }).promise,
       (err) => err.statusCode === 400 && err.meta.code === 'rebuildRequiresExplicitDay',
     );
   } finally {
@@ -781,4 +782,43 @@ test('admin-controller: payload «بررسی پیش از اجرا» با mode و
   assert.equal(schema.checkExisting.body.properties.filters.properties.maxCount.type, 'number');
   assert.equal(schema.checkExisting.body.properties.filters.properties.pageSize.type, 'number');
   assert.equal(schema.checkExisting.body.additionalProperties, false);
+});
+
+test('SECURITY: هیچ هندلر پنل ادمین با نقش غیرادمین اجرا نمی‌شود (مرز واقعی ادمین)', async () => {
+  const { controller: AdminController } = require(path.join(ROOT, 'controllers', 'adminController', 'main.js'));
+  const config = require(path.join(ROOT, 'controllers', 'adminController', 'config.js'));
+  const controller = new AdminController({}, {}, config);
+
+  container.setServicesForTest({ admin: fakeAdminService(), ingestion: { async runDay() { return {}; } } });
+
+  // کاربری که فقط ثبت‌نام/ورود کرده (نقش visitor) نباید به پنل ادمین دسترسی داشته باشد.
+  // پیش‌تر این مسیرها فقط «سشن معتبر» را چک می‌کردند و visitor هم می‌توانست زمان‌بند
+  // کران را عوض کند یا ingestion را اجرا کند.
+  const visitorSessions = [
+    { samadUsername: 'normal-user', roles: ['visitor'] },
+    { samadUsername: 'ce-user', roles: ['creditEvaluation'] },
+  ];
+
+  const protectedHandlers = [
+    ['getOverview', {}],
+    ['getCron', {}],
+    ['updateCron', { data: { enabled: true, schedule_mode: 'daily', hour: 3, minute: 30 } }],
+    ['runCronNow', {}],
+    ['checkExisting', { data: { banks: ['tavan_mellat'] } }],
+    ['startRun', { data: { banks: ['tavan_mellat'] } }],
+    ['listJobs', {}],
+    ['getJob', { url: '/api/admin/jobs?id=job-1', queryString: { id: 'job-1' } }],
+    ['runAdminDay', { data: { bank: 'tavan_mellat', day: '1405-08-20' } }],
+    ['run', { data: { bank: 'tavan_mellat', day: '1405-08-20' } }],
+  ];
+
+  for (const session of visitorSessions) {
+    for (const [handler, extra] of protectedHandlers) {
+      await assert.rejects(
+        () => invoke(controller, config, handler, { ...extra, session }).promise,
+        (err) => err.statusCode === 403 && (err.code === 'adminRequired' || err.meta?.code === 'adminRequired'),
+        `${handler} باید برای نقش ${session.roles.join(',')} با ۴۰۳ رد شود`,
+      );
+    }
+  }
 });

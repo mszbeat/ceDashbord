@@ -13,6 +13,7 @@ import {
   dedupeSetCookies,
   extractSetCookies,
   hasCookie,
+  isDefinitiveRefreshFailure,
   isRequestHttps,
   normalizeBrowserSetCookies,
   performRefreshWithRecovery,
@@ -108,6 +109,8 @@ export async function GET(request: NextRequest) {
   try {
     let activeCookie = cookieHeader;
     let collectedCookies: string[] = [];
+    /** نتیجهٔ تلاش تمدید (اگر لازم شد) — برای تفکیک «نشست باطل» از «خطای موقت» */
+    let refreshOutcome: Awaited<ReturnType<typeof performRefreshWithRecovery>> | null = null;
 
     // F1: مهلت اتصال/هدرها — بک‌اندی که پاسخ نمی‌دهد نباید سوکت را برای همیشه نگه دارد
     let response = await fetchWithHeadersTimeout(fetch, target.toString(), {
@@ -118,6 +121,7 @@ export async function GET(request: NextRequest) {
 
     if (response.status === 401 && hasCookie(activeCookie, 'ce_refresh')) {
       const refreshed = await performRefreshWithRecovery(backendUrl, request.headers, activeCookie);
+      refreshOutcome = refreshed;
       collectedCookies.push(...refreshed.setCookies);
       if (refreshed.ok && refreshed.data?.authenticated === true) {
         activeCookie = refreshed.cookieHeader;
@@ -130,6 +134,39 @@ export async function GET(request: NextRequest) {
     }
 
     if (response.status === 401) {
+      /**
+       * ۴۰۱ پس از تلاش تمدید دو معنا دارد و نباید یکی فرض شوند:
+       *
+       *  • اگر تمدید با شکست **قطعی** خورده باشد (رفرش‌توکن باطل/چرخیده/منقضی) ⇒ خروج درست است.
+       *  • اگر تمدید فقط **موقتاً** شکست خورده باشد (۵xx/تایم‌اوت) ⇒ نشست کاربر سالم است و
+       *    فقط سرویس در دسترس نیست؛ او را به صفحهٔ ورود نمی‌فرستیم و کوکی‌ها را پاک نمی‌کنیم،
+       *    وگرنه با یک خطای گذرا، کاربر از حساب خارج می‌شود (باگ «بعد از لاگین وارد نمی‌شوم»).
+       */
+      const refreshMetaCode = String(
+        (refreshOutcome?.rawJson as any)?.meta?.code ||
+          (refreshOutcome?.rawJson as any)?.data?.meta?.code ||
+          '',
+      );
+      const refreshDefinitive = refreshOutcome
+        ? isDefinitiveRefreshFailure(refreshOutcome.status, refreshMetaCode)
+        : true; // تمدید انجام نشد (کوکی رفرش نبود) ⇒ خروج
+
+      if (!refreshDefinitive) {
+        console.warn('[report] transient refresh failure during page load', {
+          requestId: request.headers.get('x-request-id') || null,
+          refreshStatus: refreshOutcome?.status,
+          refreshMetaCode: refreshMetaCode || null,
+          durationMs: Date.now() - startedAt,
+        });
+        return new Response(
+          errorPage(
+            'سرویس نشست موقتاً در دسترس نیست',
+            'نشست شما منقضی نشده است؛ اما سرویس تمدید در این لحظه پاسخ نداد. چند لحظه بعد دوباره تلاش کنید.',
+          ),
+          { status: 503, headers },
+        );
+      }
+
       const clearAll = normalizeBrowserSetCookies(
         [
           ...collectedCookies,

@@ -68,6 +68,41 @@ export function resolveBackendOrigin(): string {
   return (process.env.BACKEND_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://127.0.0.1:3000').replace(/\/+$/, '');
 }
 
+/**
+ * 🐞 باگ «بعد از لاگین وارد داشبورد نمی‌شوم» (رفت‌وبرگشت به `?reason=expired`).
+ *
+ * تمدید نشست دو نوع شکست دارد که رفتارشان **باید** متفاوت باشد:
+ *
+ *   • شکست قطعی: کوکی رفرش باطل/چرخیده/منقضی است (۴۰۱/۴۰۳ یا کدهای `refreshToken*`).
+ *     ⇒ کوکی‌ها پاک شوند و کاربر به صفحهٔ ورود برود. این درست است.
+ *
+ *   • شکست موقت: بک‌اند ۵xx داد یا پاسخ نداد (دیتابیس/سمد شلوغ یا در حال ری‌استارت).
+ *     کوکی رفرش **هنوز معتبر** است و فقط سرویس تمدید در دسترس نیست.
+ *     رفتار قبلی: middleware کوکی‌های سالم را پاک می‌کرد و کاربر را به
+ *     `/login?reason=expired` می‌فرستاد. با هر رفرش صفحه، اکسس‌توکن کوتاه
+ *     (پیش‌فرض ۵ دقیقه) منقضی است، تمدید دوباره ۵۰۳ می‌گیرد و کاربر در یک حلقهٔ
+ *     بی‌پایان «نشست شما منقضی شده» گیر می‌کند — بدون اینکه نشستش واقعاً منقضی شده باشد.
+ *
+ * حالا شکست موقت، کوکی‌ها را دست‌نخورده نگه می‌دارد و به لایهٔ بعد (route/page) اجازه می‌دهد
+ * خودش تصمیم بگیرد؛ آن‌جا هم به‌جای پاک‌کردن کوکی، خطای «سرویس در دسترس نیست» نمایش داده می‌شود.
+ */
+export function isTransientAuthFailure(status: number, metaCode?: string): boolean {
+  // کدهای قطعیِ نشست هرگز موقت حساب نمی‌شوند (حتی اگر با ۵xx برگردند)
+  if (metaCode && REFRESH_TOKEN_ERROR_CODES.has(metaCode)) return false;
+  if (status === 401 || status === 403) return false;
+  // ۵xx، ۴۰۸، ۴۲۹ و هر پاسخ غیرقطعی دیگر ⇒ موقت
+  return status === 0 || status === 408 || status === 429 || status >= 500;
+}
+
+/**
+ * آیا پاسخ تمدید، توکن رفرش را «قطعاً» باطل اعلام کرده است؟
+ * فقط در این حالت مجازیم کوکی `ce_refresh` را پاک کنیم.
+ */
+export function isDefinitiveRefreshFailure(status: number, metaCode?: string): boolean {
+  if (metaCode && REFRESH_TOKEN_ERROR_CODES.has(metaCode)) return true;
+  return status === 401 || status === 403;
+}
+
 export function isRequestHttps(incoming: Headers, requestUrl?: string): boolean {
   if (process.env.COOKIE_SECURE === 'true') return true;
   if (process.env.COOKIE_SECURE === 'false') return false;
@@ -703,20 +738,41 @@ async function executeRefreshWithRecovery(
     });
   } else {
     const metaCode = extractPartMetaCode(attempt.rawJson);
-    if (REFRESH_TOKEN_ERROR_CODES.has(metaCode) || attempt.res.status === 401 || attempt.res.status === 403) {
+    const definitive = isDefinitiveRefreshFailure(attempt.res.status, metaCode);
+    if (definitive) {
       markRefreshTokenInvalid(incomingCookieHeader);
     }
-    finalCookies = normalizeBrowserSetCookies(
-      [
-        ...allSetCookies,
-        ...buildExpiredCookieLines('token', {
-          includeApiAuthPath: true,
-          includeLocalhostDomain: true,
-          isHttps,
-        }),
-      ],
-      { allowToken: false, scrubApiAuthPath: true, isHttps },
-    );
+
+    if (definitive) {
+      // شکست قطعی: کوکی اکسس پاک شود؛ `ce_refresh` هم توسط فراخواننده پاک می‌شود.
+      finalCookies = normalizeBrowserSetCookies(
+        [
+          ...allSetCookies,
+          ...buildExpiredCookieLines('token', {
+            includeApiAuthPath: true,
+            includeLocalhostDomain: true,
+            isHttps,
+          }),
+        ],
+        { allowToken: false, scrubApiAuthPath: true, isHttps },
+      );
+    } else {
+      /**
+       * شکست موقت (۵xx/408/429/بدون‌پاسخ): توکن رفرش هنوز معتبر است.
+       *
+       * قبلاً اینجا هم کوکی اکسس پاک و تمدید «نامعتبر» تلقی می‌شد؛ نتیجه: کاربر با
+       * یک ۵۰۳ گذرا از حساب خارج می‌شد و چون اکسس‌توکن کوتاه است، هر بازدید تازه
+       * دوباره به همان مسیر می‌رسید («بعد از لاگین وارد نمی‌شود»).
+       *
+       * اکنون هیچ کوکی پاک نمی‌شود و کوکی‌های به‌روزشدهٔ بک‌اند (در صورت وجود) پاس
+       * داده می‌شوند تا مرورگر وضعیت یکدست داشته باشد.
+       */
+      finalCookies = normalizeBrowserSetCookies(allSetCookies, {
+        allowToken: true,
+        scrubApiAuthPath: true,
+        isHttps,
+      });
+    }
   }
 
   return {
