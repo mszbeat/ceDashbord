@@ -46,6 +46,12 @@ jobs:
           cache-dependency-path: backend/package-lock.json
       - name: نصب وابستگی‌های بک‌اند
         run: npm ci --prefix backend
+      # داشتن `pg` شرط قطعی تست‌های db-timeouts است؛ اگر نبود، ۳ تست بی‌صدا می‌شکستند.
+      # این چک علتِ احتمالیِ «۳ تست شکست‌خورده» را شفاف می‌کند.
+      - name: بررسی حضور pg
+        run: |
+          node -e "console.log('pg version:', require('./backend/node_modules/pg/package.json').version)"
+          node -e "require('pg')"
       - name: lint / typecheck (در صورت وجود اسکریپت)
         run: |
           node -e "const p=require('./backend/package.json').scripts||{};console.log(Object.keys(p).join(' '))"
@@ -74,7 +80,10 @@ jobs:
         continue-on-error: true
       # F10: تست‌های دائم (۵۷) + تایپ‌چک + بیلد تولیدی
       - run: npm test --prefix frontend
-      - run: npx --prefix frontend tsc --noEmit
+      # tsc باید در پوشهٔ frontend اجرا شود؛ از ریشهٔ ریپو tsconfig پیدا نمی‌شود
+      # و tsc خروجی راهنما چاپ می‌کند و با کد ۱ خارج می‌شود.
+      - run: npx tsc --noEmit
+        working-directory: frontend
       - run: npm run build --prefix frontend
       - name: frontend audit (high+)
         run: npm audit --prefix frontend --audit-level=high

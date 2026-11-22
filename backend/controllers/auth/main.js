@@ -13,35 +13,41 @@ const { error: authError } = require('./config');
  * `0.0.0.0` گوش می‌دهد، پس اگر پورت از بیرون قابل دسترسی بود، هر کسی می‌توانست
  * `ce_refresh` (رفرش‌توکن ۱۴روزه) را در بدنهٔ پاسخ بخواند — یعنی دور زدن کامل HttpOnly.
  *
- * حالا: امضای HMAC الزامی است؛ بدون secret فقط loopback (نصب تک‌سروری) و فقط
- * برای سازگاری با نسخهٔ قبلی Next پذیرفته می‌شود.
+ * حالا: امضای HMAC الزامی است؛ بدون secret فقط شبکهٔ خصوصی/داخلی (loopback + RFC1918 +
+ * link-local + CGNAT + ULA) و فقط برای سازگاری با نسخهٔ قبلی Next پذیرفته می‌شود.
+ * هر رد شدن در لاگ با سطح **error** نوشته می‌شود (نه silent) تا اگر استقرار دو‌هاستی
+ * بدون `CE_BFF_SHARED_SECRET` انجام شود، علت «ورود کار نمی‌کند» بلافاصله دیده شود.
  */
 function isBffBridgeRequest(request) {
   const verdict = verifyBffBridge(request, { cookies: readCookieFromRequest(request) });
   if (!verdict.ok) {
     if (verdict.statusCode === 403) {
-      // لاگ بدون نشت داده (فقط دلیل و مسیر)
+      // ⚠️ این مسیر نباید silent باشد: امضای نامعتبر، یعنی یا استقرار دو‌هاستی بدون
+      // کلید انجام شده، یا یک مهاجم/پروکسی بد رفتار است. هر دو را باید دید.
+      const meta = { reason: verdict.reason, mode: verdict.mode };
       try {
-        getActionLogger().warn({
+        getActionLogger().error({
           category: 'auth',
           action: 'auth.bff.bridge_rejected',
           errorCode: 'BFF_BRIDGE_REJECTED',
           statusCode: 403,
           message: `Unsigned/invalid BFF bridge request rejected: ${verdict.reason}`,
-          meta: { reason: verdict.reason, mode: verdict.mode },
+          meta,
         });
-      } catch {
-        // لاگر آماده نیست؛ فقط رد کن
-      }
+      } catch { /* لاگر آماده نیست */ }
+      try {
+        // حتی اگر لاگر فایل/DB غیرفعال است، باید در خروجی سرویس دیده شود
+        console.error('[auth.bff.bridge_rejected]', JSON.stringify(meta));
+      } catch { /* بیایید silent نماند */ }
     }
     return false;
   }
-  if (verdict.mode === 'legacy-loopback' && sharedSecret()) {
+  if (verdict.mode === 'legacy-internal' && sharedSecret()) {
     try {
       getActionLogger().warn({
         category: 'auth',
         action: 'auth.bff.legacy_bridge_used',
-        message: 'BFF bridge accepted via legacy x-ce-bff on loopback; update the frontend to sign requests',
+        message: 'BFF bridge accepted via legacy x-ce-bff on an internal/private address; set CE_BFF_SHARED_SECRET to sign requests',
       });
     } catch {
       // ignore

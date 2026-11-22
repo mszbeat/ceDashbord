@@ -314,8 +314,9 @@ function validateEnv(env = process.env) {
     const bffSecret = String(env.CE_BFF_SHARED_SECRET || '').trim();
     if (!bffSecret) {
       warnings.push(
-        'CE_BFF_SHARED_SECRET تنظیم نشده؛ پل BFF فقط روی loopback پذیرفته می‌شود. ' +
-          'اگر Next.js روی هاست دیگری است، این کلید را (≥۱۶ کاراکتر) در هر دو طرف تنظیم کنید.',
+        'CE_BFF_SHARED_SECRET تنظیم نشده؛ پل BFF فقط از شبکهٔ خصوصی/داخلی (loopback، RFC1918، ' +
+          'link-local، CGNAT، ULA) پذیرفته می‌شود. بک‌اند اگر روی IP عمومی اینترنت در معرض است، ' +
+          'ورود بدون این کلید از هاست‌های دیگر شکست می‌خورد (۴۰۳). کلید را (≥۱۶ کاراکتر) در هر دو طرف تنظیم کنید.',
       );
     } else if (bffSecret.length < 16) {
       errors.push('CE_BFF_SHARED_SECRET باید حداقل ۱۶ کاراکتر باشد');
@@ -323,9 +324,9 @@ function validateEnv(env = process.env) {
     const host = String(env.BACKEND_HOST || '').trim();
     if ((!host || host === '0.0.0.0' || host === '::') && !bffSecret) {
       warnings.push(
-        'BACKEND_HOST=0.0.0.0 + نبود CE_BFF_SHARED_SECRET: هر کسی که به این پورت دسترسی ' +
-          'شبکه‌ای داشته باشد می‌تواند کوکی نشست را در بدنهٔ پاسخ بگیرد. ' +
-          'یا BACKEND_HOST=127.0.0.1 بگذارید یا کلید BFF را تنظیم کنید.',
+        'BACKEND_HOST=0.0.0.0 + نبود CE_BFF_SHARED_SECRET: اگر این پورت با IP عمومی اینترنت در دسترس است، ' +
+          'پل BFF از هاست‌های دیگر رد می‌شود و ورود کاربران از آن مسیر شکست می‌خورد. ' +
+          'یا HOST را روی آدرس خصوصی/loopback بگذارید یا CE_BFF_SHARED_SECRET را تنظیم کنید.',
       );
     }
   }

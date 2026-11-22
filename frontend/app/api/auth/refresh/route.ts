@@ -113,6 +113,29 @@ export async function POST(request: NextRequest) {
       // خطاهای موقت (۵۰۲/۵۰۳/شبکه) نباید منجر به ورود اجباریِ دوباره شوند.
       const outcome = await flight;
       if (outcome.ok) {
+        // ⚠️ تمدید «موفق» بدون Set-Cookie = پل BFF از سمت بک‌اند رد شده است.
+        // بدون کوکی جدید، توکن بعدی باطل است و کاربر به صفحهٔ ورود پرتاب می‌شود —
+        // با پیام خطای صریح همین‌جا متوقف شویم تا علتش گم نشود.
+        if (outcome.setCookies.length === 0) {
+          console.error(
+            '[auth.bff] Refresh succeeded at backend but produced ZERO cookies. ' +
+              'Backend likely rejected the BFF bridge (check CE_BFF_SHARED_SECRET in both services, ' +
+              'or BACKEND_HOST/private-network reachability). See RUNBOOK §15.',
+          );
+          return jsonReply(
+            JSON.stringify({
+              status: 'error',
+              authenticated: false,
+              canRefresh: false,
+              message: {
+                fa: 'پیکربندی پل نشست (BFF) با بک‌اند سازگار نیست؛ لطفاً با پشتیبانی فنی تماس بگیرید.',
+                en: 'BFF bridge misconfigured: backend did not set the session cookies',
+              },
+            }),
+            500,
+            [],
+          );
+        }
         rotationReplay.set(key, {
           at: Date.now(),
           rawText: outcome.rawText,
