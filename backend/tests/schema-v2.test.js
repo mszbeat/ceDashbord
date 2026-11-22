@@ -94,9 +94,12 @@ test('ستون‌های پایه بدون تکرار و با کلید اصلی �
   assert.match(ddl, /PARTITION BY RANGE \(day\)/);
 });
 
-test('ایندکس‌های v2 فقط دو ایندکس ثانویه‌اند (بدون GIN و بدون تکرار)', () => {
-  const sqls = builder.createIndexesSql('tavan_mellat');
-  assert.equal(sqls.length, 2);
+test('ایندکس‌های v2 فقط b-tree/جزئی‌اند (بدون GIN و بدون تکرار)', () => {
+  const sqls = builder.createIndexesSql('tavan_mellat', { flag: ['a', 'b', 'c', 'd'] });
+  // ۲ ایندکس پایه + slow + creditAlert + ۳ ایندکس جزئی پرچم پرکاربرد (B4)
+  assert.equal(sqls.length, 7);
+  // فقط ۳ پرچم اول ایندکس جزئی می‌گیرند
+  assert.equal(sqls.filter((sql) => /WHERE \(flags &/.test(sql)).length, 3);
   assert.ok(!sqls.some((sql) => /USING GIN/i.test(sql)));
   const names = sqls.map((sql) => sql.split(' EXISTS ')[1].split(' ')[0]);
   assert.equal(new Set(names).size, names.length);

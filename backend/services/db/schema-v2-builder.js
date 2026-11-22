@@ -30,7 +30,8 @@ const SAMPLE_COLUMNS_PREFIX = {
  */
 const BASE_COLUMNS = [
   // ── ۸ بایت ──
-  ['ts', 'bigint', ''],
+  // B4: `ts` همیشه مقدار دارد (بدون COALESCE در ترتیب/keyset)
+  ['ts', 'bigint', 'NOT NULL'],
   ['flags', 'bigint', 'NOT NULL DEFAULT 0'],
   ['service_kinds', 'bigint', 'NOT NULL DEFAULT 0'],
   ['path_bits', 'bigint', 'NOT NULL DEFAULT 0'],
@@ -60,7 +61,6 @@ const BASE_COLUMNS = [
   ['bad_reports', 'smallint', ''],
   // ── عرض متغیر ──
   ['unique_key', 'text', ''],
-  ['external_id', 'text', ''],
   ['cat_codes', 'smallint[]', "NOT NULL DEFAULT '{}'"],
   ['service_text_codes', 'smallint[]', "NOT NULL DEFAULT '{}'"],
   ['created_at', 'timestamptz', 'NOT NULL DEFAULT now()'],
@@ -98,13 +98,27 @@ function createTableSql(bankKey, registry) {
  *  * `(request_id)` برای `/api/sample/:id` و جست‌وجوی uuid
  *  * `(day, ts, request_id)` برای صفحه‌بندی cursor و بازهٔ روز
  */
-function createIndexesSql(bankKey) {
+function createIndexesSql(bankKey, registry) {
   const table = tableNameOf(bankKey);
   const prefix = table.replace('samples_', '');
-  return [
+  const indexes = [
     `CREATE INDEX IF NOT EXISTS idx_${prefix}_request_id ON ${table} (request_id)`,
     `CREATE INDEX IF NOT EXISTS idx_${prefix}_day_ts ON ${table} (day, ts, request_id)`,
+    // فیلترهای پرکاربرد `/api/list` (۳ شاخص پرتکرار هر بانک) — ایندکس جزئی، نه GIN
+    `CREATE INDEX IF NOT EXISTS idx_${prefix}_slow ON ${table} (day, total_time_s DESC)
+       WHERE total_time_s > 4`,
+    `CREATE INDEX IF NOT EXISTS idx_${prefix}_credit ON ${table} (day, ts)
+       WHERE has_overdue OR has_cheque`,
   ];
+  const hotFlags = ((registry && registry.flag) || []).slice(0, 3);
+  hotFlags.forEach((id, index) => {
+    indexes.push(
+      `CREATE INDEX IF NOT EXISTS idx_${prefix}_flag${index} ON ${table} (day, ts)
+         WHERE (flags & ${1n << BigInt(index)}) <> 0`,
+    );
+    void id;
+  });
+  return indexes;
 }
 
 /** پارتیشن ماهانه (idempotent) — نام پارتیشن بر اساس بازهٔ میلادی */
@@ -174,7 +188,7 @@ async function applySchemaV2(db, { registry, banks }) {
       continue;
     }
     await db.query(createTableSql(bankKey, registry[bankKey]));
-    for (const sql of createIndexesSql(bankKey)) await db.query(sql);
+    for (const sql of createIndexesSql(bankKey, registry[bankKey])) await db.query(sql);
     await db.query(ensureDefaultPartitionSql(bankKey));
   }
   if (skipped.length) {

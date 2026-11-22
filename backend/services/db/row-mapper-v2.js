@@ -93,6 +93,13 @@ function toJalaliDay(isoDay) {
   return `${j.year}-${String(j.month).padStart(2, '0')}-${String(j.day).padStart(2, '0')}`;
 }
 
+/** آغاز روز شمسی (`YYYY-MM-DD`) → epoch میلی‌ثانیه — جایگزین امن `ts` */
+function dayStartEpochMs(day) {
+  const digits = String(day ?? '').replace(/\D/g, '');
+  if (digits.length < 8) return 0;
+  return stampEpochMs(`${digits.slice(0, 8)}000000000`.slice(0, 17)) ?? 0;
+}
+
 /** رشتهٔ ۱۷ رقمی زمان شمسی `YYYYMMDDHHmmssSSS` → epoch میلی‌ثانیه (UTC) */
 function stampEpochMs(digits) {
   const text = String(digits ?? '').replace(/\D/g, '');
@@ -176,7 +183,9 @@ function toV2Row(row, ctx) {
   });
 
   const stampDigits = extras.stamp?.key ?? row.stamp_key ?? row.inserted_at ?? null;
-  const ts = stampEpochMs(stampDigits);
+  // B4: `ts` ستون NOT NULL است. اگر مهر زمانی قابل خواندن نبود، از روز شمسی استفاده می‌شود
+  // (همان رفتار v1 که `stampOf` با «—:—» بازمی‌ساخت) تا هیچ ردیفی بی‌ترتیب نماند.
+  const ts = stampEpochMs(stampDigits) ?? dayStartEpochMs(row.day);
 
   const sampleRow = {
     ts,
@@ -194,7 +203,6 @@ function toV2Row(row, ctx) {
     cheque_amount: row.credit_alerts?.cheque?.totalAmount ?? null,
     request_id: row.request_id,
     // شناسهٔ اصلی (اگر UUID نبود) تا API همان مقدار قبلی را برگرداند و گزارش‌ها یکسان بمانند
-    external_id: ctx.externalId ?? null,
     model_code: valueDict.codeOf(bankKey, 'model', row.model_name),
     status_code: valueDict.codeOf(bankKey, 'status', row.status_code),
     error_code: valueDict.codeOf(bankKey, 'error', row.error_code),
@@ -360,7 +368,7 @@ function fromV2Row({ sample, detail, valueDict, catDict, bankKey, registry }) {
   const base = {};
   if (sample.unique_key) base.uniqueKey = sample.unique_key;
   else if (bankKey !== 'tavan_postbank') base.uniqueKey = '—';
-  base.requestId = sample.external_id || sample.request_id;
+  base.requestId = sample.request_id;
   base['تاریخ و ساعت'] = rowDisplay;
   base['وضعیت'] = sample.is_success ? 'موفق' : 'ناموفق';
   // ستون‌های نمایندگی هر بانک (model_name / PD / احتمال نکول / امتیاز …) عیناً بازگردانی می‌شوند
@@ -388,7 +396,7 @@ function fromV2Row({ sample, detail, valueDict, catDict, bankKey, registry }) {
   extras.listMatches = listSpecs.map((_, index) => extras.listRows[String(index)] !== undefined);
 
   return {
-    request_id: sample.external_id || sample.request_id,
+    request_id: sample.request_id,
     day,
     inserted_at: stampDigits,
     stamp_key: stampDigits,
@@ -469,6 +477,7 @@ function columnMapsOf(registry) {
 
 module.exports = {
   toDateIso,
+  dayStartEpochMs,
   toJalaliDay,
   jalaliToGregorian,
   gregorianToJalali,

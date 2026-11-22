@@ -19,12 +19,22 @@ const { createCatDict, tableNameOf, ensureMonthlyPartitions } = require('./schem
 const { ValueDict } = require('./value-dict');
 const { toV2Row, columnMapsOf, toDateIso } = require('./row-mapper-v2');
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function getLogger() {
+  try {
+    return require('../logger/action-logger.service').getActionLogger();
+  } catch {
+    return null;
+  }
+}
+
 const SAMPLE_COLUMNS = [
   'ts', 'flags', 'service_kinds', 'path_bits', 'total_time_s', 'pd', 'score_req', 'avg36',
   'ln_avg_installments', 'day', 'suggested_amount', 'overdue_amount', 'cheque_amount',
   'request_id', 'model_code', 'status_code', 'error_code', 'message_code', 'rotbe_code',
   'amount_kind', 'overdue_count', 'cheque_count', 'analysis_version', 'is_success',
-  'has_overdue', 'has_cheque', 'bad_reports', 'unique_key', 'external_id', 'cat_codes', 'service_text_codes',
+  'has_overdue', 'has_cheque', 'bad_reports', 'unique_key', 'cat_codes', 'service_text_codes',
 ];
 
 const DETAIL_COLUMNS = [
@@ -80,36 +90,25 @@ class V2Writer {
    * @returns {Promise<{inserted:number, details:number, firstDay:string|null, lastDay:string|null}>}
    */
   async upsertBatch(client, bankKey, rows) {
-    if (!rows.length) return { inserted: 0, details: 0, firstDay: null, lastDay: null };
+    if (!rows.length) return { inserted: 0, details: 0, firstDay: null, lastDay: null, invalidIds: [] };
     await this.ready();
     const table = tableNameOf(bankKey);
     const cols = this.columnsOf(bankKey);
 
-    // request_id در v2 نوع `uuid` است؛ شناسه‌های غیر-UUID (مثل پیش‌نمونهٔ `me000000`) با
-    // UUIDv5 از (bank، شناسه) مشتق می‌شوند تا پایدار و بدون برخورد باشند.
-    const { ensureUuid, needsMapping } = require('./uuid-map');
-    const external = [];
-    const externalByRow = new Map();
+    // B4 — طبق تصمیم صاحب پروژه، `request_id` همیشه UUID است.
+    // شناسهٔ غیر-UUID ساخته نمی‌شود؛ ردیف با خطای شفاف و شمارندهٔ `skipped_invalid_id` رد می‌شود.
+    const invalid = [];
+    const valid = [];
     for (const row of rows) {
-      const original = String(row.request_id ?? '');
-      if (needsMapping(original)) {
-        external.push([original, ensureUuid(original)]);
-        externalByRow.set(row, original);
+      const original = String(row.request_id ?? '').trim();
+      if (!UUID_RE.test(original)) {
+        invalid.push(original);
+        continue;
       }
-      row.request_id = ensureUuid(original);
+      row.request_id = original.toLowerCase();
+      valid.push(row);
     }
-    if (external.length) {
-      const uniq = new Map(external);
-      const pairs = [...uniq.entries()];
-      for (let i = 0; i < pairs.length; i += 200) {
-        const chunk = pairs.slice(i, i + 200);
-        await this.db.query(
-          `INSERT INTO external_id_map(external_id, request_id) VALUES ${chunk.map((_, k) => `($${k * 2 + 1},$${k * 2 + 2})`).join(',')}
-           ON CONFLICT (external_id) DO NOTHING`,
-          chunk.flat(),
-        );
-      }
-    }
+    rows = valid;
     const deduped = new Map();
     for (const row of rows) deduped.set(`${row.day}\u0000${row.request_id}`, row);
     const uniqueRows = [...deduped.values()];
@@ -120,7 +119,6 @@ class V2Writer {
     for (const row of uniqueRows) {
       const { sampleRow, detailRow } = toV2Row(row, {
         bankKey,
-        externalId: externalByRow.get(row) ?? null,
         registry: cols,
         valueDict: this.valueDict,
         catDict: this.catDict,
@@ -201,7 +199,15 @@ class V2Writer {
 
     await this.valueDict.flush(bankKey);
     await this.catDict.flush(bankKey);
-    return { inserted, details: details.length, firstDay, lastDay };
+    if (invalid.length) {
+      getLogger()?.warn?.({
+        category: 'ingestion',
+        action: 'ingestion.v2.invalid_request_id',
+        message: `${invalid.length} ردیف با شناسهٔ غیر-UUID رد شد`,
+        meta: { bank: bankKey, sample: invalid.slice(0, 5) },
+      });
+    }
+    return { inserted, details: details.length, firstDay, lastDay, invalidIds: invalid };
   }
 
   /**

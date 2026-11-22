@@ -9,6 +9,8 @@
  */
 
 const { flagMasks } = require('./indicator-registry');
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const { tableNameOf } = require('./schema-v2-builder');
 const {
   fromV2Row, toDateIso, toJalaliDay, stampEpochMs, stampDigitsFromEpoch, columnMapsOf,
@@ -84,7 +86,7 @@ class V2Dialect {
    * اختلاف با v1 را می‌ساخت.
    */
   listSelection(alias = 's') {
-    return `${alias}.request_id, ${alias}.external_id, ${alias}.unique_key, ${alias}.day AS day_iso,
+    return `${alias}.request_id, ${alias}.unique_key, ${alias}.day AS day_iso,
       ${alias}.ts, ${alias}.is_success, ${alias}.model_code, ${alias}.status_code, ${alias}.error_code,
       ${alias}.message_code, ${alias}.total_time_s, ${alias}.pd, ${alias}.suggested_amount,
       ${alias}.amount_kind, ${alias}.score_req, ${alias}.flags, ${alias}.cat_codes,
@@ -160,22 +162,30 @@ class V2Dialect {
    * صفحهٔ cursor برای `buildDashboard`.
    * cursor در v1 سه‌تایی `(day, stamp_key, request_id)` است؛ در v2 `(day, ts, request_id)`.
    */
+  /**
+   * صفحهٔ cursor برای `buildDashboard` — کلید `(day, ts, request_id)` که **دقیقاً**
+   * همان ایندکس `idx_*_day_ts` است. با این ترتیب هیچ Sort node لازم نیست
+   * (B4: قبلاً `COALESCE(...)` ترتیب را از ایندکس جدا می‌کرد و هر صفحه sort کامل می‌شد).
+   */
   async cursorPage(table, from, to, cursor, limit) {
     const bankKey = this.bankOf(table);
     const [fromIso, toIso] = this.isoRange(from, to);
     const [cursorDay, cursorStamp, cursorId] = cursor;
     const ts = cursorStamp ? stampEpochMs(cursorStamp) : null;
+    const hasCursor = Boolean(cursorDay) && ts !== null && UUID_RE.test(String(cursorId ?? ''));
+    const whereCursor = hasCursor
+      ? 'AND (s.day, s.ts, s.request_id) > ($3::date, $4::bigint, $5::uuid)'
+      : '';
+    const params = hasCursor
+      ? [fromIso, toIso, cursorDay, String(ts), String(cursorId), Number(limit)]
+      : [fromIso, toIso, Number(limit)];
     const result = await this.db.query(
       `SELECT ${this.selection(bankKey)}
          ${this.joinDetail(table, bankKey)}
-        WHERE s.day BETWEEN $1::date AND $2::date
-          AND (s.day, COALESCE(s.ts, 0), COALESCE(s.external_id, s.request_id::text)) >
-              (COALESCE(NULLIF($3, '')::date, DATE '1900-01-01'),
-               COALESCE($4::bigint, 0),
-               $5::text)
-        ORDER BY s.day, COALESCE(s.ts, 0), COALESCE(s.external_id, s.request_id::text)
-        LIMIT $6::int`,
-      [fromIso, toIso, cursorDay || '', ts === null ? null : String(ts), cursorId || '', Number(limit)],
+        WHERE s.day BETWEEN $1::date AND $2::date ${whereCursor}
+        ORDER BY s.day, s.ts, s.request_id
+        LIMIT $${hasCursor ? 6 : 3}::int`,
+      params,
     );
     return { rows: result.rows.map((row) => this.hydrate(bankKey, row)), rowCount: result.rows.length };
   }
@@ -218,9 +228,9 @@ class V2Dialect {
       return `$${values.length}`;
     };
 
-    // ترتیب معادل v1: شناسهٔ بیرونی (اگر وجود دارد) همان متن v1 است؛ برای UUIDها خود uuid
-    const idText = 'COALESCE(s.external_id, s.request_id::text)';
-    let order = `s.day, COALESCE(s.ts, 0), ${idText}`;
+    // B4: `request_id` همیشه UUID است ⇒ ترتیب می‌تواند مستقیماً روی ایندکس بنشیند
+    const idText = 's.request_id';
+    let order = 's.day, s.ts, s.request_id';
     if (type === 'flag' && id) {
       const mask = masks[id];
       if (!mask) throw new Error(`V2Dialect: پرچم ناشناخته ${id}`);
@@ -309,7 +319,7 @@ class V2Dialect {
         }
         : null;
       return {
-        request_id: row.external_id || row.request_id,
+        request_id: row.request_id,
         unique_key: row.unique_key,
         day: toJalaliDay(row.day_iso),
         inserted_at: stamp,
@@ -407,13 +417,20 @@ class V2Dialect {
   /** جست‌وجوی ردیف بر اساس request_id (برای `/api/sample/:id`) */
   async byRequestId(table, requestId) {
     const bankKey = this.bankOf(table);
-    const { ensureUuid } = require('./uuid-map');
-    // شناسهٔ بیرونی (غیر-UUID) هم پشتیبانی می‌شود تا `/api/sample/:id` مثل قبل کار کند
+    const text = String(requestId ?? '').trim();
+    if (!UUID_RE.test(text)) {
+      // B4: شناسهٔ غیر-UUID در v2 وجود ندارد؛ خطای شفاف به‌جای UUID جعلی
+      const error = new Error('شناسهٔ نمونه باید UUID باشد');
+      error.statusCode = 400;
+      error.meta = { code: 'invalidRequestId' };
+      error.data = { message: { fa: 'شناسهٔ نمونه باید UUID معتبر باشد', en: 'request id must be a UUID' } };
+      throw error;
+    }
     const result = await this.db.query(
       `SELECT ${this.selection(bankKey)}
          ${this.joinDetail(table, bankKey)}
-        WHERE (s.external_id = $1::text OR s.request_id = $2::uuid)`,
-      [String(requestId), ensureUuid(requestId)],
+        WHERE s.request_id = $1::uuid`,
+      [text.toLowerCase()],
     );
     return { rows: result.rows.map((row) => this.hydrate(bankKey, row)), rowCount: result.rows.length };
   }
