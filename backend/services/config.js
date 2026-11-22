@@ -233,7 +233,12 @@ const config = {
     tavan_mellat: resolveBankGatewayConfig('tavan_mellat'),
     tavan_postbank: resolveBankGatewayConfig('tavan_postbank'),
   },
-  pageSize: Number(process.env.CE_API_PAGE_SIZE || 50),
+  /**
+   * اندازهٔ صفحهٔ خواندن از API بانک — با کران بالا و پایین (فاز ۴).
+   * مقدار بزرگ‌تر از سقف، حافظهٔ پروسه را می‌ترکاند و پاسخ API را هم کند می‌کند؛ مقدار صفر
+   * یا منفی حلقهٔ بی‌پایان می‌سازد. هر دو حالت این‌جا بسته می‌شوند.
+   */
+  pageSize: Math.min(Math.max(Number(process.env.CE_API_PAGE_SIZE || 50) || 50, 1), 200),
   backendPort: Number(process.env.BACKEND_PORT || process.env.PORT || 3000),
   backendHost: process.env.BACKEND_HOST || '0.0.0.0',
   redactNationalCode: (process.env.CE_REDACT_NATIONAL_CODE || 'true') === 'true',

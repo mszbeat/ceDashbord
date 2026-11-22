@@ -75,13 +75,32 @@ function createServices(options = {}) {
         meta: { cronEnabled: options.enableCron !== false },
       });
     },
-    async close() {
+    async close(reason = 'shutdown') {
       cronScheduler.stop();
       logger.info({
         category: 'system',
         action: 'services.closing',
         message: 'Closing backend domain services',
       });
+      // فاز ۴: هر اجرای ingestion که «در جریان» مانده، `interrupted` شود تا اپراتور آن را
+      // اجرای موفق نپندارد و rollup روز ناقص ساخته نشود.
+      try {
+        const marked = await ingestion.markInterrupted(reason);
+        if (marked?.marked) {
+          logger.warn({
+            category: 'ingestion',
+            action: 'ingestion.shutdown.interrupted',
+            message: `${marked.marked} اجرای نیمه‌کاره interrupted شد`,
+            meta: { reason, marked: marked.marked },
+          });
+        }
+      } catch (error) {
+        logger.warn({
+          category: 'ingestion',
+          action: 'ingestion.shutdown.markFailed',
+          message: error?.message || 'ثبت interrupted ناموفق بود',
+        });
+      }
       if (typeof logger.flush === 'function') {
         await logger.flush().catch(() => {});
       }

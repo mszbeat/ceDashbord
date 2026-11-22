@@ -293,10 +293,12 @@ class IngestionService {
     if (!bank) throw adminError.invalidBank(bankInput);
     const rebuild = options.rebuild === true;
     const filters = options.filters;
+    // سقف ۲۰۰ برای هر صفحه (هم از env و هم از پارامتر درخواست) — در `config.js` هم بسته شده
+    const maxPageSize = Number(process.env.CE_API_PAGE_SIZE_MAX || 200);
     const pageSize =
-      filters?.pageSize && Number(filters.pageSize) >= 1 && Number(filters.pageSize) <= 200
-        ? Math.floor(Number(filters.pageSize))
-        : config.pageSize;
+      filters?.pageSize && Number(filters.pageSize) >= 1
+        ? Math.min(Math.floor(Number(filters.pageSize)), maxPageSize)
+        : Math.min(config.pageSize, maxPageSize);
     const maxCount =
       filters?.maxCount && Number(filters.maxCount) >= 1
         ? Math.floor(Number(filters.maxCount))
@@ -316,7 +318,50 @@ class IngestionService {
     const writtenTemplates = new Set();
 
     try {
-      await client.query('SELECT pg_advisory_lock(hashtext($1))', [lockKey]);
+      // فاز ۴: قفل مشورتی per (bank, day) با مهلت محدود.
+      //  * `pg_try_advisory_lock` اول تلاش می‌کند؛ اگر آزاد نبود تا `CE_INGEST_LOCK_WAIT_SECONDS`
+      //    (پیش‌فرض ۵ ثانیه) منتظر می‌ماند.
+      //  * بعد از مهلت، خطای 409 برمی‌گردانیم — نه اجرای موازی و نه انتظار بی‌نهایت.
+      const lockWaitSeconds = Math.max(0, Number(process.env.CE_INGEST_LOCK_WAIT_SECONDS ?? 5));
+      let lockHeld = Boolean((await client.query(
+        'SELECT pg_try_advisory_lock(hashtext($1)) AS locked',
+        [lockKey],
+      )).rows[0]?.locked);
+      if (!lockHeld && lockWaitSeconds > 0) {
+        // انتظار محدود: `pg_advisory_lock` روی همین اتصال، با `statement_timeout` موقت
+        // `SET` (نه `SET LOCAL`) چون خارج از تراکنش هم باید اثر کند؛ بعد از انتظار برگردانده می‌شود
+        const previous = (await client.query('SHOW statement_timeout')).rows[0]?.statement_timeout || '0';
+        await client.query(`SET statement_timeout = ${Math.round(lockWaitSeconds * 1000)}`);
+        try {
+          await client.query('SELECT pg_advisory_lock(hashtext($1))', [lockKey]);
+          lockHeld = true;
+        } catch {
+          lockHeld = false;
+        } finally {
+          await client.query(`SET statement_timeout = '${String(previous).replace(/'/g, '')}'`)
+            .catch(() => undefined);
+        }
+      }
+      if (!lockHeld) {
+        const conflict = new Error(
+          `اجرای دیگری برای ${bankKey}/${day} در جریان است؛ بعد از پایان آن دوباره تلاش کنید`,
+        );
+        conflict.statusCode = 409;
+        conflict.code = 'ingestionLocked';
+        conflict.data = {
+          code: 'ingestionLocked',
+          message: { fa: conflict.message, en: 'another ingestion run holds this (bank, day) lock' },
+        };
+        getActionLogger().warn({
+          category: 'ingestion',
+          action: 'ingestion.day.locked',
+          statusCode: 409,
+          errorCode: 'ingestionLocked',
+          message: conflict.message,
+          meta: { bank: bankKey, day, lockWaitSeconds },
+        });
+        throw conflict;
+      }
       getActionLogger().info({
         category: 'ingestion',
         action: 'ingestion.day.started',
@@ -508,16 +553,22 @@ class IngestionService {
       const distinctStored = await this.runStore.countDistinct(
         client, bankKey, day, this.samplesTable(bank),
       );
+      // فاز ۴: «رد مجاز» فقط ردِ روش دیگر است؛ شناسهٔ نامعتبر و پیام ناخوانا **خطا** هستند و
+      // نباید در انتظارِ تعداد ردیف‌های ذخیره‌شده کم شوند (وگرنه روز ناقص «کامل» اعلام می‌شد).
       const expectedDistinct = Math.max(0, sourceTotal - skippedOtherMethod);
       const countMatches =
         distinctStored === expectedDistinct ||
         (maxCount !== null && distinctStored >= Math.min(maxCount, expectedDistinct));
       const reachedAll =
         checkpoint >= sourceTotal || (reachedEndOfPages && checkpoint > 0);
+      // شرط پذیرش فاز ۴: کامل فقط وقتی `COUNT(DISTINCT request_id)` برابر با تعداد ردیف‌های
+      // متمایز منبع باشد و هیچ خطایی (نه فقط خطای پردازش) رخ نداده باشد.
+      const distinctMatches = distinctStored === expectedDistinct;
       const complete =
         mode === 'nightly' &&
         !filteredRun &&
         reachedAll &&
+        distinctMatches &&
         countMatches &&
         errors === 0;
       const status = mode === 'intraday' || filteredRun ? 'partial' : complete ? 'complete' : 'needs_review';
@@ -526,7 +577,9 @@ class IngestionService {
         distinct_stored: distinctStored,
         expected_distinct: expectedDistinct,
         skipped_other_method: skippedOtherMethod,
-        error_count: errors,
+        invalid_ids: invalidIds,
+        error_count: errors + invalidIds,
+        distinct_matches: distinctMatches,
       };
       await this.updateRun(client, bankKey, day, {
         status,
@@ -537,7 +590,8 @@ class IngestionService {
         success_count: success,
         fail_count: fail,
         skipped_count: skippedOtherMethod,
-        error_count: errors,
+        // خطاها جدا ثبت می‌شوند: `error_count` شامل شناسهٔ نامعتبر و خطای پردازش است
+        error_count: errors + invalidIds,
         distinct_stored: distinctStored,
       });
       if (!complete && status === 'needs_review') {
@@ -574,7 +628,8 @@ class IngestionService {
         fail,
         skipped,
         skipped_other_method: skippedOtherMethod,
-        error_count: errors,
+        // فاز ۴: `error_count` مجموع خطاهای واقعی و شناسه‌های نامعتبر است؛ `invalid_ids` تفکیک
+        error_count: errors + invalidIds,
         invalid_ids: invalidIds,
         distinct_stored: distinctStored,
         checkpoint,
@@ -623,6 +678,11 @@ class IngestionService {
         meta: { bank: bankKey, day, mode, rebuild, checkpoint, processed },
         stack: error?.stack,
       });
+      // خطاهای معنادار (۴۰۹ قفل، ۴۱۱ بازهٔ نامعتبر، …) همان‌طور بالا می‌روند تا کنترلر
+      // کد وضعیت درست را برگرداند؛ تبدیل به ۵۰۰ باعث می‌شد اپراتور علت را نبیند.
+      if (error && typeof error === 'object' && Number(error.statusCode) >= 400 && Number(error.statusCode) < 500) {
+        throw error;
+      }
       if (error && typeof error === 'object' && error.statusCode && error.meta) {
         throw error;
       }
@@ -645,10 +705,12 @@ class IngestionService {
     if (!filters?.requestId?.trim() && !filters?.uniqueKey?.trim() && !filters?.nationalCode?.trim()) {
       throw adminError.filterRequiredWithoutDate;
     }
+    // سقف ۲۰۰ برای هر صفحه (هم از env و هم از پارامتر درخواست) — در `config.js` هم بسته شده
+    const maxPageSize = Number(process.env.CE_API_PAGE_SIZE_MAX || 200);
     const pageSize =
-      filters?.pageSize && Number(filters.pageSize) >= 1 && Number(filters.pageSize) <= 200
-        ? Math.floor(Number(filters.pageSize))
-        : config.pageSize;
+      filters?.pageSize && Number(filters.pageSize) >= 1
+        ? Math.min(Math.floor(Number(filters.pageSize)), maxPageSize)
+        : Math.min(config.pageSize, maxPageSize);
     const maxCount =
       filters?.maxCount && Number(filters.maxCount) >= 1
         ? Math.min(Math.floor(Number(filters.maxCount)), 5000)
