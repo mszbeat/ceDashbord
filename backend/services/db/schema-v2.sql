@@ -213,10 +213,16 @@ CREATE TABLE IF NOT EXISTS admin_jobs (
 );
 CREATE INDEX IF NOT EXISTS idx_admin_jobs_created_at ON admin_jobs(created_at DESC);
 
--- وضعیت اعمال migrationهای این فایل (برای اجرای idempotent)
+-- وضعیت اعمال migrationها (D3).
+-- شکل این جدول باید **یکی** باشد با `services/db/migrations.js` که مالک آن است؛
+-- ستون‌های name/checksum/duration_ms همان‌هایی‌اند که رانر نسخه‌دار می‌نویسد.
+-- (روی دیتابیس قدیمی که شکل ساده دارد، خودِ رانر ستون‌ها را با ALTER اضافه می‌کند.)
 CREATE TABLE IF NOT EXISTS schema_migrations (
-  version    text PRIMARY KEY,
-  applied_at timestamptz NOT NULL DEFAULT now()
+  version     text PRIMARY KEY,
+  name        text,
+  checksum    text,
+  applied_at  timestamptz NOT NULL DEFAULT now(),
+  duration_ms integer NOT NULL DEFAULT 0
 );
 
 -- جدول نسخه‌های تحلیل (قبل از جداول نمونه‌ها لازم است)

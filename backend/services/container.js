@@ -9,6 +9,7 @@ const { getActionLogger } = require('./logger/action-logger.service');
 const { config } = require('./config');
 const { buildRuntimeRegistry } = require('./db/schema-registry');
 const { V2Dialect } = require('./db/dialect-v2');
+const { applySchemaV2 } = require('./db/schema-v2-builder');
 const { V2Writer } = require('./db/ingest-v2');
 
 let defaultContainer = null;
@@ -64,6 +65,38 @@ function createServices(options = {}) {
     async init() {
       if (initialized) return;
       initialized = true;
+      /**
+       * D3 — در حالت v2، جداول typed/پارتیشن‌شده فقط با `applySchemaV2` ساخته می‌شوند
+       * (مهاجرت‌های SQL آن‌ها را نمی‌سازند، چون ستون‌ها از رجیستری هر بانک می‌آیند).
+       * بدون این فراخوانی، سرویس با `CE_DB_SCHEMA=v2` بالا می‌آمد ولی اولین کوئری با
+       * «relation does not exist» یا «column does not exist» می‌شکست.
+       * فراخوانی idempotent است (`CREATE TABLE/INDEX IF NOT EXISTS`).
+       */
+      if (dbSchema === 'v2' && dialect) {
+        try {
+          await ensureSchemaV2(db, writer, dialect?.registry);
+        } catch (error) {
+          /**
+           * خطا را خفه نمی‌کنیم (ادامه با اسکیمای ناقص = خرابی خاموش)، ولی پیام باید
+           * «کارِ بعدی» را بگوید. شایع‌ترین حالت: جدول‌های `samples_*` هنوز شکل v1 دارند
+           * و باید یک‌بار `npm run migrate:v2` اجرا شود (غیرمخرب: به `_v1_backup` تغییر نام می‌دهد).
+           */
+          const needsDataMigration = /اسکیمای v1|v1 دارند/.test(error.message || '');
+          const hint = needsDataMigration
+            ? 'جدول‌های نمونه‌ها هنوز اسکیمای v1 دارند. یک‌بار `npm run migrate:v2 --prefix backend` '
+              + '(یا در پوشهٔ backend: `npm run migrate:v2`) را اجرا کنید؛ این کار غیرمخرب است و '
+              + 'جدول‌های فعلی را به `*_v1_backup` تغییر نام می‌دهد.'
+            : 'اسکیمای v2 آماده نشد؛ لاگ بالا را ببینید.';
+          logger.error({
+            category: 'system',
+            action: 'schema.v2.ensure_failed',
+            message: `آماده‌سازی اسکیمای v2 شکست خورد: ${error.message} — ${hint}`,
+          });
+          const wrapped = new Error(`آماده‌سازی اسکیمای v2 شکست خورد: ${error.message}\n${hint}`);
+          wrapped.code = 'V2_SCHEMA_NOT_READY';
+          throw wrapped;
+        }
+      }
       await admin.onModuleInit();
       if (options.enableCron !== false) {
         cronScheduler.start();
@@ -108,6 +141,17 @@ function createServices(options = {}) {
       else if (typeof db.onModuleDestroy === 'function') await db.onModuleDestroy();
     },
   };
+}
+
+/**
+ * اطمینان از وجود جداول typed v2 (پارتیشن‌شده) بر اساس رجیستری هر بانک.
+ * idempotent است و فقط در حالت `CE_DB_SCHEMA=v2` صدا زده می‌شود.
+ */
+async function ensureSchemaV2(db, writer, registry) {
+  // `V2Writer` رجیستری را در `this.registry` نگه می‌دارد؛ منبع حقیقت همان است
+  const source = registry || writer?.registry;
+  if (!source) return; // رجیستری در دست نیست ⇒ چیزی برای ساختن نیست
+  await applySchemaV2(db, { registry: source, banks: Object.keys(source) });
 }
 
 function getServices() {

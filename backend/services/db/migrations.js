@@ -39,6 +39,13 @@ function listFiles() {
 }
 
 async function ensureTable(db) {
+  /**
+   * `CREATE TABLE IF NOT EXISTS` جدولِ موجود را تغییر نمی‌دهد. پیش از این نسخه‌دار شدن
+   * مهاجرت‌ها، `schema-v2.sql` همان جدول را با شکل ساده (`version`, `applied_at`) می‌ساخت؛
+   * روی چنان دیتابیسی، اجرای مهاجرت با
+   *   «column "name" of relation "schema_migrations" does not exist»
+   * شکست می‌خورد. پس ستون‌های لازم افزایشی اضافه می‌شوند (بدون حذف چیزی).
+   */
   await db.query(`
     CREATE TABLE IF NOT EXISTS schema_migrations (
       version     text PRIMARY KEY,
@@ -47,6 +54,13 @@ async function ensureTable(db) {
       applied_at  timestamptz NOT NULL DEFAULT now(),
       duration_ms integer NOT NULL DEFAULT 0
     )`);
+  await db.query("ALTER TABLE schema_migrations ADD COLUMN IF NOT EXISTS name text");
+  await db.query("ALTER TABLE schema_migrations ADD COLUMN IF NOT EXISTS checksum text");
+  await db.query("ALTER TABLE schema_migrations ADD COLUMN IF NOT EXISTS duration_ms integer NOT NULL DEFAULT 0");
+  // ردیف‌های قدیمیِ بدون نام/checksum نباید مانع درج‌های تازه شوند
+  await db.query("UPDATE schema_migrations SET name = COALESCE(name, version), checksum = COALESCE(checksum, 'legacy') WHERE name IS NULL OR checksum IS NULL");
+  await db.query("ALTER TABLE schema_migrations ALTER COLUMN name SET NOT NULL");
+  await db.query("ALTER TABLE schema_migrations ALTER COLUMN checksum SET NOT NULL");
 }
 
 /**

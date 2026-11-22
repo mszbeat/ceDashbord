@@ -132,3 +132,21 @@ pg_restore -l ce-$(date +%F).dump | head          # فهرست محتوا
 | `ingestionLocked` (۴۰۹) | اجرای موازی همان روز | پایان اجرای جاری و تلاش دوباره |
 | `rangeTooLarge` (۴۱۳) | بازه بیش از `CE_MAX_RANGE_DAYS` | بازهٔ کوچک‌تر یا افزایش سقف |
 | `tooManyRequests` (۴۲۹) | هم‌زمانی بیش از `CE_MAX_CONCURRENT_READS` | تلاش دوباره با `Retry-After` |
+
+## ۱۰) ارتقا به اسکیمای v2 (`CE_DB_SCHEMA=v2`)
+
+سه گام، به همین ترتیب (هر سه idempotent):
+
+```bash
+cd backend
+npm run migrate       # ۱) اسکیمای پایه + ارتقای day_runs (نوع date و distinct_stored)
+npm run migrate:v2    # ۲) غیرمخرب: ساخت جداول typed و تغییر نام جدول‌های v1 به *_v1_backup
+CE_DB_SCHEMA=v2 npm start   # ۳) اجرای سرویس روی v2
+```
+
+* اگر مرحلهٔ ۲ فراموش شود، بوت با کد `V2_SCHEMA_NOT_READY` و پیام راهنما متوقف می‌شود
+  (به‌جای شکست مبهم اولین کوئری).
+* بازگشت: `npm run migrate:v2:rollback` جدول‌های `_v1_backup` را برمی‌گرداند و v1 دوباره کار می‌کند
+  (روی دیتابیس آزمایشی بررسی شد: هر سه بانک پس از rollback سالم).
+* `schema_migrations` یک مالک دارد: `services/db/migrations.js`. اگر دیتابیس قدیمی شکل ساده
+  (`version`, `applied_at`) دارد، رانر ستون‌های `name/checksum/duration_ms` را با `ALTER` اضافه می‌کند.

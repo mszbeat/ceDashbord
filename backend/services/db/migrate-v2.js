@@ -207,7 +207,12 @@ class V1ToV2Migration {
       this.stats.dayRuns = await this.migrateDayRuns();
       this.log(`day_runs منتقل شد: ${this.stats.dayRuns} ردیف`, { backup: dayRunsMoved.backup });
     }
-    await this.db.query("INSERT INTO schema_migrations(version) VALUES('v2-data') ON CONFLICT (version) DO NOTHING");
+    // D3: همان قرارداد ستون‌ها که `migrations.js` انتظار دارد (name/checksum اجباری‌اند)
+    await this.db.query(
+      `INSERT INTO schema_migrations(version, name, checksum, duration_ms)
+       VALUES('002b-v2-data', 'migrate-v2 (data)', 'runtime-migration', 0)
+       ON CONFLICT (version) DO NOTHING`,
+    );
     await this.db.query('ANALYZE');
     this.stats.finishedAt = new Date().toISOString();
     return this.stats;
@@ -396,7 +401,9 @@ class V1ToV2Migration {
       await this.db.query(`ALTER TABLE ${dayRunsBackup} RENAME TO day_runs`);
       done.push('day_runs');
     }
-    await this.db.query("DELETE FROM schema_migrations WHERE version IN ('v2','v2-data')").catch(() => {});
+    await this.db.query(
+      "DELETE FROM schema_migrations WHERE version IN ('v2','v2-data','002a-v2-schema-builder','002b-v2-data')",
+    ).catch(() => {});
     return { restored: done };
   }
 }

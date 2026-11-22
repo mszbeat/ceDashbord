@@ -199,7 +199,20 @@ async function applySchemaV2(db, { registry, banks }) {
       `applySchemaV2: این جدول‌ها هنوز اسکیمای v1 دارند و باید ابتدا مهاجرت/تغییر نام شوند: ${skipped.join(', ')}`,
     );
   }
-  await db.query("INSERT INTO schema_migrations(version) VALUES('v2') ON CONFLICT (version) DO NOTHING");
+  /**
+   * D3 — `schema_migrations` فقط یک مالک دارد: `services/db/migrations.js`.
+   *
+   * پیش‌تر این‌جا (و در `migrate-v2.js`) ردیف با نام‌های `v2`/`v2-data` و **بدون**
+   * `name`/`checksum` درج می‌شد. روی دیتابیسی که مهاجرت نسخه‌دار را اجرا کرده، همان جدول
+   * ستون‌های `name NOT NULL` دارد ⇒ خطای
+   * «null value in column "name" of relation "schema_migrations"» و توقف مهاجرت v2.
+   * حالا نسخهٔ اسکیمای v2 با یک ردیف سازگار و checksum‌دار ثبت می‌شود.
+   */
+  await db.query(
+    `INSERT INTO schema_migrations(version, name, checksum, duration_ms)
+     VALUES('002a-v2-schema-builder', 'schema-v2-builder (typed tables)', 'runtime-builder', 0)
+     ON CONFLICT (version) DO NOTHING`,
+  );
 }
 
 /**
