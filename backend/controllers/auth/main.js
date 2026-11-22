@@ -3,23 +3,63 @@ const { readBody, readQuery, readClientMeta } = require('../../services/http/req
 const { requireAuthenticatedSession } = require('../../services/http/session-guard');
 const { getActionLogger } = require('../../services/logger/action-logger.service');
 const { updateAuditContext } = require('../../services/logger/http-audit');
+const { isBffBridgeRequest: verifyBffBridge, sharedSecret } = require('../../services/http/bff-bridge');
 const { error: authError } = require('./config');
 
+/**
+ * فاش‌کردن کوکی‌های HttpOnly در بدنهٔ JSON فقط برای درخواستِ **امضاشده**ی Next.js.
+ *
+ * 🐞 قبلاً صرف وجود هدر خام `x-ce-bff: 1` کافی بود. بک‌اند به‌طور پیش‌فرض روی
+ * `0.0.0.0` گوش می‌دهد، پس اگر پورت از بیرون قابل دسترسی بود، هر کسی می‌توانست
+ * `ce_refresh` (رفرش‌توکن ۱۴روزه) را در بدنهٔ پاسخ بخواند — یعنی دور زدن کامل HttpOnly.
+ *
+ * حالا: امضای HMAC الزامی است؛ بدون secret فقط loopback (نصب تک‌سروری) و فقط
+ * برای سازگاری با نسخهٔ قبلی Next پذیرفته می‌شود.
+ */
 function isBffBridgeRequest(request) {
-  const headerVal =
-    request?.headers?.['x-ce-bff'] ??
-    request?.header?.['x-ce-bff'] ??
-    request?.req?.headers?.['x-ce-bff'];
-  if (String(headerVal || '').trim() === '1') return true;
-  const rawHeaders = request?.rawHeaders || request?.req?.rawHeaders;
-  if (Array.isArray(rawHeaders)) {
-    for (let i = 0; i < rawHeaders.length - 1; i += 2) {
-      if (String(rawHeaders[i]).toLowerCase() === 'x-ce-bff' && String(rawHeaders[i + 1]).trim() === '1') {
-        return true;
+  const verdict = verifyBffBridge(request, { cookies: readCookieFromRequest(request) });
+  if (!verdict.ok) {
+    if (verdict.statusCode === 403) {
+      // لاگ بدون نشت داده (فقط دلیل و مسیر)
+      try {
+        getActionLogger().warn({
+          category: 'auth',
+          action: 'auth.bff.bridge_rejected',
+          errorCode: 'BFF_BRIDGE_REJECTED',
+          statusCode: 403,
+          message: `Unsigned/invalid BFF bridge request rejected: ${verdict.reason}`,
+          meta: { reason: verdict.reason, mode: verdict.mode },
+        });
+      } catch {
+        // لاگر آماده نیست؛ فقط رد کن
       }
     }
+    return false;
   }
-  return false;
+  if (verdict.mode === 'legacy-loopback' && sharedSecret()) {
+    try {
+      getActionLogger().warn({
+        category: 'auth',
+        action: 'auth.bff.legacy_bridge_used',
+        message: 'BFF bridge accepted via legacy x-ce-bff on loopback; update the frontend to sign requests',
+      });
+    } catch {
+      // ignore
+    }
+  }
+  return true;
+}
+
+function readCookieFromRequest(request) {
+  const candidates = [
+    request?.headers?.cookie,
+    request?.header?.cookie,
+    request?.req?.headers?.cookie,
+  ];
+  for (const value of candidates) {
+    if (typeof value === 'string' && value.trim()) return value;
+  }
+  return '';
 }
 
 function withBffBridgedCookies(payload, request, response) {

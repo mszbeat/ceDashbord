@@ -377,11 +377,109 @@ export function dedupeSetCookies(cookies: string[]): string[] {
   return order.map((k) => latestByKey.get(k)!).filter(Boolean);
 }
 
-export function buildForwardClientHeaders(incoming: Headers, cookieHeader: string): Record<string, string> {
+/**
+ * امضای درخواست «پل BFF» — باید **بایت‌به‌بایت** با
+ * `backend/services/http/bff-bridge.js` یکی باشد (تست: `tests/bff-bridge.test.mjs`).
+ *
+ * چرا WebCrypto و نه `node:crypto`: این ماژول از `middleware.ts` import می‌شود و
+ * middleware در **Edge Runtime** اجرا می‌شود؛ `node:crypto` آنجا وجود ندارد
+ * (`UnhandledSchemeError` در بیلد). `crypto.subtle` در Edge و Node 18+ یکسان کار می‌کند.
+ *
+ * ⚠️ اگر این دو پیاده‌سازی از هم جدا شوند، تمام ورودها می‌شکنند (بک‌اند امضا را رد
+ * می‌کند و کوکی‌ها به مرورگر نمی‌رسند).
+ */
+const bffEncoder = new TextEncoder();
+
+function bytesToHex(bytes: Uint8Array): string {
+  return Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+function toBase64Url(bytes: Uint8Array): string {
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+async function bffCookieHash(cookieHeader: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', bffEncoder.encode(String(cookieHeader || '')));
+  return bytesToHex(new Uint8Array(digest));
+}
+
+function bffSigningString(p: { ts: string; nonce: string; method: string; path: string; cookieHash: string }): string {
+  return [p.ts, p.nonce, p.method, p.path, p.cookieHash].join('.');
+}
+
+/**
+ * ⚠️ `async` است چون middleware در **Edge Runtime** اجرا می‌شود و `node:crypto` در
+ * دسترس نیست؛ WebCrypto (`crypto.subtle`) هم در Edge و هم در Node 18+ موجود است.
+ * الگوریتم (HMAC-SHA256 روی `ts.nonce.method.path.sha256(cookies)`) دقیقاً همان
+ * چیزی است که بک‌اند با `node:crypto` محاسبه می‌کند.
+ */
+export async function signBffRequest(params: {
+  method: string;
+  path: string;
+  cookies?: string;
+  secret?: string;
+  nonce?: string;
+  now?: number;
+}): Promise<Record<string, string>> {
+  const secret = String(params.secret || '').trim();
+  if (secret.length < 16) return {}; // حالت سازگاری: بدون کلید، امضا ساخته نمی‌شود
+  const now = params.now ?? Date.now();
+  const ts = String(now);
+  const nonce = params.nonce || toBase64Url(crypto.getRandomValues(new Uint8Array(16)));
+  const cookieHash = await bffCookieHash(params.cookies || '');
+
+  const key = await crypto.subtle.importKey(
+    'raw',
+    bffEncoder.encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+  const signature = await crypto.subtle.sign(
+    'HMAC',
+    key,
+    bffEncoder.encode(bffSigningString({ ts, nonce, method: params.method, path: params.path, cookieHash })),
+  );
+
+  return {
+    'x-ce-bff-ts': ts,
+    'x-ce-bff-nonce': nonce,
+    'x-ce-bff-sig': toBase64Url(new Uint8Array(signature)),
+  };
+}
+
+/**
+ * هدرهای ارسالی به بک‌اند، همراه با **امضای BFF**.
+ *
+ * 🐞 قبلاً فقط `x-ce-bff: 1` فرستاده می‌شد. بک‌اند هم با دیدن همان مقدار، کوکی‌های
+ * HttpOnly را در بدنهٔ JSON می‌گذاشت — یعنی اگر پورت بک‌اند از بیرون در دسترس بود،
+ * هر کلاینتی می‌توانست `ce_refresh` را بخواند. اکنون امضای HMAC با
+ * `CE_BFF_SHARED_SECRET` فرستاده می‌شود و هدر خامِ بدون امضا از راه دور رد می‌شود.
+ *
+ * `path` باید **همان مسیر بک‌اند** باشد که درخواست به آن می‌رود (نه مسیر فرانت).
+ */
+export async function buildForwardClientHeaders(
+  incoming: Headers,
+  cookieHeader: string,
+  target?: { method?: string; path: string },
+): Promise<Record<string, string>> {
   const headers: Record<string, string> = {
     accept: 'application/json',
+    // برای سازگاری با نسخهٔ قدیمی/همین‌هاست؛ صحت آن با امضای زیر تعیین می‌شود
     'x-ce-bff': '1',
   };
+
+  if (target?.path) {
+    Object.assign(headers, await signBffRequest({
+      method: String(target.method || 'GET').toUpperCase(),
+      path: target.path,
+      cookies: cookieHeader || '',
+      secret: process.env.CE_BFF_SHARED_SECRET,
+    }));
+  }
+
   if (cookieHeader) {
     headers.cookie = cookieHeader;
   }
@@ -533,7 +631,7 @@ export async function probeSessionWithCleanRecovery(
       {
         method: 'GET',
         cache: 'no-store',
-        headers: buildForwardClientHeaders(incomingHeaders, cookieVal),
+        headers: await buildForwardClientHeaders(incomingHeaders, cookieVal, { method: 'GET', path: '/api/auth/me' }),
       },
       { timeoutMs: DEFAULT_SESSION_TIMEOUT_MS },
     );
@@ -688,7 +786,7 @@ async function executeRefreshWithRecovery(
       method: 'POST',
       cache: 'no-store',
       headers: {
-        ...buildForwardClientHeaders(incomingHeaders, cookieVal),
+        ...await buildForwardClientHeaders(incomingHeaders, cookieVal, { method: 'POST', path: '/api/auth/refresh' }),
         'content-type': 'application/json',
       },
       body: '{}',
@@ -804,7 +902,7 @@ export async function peekRefreshToken(
       {
       method: 'GET',
       cache: 'no-store',
-      headers: buildForwardClientHeaders(incomingHeaders, incomingCookieHeader),
+      headers: await buildForwardClientHeaders(incomingHeaders, incomingCookieHeader, { method: 'GET', path: '/api/auth/refresh/peek' }),
     },
       { timeoutMs: DEFAULT_SESSION_TIMEOUT_MS },
     );
@@ -876,7 +974,7 @@ export async function performLoginWithRecovery(
       method: 'POST',
       cache: 'no-store',
       headers: {
-        ...buildForwardClientHeaders(incomingHeaders, cookieVal),
+        ...await buildForwardClientHeaders(incomingHeaders, cookieVal, { method: 'POST', path: '/api/auth/login' }),
         'content-type': 'application/json',
       },
       body: bodyText,
@@ -983,7 +1081,7 @@ export async function performRegisterWithRecovery(
     method: 'POST',
     cache: 'no-store',
     headers: {
-      ...buildForwardClientHeaders(incomingHeaders, probe.cookieHeader),
+      ...await buildForwardClientHeaders(incomingHeaders, probe.cookieHeader, { method: 'POST', path: '/api/auth/register' }),
       'content-type': 'application/json',
     },
     body: sanitizedBody,},
@@ -1026,7 +1124,7 @@ export async function performLogoutWithRecovery(
     method: 'POST',
     cache: 'no-store',
     headers: {
-      ...buildForwardClientHeaders(incomingHeaders, incomingCookieHeader),
+      ...await buildForwardClientHeaders(incomingHeaders, incomingCookieHeader, { method: 'POST', path: '/api/auth/logout' }),
       'content-type': 'application/json',
     },
     body: '{}',},

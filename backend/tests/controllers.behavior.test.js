@@ -27,6 +27,12 @@ function invoke(controller, config, handlerName, input = {}) {
     getHeader(k) { return this.headers[String(k).toLowerCase()]; },
     setHeader(k, v) { this.headers[String(k).toLowerCase()] = v; },
   };
+  /**
+   * `remoteAddress` برای تست پل BFF لازم است: بک‌اند بدون کلید مشترک فقط درخواست
+   * loopback را در حالت BFF می‌پذیرد. پیش‌فرض تست، loopback است تا رفتار «نصب
+   * تک‌سروری» شبیه‌سازی شود؛ برای تست «درخواست از راه دور» مقدار دیگری بدهید.
+   */
+  const remoteAddress = input.remoteAddress || '127.0.0.1';
   const request = {
     url,
     queryString,
@@ -34,7 +40,9 @@ function invoke(controller, config, handlerName, input = {}) {
     data,
     postData: data,
     headers: { 'user-agent': 'pd2-test', ...headers },
-    ip: '127.0.0.1',
+    ip: remoteAddress,
+    socket: { remoteAddress },
+    connection: { remoteAddress },
   };
   const inputData = { header: request.headers, params, queryString, data };
 
@@ -248,7 +256,7 @@ test('auth-controller: register/login/refresh/logout/me/role/removeUser با ت�
   assert.equal(authCalls.some(([kind, payload]) => kind === 'remove' && payload.username === 'ali'), true);
 });
 
-test('auth-controller BFF bridge: فقط هنگام ارسال هدر x-ce-bff: 1 کوکی‌های ce_refresh در _ceSetCookies ارسال می‌شوند', async () => {
+test('auth-controller BFF bridge: فقط درخواست امضاشده (یا loopback بدون کلید) کوکی‌ها را در _ceSetCookies می‌گیرد', async () => {
   const { controller: AuthController } = require(path.join(ROOT, 'controllers', 'auth', 'main.js'));
   const authConfig = require(path.join(ROOT, 'controllers', 'auth', 'config.js'));
   const SessionManager = require(path.join(ROOT, 'controllers', 'auth', 'session-manager'));
@@ -286,6 +294,7 @@ test('auth-controller BFF bridge: فقط هنگام ارسال هدر x-ce-bff: 
       remove(cb) { cb(null, ['OK']); },
     },
     headers: { 'x-ce-bff': '1' },
+    remoteAddress: '127.0.0.1',
   }).promise;
   assert.equal(Array.isArray(regBff._ceSetCookies), true);
   assert.equal(regBff._ceSetCookies.some((c) => c.startsWith('ce_refresh=') && c.includes('Path=/')), true);
@@ -294,6 +303,7 @@ test('auth-controller BFF bridge: فقط هنگام ارسال هدر x-ce-bff: 
     data: { username: 'u1', password: 'p1', rememberMe: true },
     session,
     headers: { 'x-ce-bff': '1' },
+    remoteAddress: '127.0.0.1',
   }).promise;
   assert.equal(Array.isArray(loginBff._ceSetCookies), true);
   const bffRefreshLine = loginBff._ceSetCookies.find((c) => c.startsWith('ce_refresh='));
@@ -303,6 +313,7 @@ test('auth-controller BFF bridge: فقط هنگام ارسال هدر x-ce-bff: 
   const refreshBff = await invoke(controller, authConfig, 'refresh', {
     session,
     headers: { 'x-ce-bff': '1', cookie: `ce_refresh=${encodeURIComponent(rt1)}` },
+    remoteAddress: '127.0.0.1',
   }).promise;
   assert.equal(Array.isArray(refreshBff._ceSetCookies), true);
   assert.equal(refreshBff._ceSetCookies.some((c) => c.startsWith('ce_refresh=') && c.includes('Path=/')), true);
@@ -310,6 +321,7 @@ test('auth-controller BFF bridge: فقط هنگام ارسال هدر x-ce-bff: 
   const logoutBff = await invoke(controller, authConfig, 'logout', {
     session,
     headers: { 'x-ce-bff': '1', cookie: `ce_refresh=${encodeURIComponent(rt1)}` },
+    remoteAddress: '127.0.0.1',
   }).promise;
   assert.equal(Array.isArray(logoutBff._ceSetCookies), true);
   assert.equal(logoutBff._ceSetCookies.some((c) => c.startsWith('token=;') && c.includes('Path=/') && c.includes('Max-Age=0')), true);
@@ -820,5 +832,48 @@ test('SECURITY: هیچ هندلر پنل ادمین با نقش غیرادمین
         `${handler} باید برای نقش ${session.roles.join(',')} با ۴۰۳ رد شود`,
       );
     }
+  }
+});
+
+test('SECURITY: مهاجم راه‌دور نمی‌تواند کوکی نشست را از بدنهٔ پاسخ بکشد', async () => {
+  const { controller: AuthController } = require(path.join(ROOT, 'controllers', 'auth', 'main.js'));
+  const authConfig = require(path.join(ROOT, 'controllers', 'auth', 'config.js'));
+  const SessionManager = require(path.join(ROOT, 'controllers', 'auth', 'session-manager'));
+
+  const sessionStore = { samadUsername: 'visitor', roles: ['visitor'] };
+  const session = {
+    set(values, cb) { Object.assign(sessionStore, values); cb(null, sessionStore); },
+    get(keys, cb) { const out = {}; for (const k of keys) out[k] = sessionStore[k]; cb(null, out); },
+    remove(cb) { sessionStore.samadUsername = 'visitor'; sessionStore.roles = ['visitor']; cb(null, ['OK']); },
+  };
+  const authService = { async addUser() { return { ok: true }; }, async authenticate() { return { ok: true }; } };
+  const samadService = { async addUser() { return () => {}; }, async getRole() { return ['visitor']; } };
+  const controller = new AuthController({}, {}, authConfig, authService, new SessionManager({ useMemoryOnly: true }), samadService);
+
+  const prevSecret = process.env.CE_BFF_SHARED_SECRET;
+  delete process.env.CE_BFF_SHARED_SECRET; // سخت‌ترین حالت: بدون کلید مشترک
+  try {
+    // ۱) مهاجم از یک IP عمومی همان هدر خام را می‌فرستد → نباید کوکی در بدنه بگیرد
+    const attackerLogin = await invoke(controller, authConfig, 'login', {
+      data: { username: 'victim', password: 'p1', rememberMe: true },
+      session,
+      headers: { 'x-ce-bff': '1' },
+      remoteAddress: '203.0.113.9',
+    }).promise;
+    assert.equal('_ceSetCookies' in attackerLogin, false, 'بدنه نباید هیچ کوکی‌ای داشته باشد');
+    assert.doesNotMatch(JSON.stringify(attackerLogin), /ce_refresh/, 'هیچ ردی از رفرش‌توکن در پاسخ نباشد');
+
+    // ۲) همان درخواست از loopback (Next.js روی همان هاست) مجاز است — بدون شکستن سرویس
+    const legitLogin = await invoke(controller, authConfig, 'login', {
+      data: { username: 'victim2', password: 'p2', rememberMe: true },
+      session,
+      headers: { 'x-ce-bff': '1' },
+      remoteAddress: '127.0.0.1',
+    }).promise;
+    assert.equal(Array.isArray(legitLogin._ceSetCookies), true, 'نصب تک‌سروری باید کار کند');
+    assert.equal(legitLogin._ceSetCookies.some((c) => c.startsWith('ce_refresh=')), true);
+  } finally {
+    if (prevSecret === undefined) delete process.env.CE_BFF_SHARED_SECRET;
+    else process.env.CE_BFF_SHARED_SECRET = prevSecret;
   }
 });

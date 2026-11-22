@@ -111,7 +111,7 @@ export default async function AdminPage() {
     const res = await fetch(new URL('/api/admin/overview', backendUrl).toString(), {
       method: 'GET',
       cache: 'no-store',
-      headers: buildForwardClientHeaders(incomingHeaders, activeCookieHeader),
+      headers: await buildForwardClientHeaders(incomingHeaders, activeCookieHeader, { method: 'GET', path: '/api/admin/overview' }),
     });
 
     if (res.status === 401 || res.status === 403) {

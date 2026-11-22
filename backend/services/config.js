@@ -306,6 +306,28 @@ function validateEnv(env = process.env) {
     if (String(env.CE_DB_SSL || '').toLowerCase() !== 'true') {
       warnings.push('CE_DB_SSL=true توصیه می‌شود (اتصال رمزنگاری‌شده به دیتابیس)');
     }
+    /**
+     * پل BFF: بدون کلید مشترک، بک‌اند نمی‌تواند مطمئن باشد درخواست از Next.js آمده است.
+     * در production این معمولاً یعنی یا روی loopback هستید (پذیرفته)، یا یک پورت باز
+     * دارید که هر کسی می‌تواند کوکی‌های HttpOnly را از بدنهٔ JSON بکشد.
+     */
+    const bffSecret = String(env.CE_BFF_SHARED_SECRET || '').trim();
+    if (!bffSecret) {
+      warnings.push(
+        'CE_BFF_SHARED_SECRET تنظیم نشده؛ پل BFF فقط روی loopback پذیرفته می‌شود. ' +
+          'اگر Next.js روی هاست دیگری است، این کلید را (≥۱۶ کاراکتر) در هر دو طرف تنظیم کنید.',
+      );
+    } else if (bffSecret.length < 16) {
+      errors.push('CE_BFF_SHARED_SECRET باید حداقل ۱۶ کاراکتر باشد');
+    }
+    const host = String(env.BACKEND_HOST || '').trim();
+    if ((!host || host === '0.0.0.0' || host === '::') && !bffSecret) {
+      warnings.push(
+        'BACKEND_HOST=0.0.0.0 + نبود CE_BFF_SHARED_SECRET: هر کسی که به این پورت دسترسی ' +
+          'شبکه‌ای داشته باشد می‌تواند کوکی نشست را در بدنهٔ پاسخ بگیرد. ' +
+          'یا BACKEND_HOST=127.0.0.1 بگذارید یا کلید BFF را تنظیم کنید.',
+      );
+    }
   }
   return { errors, warnings };
 }
