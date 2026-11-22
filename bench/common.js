@@ -15,6 +15,8 @@ const UPSERT_COLUMNS = [
   'ln_avg_installments','rotbe','flags','cats','counters','metrics','paths','services',
   'credit_alerts','display_extras','analysis_version',
 ];
+const UUID_PREFIX = { tavan_mellat: '11', tavan_resalat: '22', tavan_postbank: '33' };
+
 const JSON_COLUMNS = new Set(['flags','cats','counters','metrics','paths','services','credit_alerts','display_extras']);
 
 function makeRows(ev, bankKey, base, count, { days = 30, startDay = 1 } = {}) {
@@ -24,7 +26,9 @@ function makeRows(ev, bankKey, base, count, { days = 30, startDay = 1 } = {}) {
     const dayIdx = i % days;
     const dd = String(((startDay - 1 + dayIdx) % 28) + 1).padStart(2, '0');
     const mm = dayIdx + startDay > 28 ? '09' : '08';
-    sample.requestId = `${bankKey.slice(6, 8)}${String(i).padStart(6, '0')}-c392-4e34-aca3-4778cea7e8b9`;
+    // B4: `request_id` باید UUID معتبر باشد (وگرنه ingest v2 ردیف را رد می‌کند و مقایسه
+    // طلایی روی دیتابیس خالی انجام می‌شود). پیشوندها hex هستند: ۱۱/۲۲/۳۳.
+    sample.requestId = `${UUID_PREFIX[bankKey]}${String(i).padStart(6, '0')}-c392-4e34-aca3-4778cea7e8b9`;
     sample.insertDate_yearMonthDay = `1405${mm}${dd}`;
     sample.insertDate_full = `1405${mm}${dd}${String(i % 24).padStart(2, '0')}${String(i % 60).padStart(2, '0')}${String(i % 60).padStart(2, '0')}000`;
     if (sample.input) sample.input.uniqueKey = `uk-${i}`;

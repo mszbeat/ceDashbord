@@ -14,7 +14,8 @@ function makeRows(evaluator, bankKey, count, { days = 5 } = {}) {
     const stamp = `1405080${dayIndex + 1}${String(index % 24).padStart(2, '0')}${String(index % 60).padStart(2, '0')}000`;
     const isSuccess = index % 7 !== 0;
     rows.push({
-      request_id: `${prefix}00000-${String(index).padStart(4, '0')}-4e34-aca3-4778cea7e8b9`,
+      // UUID معتبر (۸ رقم در گروه اول) — وگرنه ingest طبق B4 ردیف را رد می‌کند
+      request_id: `${prefix}000000-${String(index).padStart(4, '0')}-4e34-aca3-4778cea7e8b9`,
       day,
       inserted_at: stamp,
       stamp_key: stamp,

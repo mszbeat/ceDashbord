@@ -93,6 +93,7 @@ exports.list = async function (queryString, session) {
     status: query.status || undefined,
     limit: query.limit ? Number(query.limit) : undefined,
     offset: query.offset ? Number(query.offset) : undefined,
+    cursor: query.cursor ? String(query.cursor) : undefined,
   });
 };
 

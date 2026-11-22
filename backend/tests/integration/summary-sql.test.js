@@ -55,7 +55,8 @@ pgTest('فاز ۳: summary مسیر SQL با مسیر bump برابر است (ه
     }
     await db.query('ANALYZE');
     for (const bankKey of ['tavan_mellat', 'tavan_resalat', 'tavan_postbank']) {
-      const legacy = await service.summary(bankKey, '1405-08-01', '1405-09-30', { useSql: false });
+      // مسیر قدیمی = همان `buildDashboard` + `bump` روی ردیف‌های v2 (dialect-v2.cursorPage)
+      const legacy = await service.legacySummary(bankKey, '1405-08-01', '1405-09-30');
       const sql = await service.summary(bankKey, '1405-08-01', '1405-09-30');
       const strip = (value) => {
         const copy = JSON.parse(JSON.stringify(value));

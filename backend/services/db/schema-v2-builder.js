@@ -35,6 +35,9 @@ const BASE_COLUMNS = [
   ['flags', 'bigint', 'NOT NULL DEFAULT 0'],
   ['service_kinds', 'bigint', 'NOT NULL DEFAULT 0'],
   ['path_bits', 'bigint', 'NOT NULL DEFAULT 0'],
+  // کدام شمارنده‌ها در این ردیف **وجود داشتند** (حتی با مقدار ۰) — مسیر قدیمی کلید صفر
+  // را هم می‌ساخت، پس SUM تنها کافی نیست و حضور باید ذخیره شود
+  ['counter_present', 'bigint', 'NOT NULL DEFAULT 0'],
   ['total_time_s', 'double precision', ''],
   ['pd', 'double precision', ''],
   ['score_req', 'double precision', ''],

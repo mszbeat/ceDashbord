@@ -187,11 +187,22 @@ function toV2Row(row, ctx) {
   // (همان رفتار v1 که `stampOf` با «—:—» بازمی‌ساخت) تا هیچ ردیفی بی‌ترتیب نماند.
   const ts = stampEpochMs(stampDigits) ?? dayStartEpochMs(row.day);
 
+  // حضور شمارنده‌ها (حتی مقدار ۰) — مسیر قدیمی کلید صفر می‌سازد، SQL فقط با SUM نمی‌تواند
+  // تفکیک کند؛ هر شمارنده در یک بیت.
+  const counterIds = registry.counter || [];
+  const countersOfRow = asObject(row.counters);
+  let counterPresent = 0n;
+  counterIds.forEach((id, index) => {
+    const value = countersOfRow[id];
+    if (value !== undefined && value !== null) counterPresent |= 1n << BigInt(index);
+  });
+
   const sampleRow = {
     ts,
     flags: bitmask.toString(),
     service_kinds: packServiceKinds(registry, row.services || {}).toString(),
     path_bits: packPathKinds(registry, row.paths || {}).toString(),
+    counter_present: counterPresent.toString(),
     total_time_s: numOrNull(row.total_time_s),
     pd: numOrNull(row.pd),
     score_req: numOrNull(row.score_req),
@@ -309,7 +320,7 @@ function serviceTextsOf(row, registry, valueDict, bankKey) {
  * ردیف‌های v2 را به شکل v1 برمی‌گرداند؛ همان چیزی که `SummaryService.consumeRow` می‌خواهد.
  * `base` و `stamp` به‌صورت کامل بازسازی می‌شوند تا ستون‌های تکراری ذخیره نشوند.
  */
-function fromV2Row({ sample, detail, valueDict, catDict, bankKey, registry }) {
+function fromV2Row({ sample, detail, valueDict, catDict, bankKey, registry, stats }) {
   const status = sample.is_success ? 'success' : 'fail';
   const day = toJalaliDay(sample.day);
   const stampDigits = stampDigitsFromEpoch(sample.ts);
@@ -319,12 +330,16 @@ function fromV2Row({ sample, detail, valueDict, catDict, bankKey, registry }) {
   for (const [id, mask] of Object.entries(masks)) flags[id] = (BigInt(sample.flags ?? 0) & mask) !== 0n;
 
   const cats = {};
+  const missStats = stats || {};
   (sample.cat_codes || []).forEach((code, index) => {
     if (!code) return;
     const id = registry.cat[index];
     if (!id) return;
     const value = catDict.valueOf(bankKey, index + 1, code);
     if (value !== undefined) cats[id] = value;
+    // کد بدون برچسب: یعنی دیکشنری پس از بارگذاری عوض شده (ingest بعد از startup).
+    // `cat_codes` خام نگه داشته می‌شود تا لایهٔ بالاتر بتواند بازخوانی و تکرار کند.
+    else missStats.miss = (missStats.miss || 0) + 1;
   });
 
   const services = {};
@@ -341,9 +356,9 @@ function fromV2Row({ sample, detail, valueDict, catDict, bankKey, registry }) {
     if (sample[column] !== null && sample[column] !== undefined) metrics[id] = Number(sample[column]);
   }
   const counters = {};
-  for (const [id, column] of Object.entries(registry.counterColumnMap || {})) {
+  Object.entries(registry.counterColumnMap || {}).forEach(([id, column]) => {
     if (sample[column] !== null && sample[column] !== undefined) counters[id] = Number(sample[column]);
-  }
+  });
 
   const serviceStates = {};
   (sample.service_text_codes || []).forEach((code, index) => {

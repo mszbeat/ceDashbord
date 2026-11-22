@@ -42,6 +42,10 @@ class V2Dialect {
     this.valueDict = new (require('./value-dict').ValueDict)(db);
     this.catDict = require('./schema-v2-builder').createCatDict(db);
     this.loaded = false;
+    /** شمارندهٔ کدهای بدون برچسب در آخرین نگاشت (برای بازخوانی دیکشنری) */
+    this.catMisses = 0;
+    /** سقف پرش صفحه (OFFSET) — بالاتر از این، فقط صفحه‌بندی cursor مجاز است */
+    this.maxOffset = Number(process.env.CE_LIST_MAX_OFFSET || 100000);
   }
 
   get name() {
@@ -83,6 +87,19 @@ class V2Dialect {
   }
 
   /** ستون‌های کامل (شامل جزئیات jsonb) — برای buildDashboard/گزارش */
+  /**
+   * دیکشنری‌ها (cat_dict/value_dict) در حافظه کش می‌شوند — ولی ingestion می‌تواند
+   * مقدار تازه اضافه کند. اگر کدی در ردیف‌ها بدون معنی بماند، یک‌بار دیکشنری‌ها را
+   * بازخوانی می‌کنیم و نگاشت را تکرار می‌کنیم (بدون restart، بدون گم‌شدن مقدار).
+   */
+  async refreshDicts() {
+    this.valueDict = new (require('./value-dict').ValueDict)(this.db);
+    this.catDict = require('./schema-v2-builder').createCatDict(this.db);
+    await this.valueDict.load();
+    await this.catDict.load();
+    this.dictsLoadedAt = Date.now();
+  }
+
   selection(bankKey, alias = 's') {
     return `${alias}.*, d.flag_extra, d.cat_extra, d.list_extra, d.rank_extra, d.credit_extra, d.credit_value, d.summary_extra, ${alias}.day AS day_iso`;
   }
@@ -99,6 +116,7 @@ class V2Dialect {
       ${alias}.amount_kind, ${alias}.score_req, ${alias}.flags, ${alias}.cat_codes,
       ${alias}.has_overdue, ${alias}.cheque_count, ${alias}.cheque_amount,
       ${alias}.overdue_count, ${alias}.overdue_amount, ${alias}.has_cheque,
+      ${alias}.total_time_s AS rank_value,
       d.credit_value`;
   }
 
@@ -109,7 +127,7 @@ class V2Dialect {
   }
 
   /** ردیف v2 → شکل v1 (همان چیزی که consumeRow/UI می‌خواهد) */
-  hydrate(bankKey, row) {
+  hydrate(bankKey, row, stats) {
     return fromV2Row({
       sample: row,
       detail: {
@@ -121,6 +139,7 @@ class V2Dialect {
         credit_value: row.credit_value,
         summary_extra: row.summary_extra,
       },
+      stats,
       valueDict: this.valueDict,
       catDict: this.catDict,
       bankKey,
@@ -174,8 +193,17 @@ class V2Dialect {
    * همان ایندکس `idx_*_day_ts` است. با این ترتیب هیچ Sort node لازم نیست
    * (B4: قبلاً `COALESCE(...)` ترتیب را از ایندکس جدا می‌کرد و هر صفحه sort کامل می‌شد).
    */
-  async cursorPage(table, from, to, cursor, limit) {
+  /** نسخهٔ این dialect با اتصال سریال‌شده (برای `buildDashboard` مسیر قدیمی) */
+  onSerial(db) {
+    const clone = Object.create(Object.getPrototypeOf(this));
+    Object.assign(clone, this);
+    clone.db = db;
+    return clone;
+  }
+
+  async cursorPage(table, from, to, cursor, limit, retried = false) {
     const bankKey = this.bankOf(table);
+    this.catMisses = 0;
     const [fromIso, toIso] = this.isoRange(from, to);
     const [cursorDay, cursorStamp, cursorId] = cursor;
     // مهلک: `hydrate()` روز را **شمسی** برمی‌گرداند و سرویس همان را به‌عنوان cursor پس می‌دهد.
@@ -200,14 +228,22 @@ class V2Dialect {
         LIMIT $${hasCursor ? 6 : 3}::int`,
       params,
     );
-    return { rows: result.rows.map((row) => this.hydrate(bankKey, row)), rowCount: result.rows.length };
+    const stats = {};
+    const rows = result.rows.map((row) => this.hydrate(bankKey, row, stats));
+    this.catMisses = stats.miss || 0;
+    if (this.catMisses && !retried) {
+      // دیکشنری بعد از بالا آمدن سرویس عوض شده (ingest تازه) → یک‌بار بازخوانی و تکرار
+      await this.refreshDicts();
+      return this.cursorPage(table, from, to, cursor, limit, true);
+    }
+    return { rows, rowCount: rows.length };
   }
 
   /**
    * `/api/list` روی v2.
    * ورودی همان `{type, id, value, status}` است که v1 از پارامترها می‌ساخت.
    */
-  async list({ table, params = {}, type, id, value, status, limit, offset, from, to }) {
+  async list({ table, params = {}, type, id, value, status, limit, offset, from, to, cursor }) {
     const bankKey = this.bankOf(table);
     // همان قواعد تفسیر `type/id/value` که `dialect-v1.buildList` دارد
     if (!type) {
@@ -284,21 +320,44 @@ class V2Dialect {
       where.push(`s.is_success = ${add(status === 'success')}`);
     }
 
-    const result = await this.db.query(
-      `SELECT COUNT(*) OVER() AS total_count, ${this.listSelection()}
+    /**
+     * ۳-الف — صفحه‌بندی keyset.
+     *
+     *  * ترتیب پیش‌فرض `(day, ts, request_id)` — دقیقاً ایندکس `idx_*_day_ts`.
+     *  * برای `metric`/`slow` کلید `(مقدار DESC، request_id)` است.
+     *  * `offset` فقط برای «پرش به صفحهٔ N» و با سقف `CE_LIST_MAX_OFFSET`.
+     *  * `total` از شمارش فیلترشده (ایندکس‌محور) می‌آید، نه `COUNT(*) OVER()` در هر صفحه.
+     */
+    const rankType = (type === 'metric' && id) || type === 'slow';
+    const cursorState = this.decodeCursor(cursor, rankType);
+    const safeOffset = Math.min(Math.max(Number(offset) || 0, 0), this.maxOffset);
+
+    if (cursorState) {
+      if (rankType) {
+        const column = type === 'slow' ? 's.total_time_s' : metricColumnMap[id];
+        where.push(`(${column}, s.request_id) < (${add(cursorState.value)}::double precision, ${add(cursorState.id)}::uuid)`);
+      } else {
+        where.push(`(s.day, s.ts, s.request_id) > (${add(cursorState.day)}::date, ${add(cursorState.ts)}::bigint, ${add(cursorState.id)}::uuid)`);
+      }
+    }
+
+    const sql =
+      `SELECT ${this.listSelection()}
          FROM ${table} s
          LEFT JOIN sample_detail d ON d.bank = $3::text AND d.day = s.day AND d.request_id = s.request_id
         WHERE ${where.join(' AND ')}
         ORDER BY ${order}
-        LIMIT ${add(limit)}::int OFFSET ${add(offset)}::int`,
-      values,
-    );
-
+        LIMIT ${add(limit)}::int ${cursorState ? '' : `OFFSET ${add(safeOffset)}::int`}`;
+    const result = await this.db.query(sql, values);
+    const total = await this.countForFilter(bankKey, table, where, values, {
+      type, id, value, status, fromIso, toIso, masks, metricColumnMap,
+    });
     // نگاشت سبک: فهرست به jsonb‌های `sample_detail` نیازی ندارد (۶۸KB→۰ در ۱۰۰ ردیف)
     const masksForList = masks;
     const dict = this.valueDict;
     const catDict = this.catDict;
     const catIds = registry.cat;
+    let catMisses = 0;
     const rows = result.rows.map((row) => {
       const stamp = row.ts ? stampDigitsFromEpoch(row.ts) : null;
       const onFlags = [];
@@ -317,6 +376,7 @@ class V2Dialect {
         if (!catId || !code) continue;
         const value = catDict.valueOf(bankKey, catIndex + 1, code);
         if (value !== undefined) cats[catId] = value;
+        else { catMisses += 1; }
       }
       // اولویت با `credit_alert` ذخیره‌شدهٔ v1 (resalat) و در نبودِ آن همان ساخت مشتق‌شده
       const alerts = row.credit_value
@@ -352,9 +412,15 @@ class V2Dialect {
         flags: Object.fromEntries(flagEntries),
         cats,
         credit_alerts: alerts,
-        total_count: Number(row.total_count),
       };
     });
+    // اگر کدی در دیکشنری نبود (ingestion بعد از بالا آمدن سرویس مقدار تازه افزوده)،
+    // یک‌بار دیکشنری را بازخوانی و نگاشت را تکرار می‌کنیم تا هیچ برچسبی خالی نماند.
+    if (catMisses && this.refreshDicts) {
+      await this.refreshDicts();
+      return this.list({ table, params, type, id, value, status, limit, offset, from, to, cursor });
+    }
+    const lastRow = result.rows[result.rows.length - 1];
     return {
       type,
       id,
@@ -367,8 +433,79 @@ class V2Dialect {
           .map(([k]) => k)
           .sort(jsonbKeyOrder),
       })),
-      total: rows[0]?.total_count ?? 0,
+      total,
+      nextCursor: rows.length === Number(limit) ? this.nextCursorOf(lastRow, rankType) : null,
+      offset: cursorState ? null : safeOffset,
     };
+  }
+
+  /** رمزگذاری/رمزگشایی cursor — رشتهٔ شفاف base64 برای کلاینت */
+  encodeCursor(state) {
+    if (!state) return null;
+    return Buffer.from(JSON.stringify(state), 'utf8').toString('base64url');
+  }
+
+  decodeCursor(cursor, rankType) {
+    if (!cursor || typeof cursor !== 'string') return null;
+    let parsed;
+    try {
+      parsed = JSON.parse(Buffer.from(String(cursor), 'base64url').toString('utf8'));
+    } catch {
+      return null;
+    }
+    if (rankType) {
+      if (!parsed || !UUID_RE.test(String(parsed.id ?? ''))) return null;
+      return { value: parsed.v === null || parsed.v === undefined ? null : Number(parsed.v), id: String(parsed.id) };
+    }
+    if (!parsed || !parsed.d || !UUID_RE.test(String(parsed.id ?? ''))) return null;
+    return { day: toDateIso(String(parsed.d)), ts: Number(parsed.t), id: String(parsed.id) };
+  }
+
+  /** cursor صفحهٔ بعد از آخرین ردیف */
+  nextCursorOf(row, rankType) {
+    if (!row) return null;
+    if (rankType) {
+      return this.encodeCursor({ v: row.rank_value === undefined ? null : row.rank_value, id: row.request_id });
+    }
+    return this.encodeCursor({ d: toJalaliDay(row.day_iso), t: Number(row.ts), id: row.request_id });
+  }
+
+  /**
+   * شمارش کل فیلتر — یک کوئری ایندکس‌محور روی بازهٔ روز (بدون jsonb و بدون join).
+   * برای بازه‌های بسیار بزرگ، تخمین برنامه‌ریز کافی است (سریع و بدون اسکن کامل).
+   */
+  async countForFilter(bankKey, table, where, values, filter) {
+    // همان شرط‌های WHERE مسیر فهرست (شامل بازهٔ روز با $1/$2) دوباره استفاده می‌شوند
+    const base = [where[0]];
+    const params = [filter.fromIso, filter.toIso];
+    const push = (value) => {
+      params.push(value);
+      return `$${params.length}`;
+    };
+    const { type, id, value, status, masks, metricColumnMap } = filter;
+    if (type === 'flag' && id && masks[id]) base.push(`(s.flags & ${masks[id].toString()}) <> 0`);
+    else if (type === 'cat' && id) {
+      const catCode = this.registry[bankKey].cat.indexOf(id) + 1;
+      if (catCode) {
+        if (value !== undefined && value !== null && value !== '') {
+          base.push(`s.cat_codes[${catCode}] = ${push(this.catDict.codeOf(bankKey, catCode, value))}`);
+        } else base.push(`COALESCE(s.cat_codes[${catCode}], 0) > 0`);
+      }
+    } else if (type === 'metric' && id && metricColumnMap[id]) base.push(`s.${metricColumnMap[id]} IS NOT NULL`);
+    else if (type === 'service' && id) {
+      const index = this.registry[bankKey].service.indexOf(id);
+      if (index >= 0) base.push(`((s.service_kinds >> ${BigInt(index) * 3n}) & 7) NOT IN (0, 1)`);
+    } else if (type === 'slow') base.push('s.total_time_s > 4');
+    else if (type === 'creditAlert') base.push('(s.has_overdue OR s.has_cheque)');
+    else if (id && !['all', 'slow', 'creditAlert'].includes(type) && masks[id]) {
+      base.push(`(s.flags & ${masks[id].toString()}) <> 0`);
+    }
+    if (status === 'success' || status === 'fail') base.push(`s.is_success = ${push(status === 'success')}`);
+    const result = await this.db.query(
+      `SELECT COUNT(*)::int AS n FROM ${table} s WHERE ${base.join(' AND ')}`,
+      params,
+    );
+    return Number(result.rows[0]?.n ?? 0);
   }
 
   /**

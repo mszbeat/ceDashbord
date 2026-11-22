@@ -34,6 +34,8 @@ function diff(a, b, label, out = [], depth = 0) {
     return out;
   }
   if (typeof a === 'string' && typeof b === 'string') {
+    // `source` برچسب مسیر محاسبه است (legacy_bump/sql_aggregate) — عدد/محتوا نیست
+    if (label.endsWith('.source')) return out;
     const norm = (s) => s.replace(/\d{4}-\d{2}-\d{2}T[\d:.]+Z/g, '<ts>');
     if (norm(a) !== norm(b)) out.push(`${label}: ${a.slice(0, 80)} != ${b.slice(0, 80)}`);
     return out;
@@ -116,7 +118,8 @@ function diff(a, b, label, out = [], depth = 0) {
     // summary
     const a = await summaryV1.summary(bankKey, range.from, range.to);
     const b = await summaryV2.summary(bankKey, range.from, range.to);
-    entry.summary = { diffs: diff(a, b, 'summary').slice(0, 20), hashV1: hash(a), hashV2: hash(b), equal: hash(a) === hash(b) };
+    entry.summary = { diffs: diff(a, b, 'summary').slice(0, 20), hashV1: hash(a), hashV2: hash(b) };
+    entry.summary.equal = entry.summary.diffs.length === 0;
 
     // list: هر نوع فیلتر
     const flagId = registry[bankKey].flag[0];
@@ -137,14 +140,21 @@ function diff(a, b, label, out = [], depth = 0) {
       try { bv = await summaryV2.list(params); } catch (e) { errB = e.message; }
       const label = `${q.type}:${q.id || ''}${q.status ? ':' + q.status : ''}${q.value !== undefined ? ':' + q.value : ''}${q.limit ? ':p' + q.limit + '-' + q.offset : ''}`;
       if (errA || errB) { entry.list[label] = { errA, errB }; continue; }
-      const cleaned = (v) => ({ ...v, rows: v.rows.map(({ total_count, ...rest }) => rest) });
+      // `nextCursor` فیلد تازهٔ ۳-الف است (صفحه‌بندی کلیدمحور) و در v1 وجود ندارد
+      const cleaned = (v) => ({
+        ...v,
+        nextCursor: undefined,
+        cursor: undefined,
+        rows: v.rows.map(({ total_count, ...rest }) => rest),
+      });
       entry.list[label] = { total: av.total, hashV1: hash(cleaned(av)), hashV2: hash(cleaned(bv)), diffs: diff(cleaned(av), cleaned(bv), label).slice(0, 8) };
     }
 
     // dashboard (کشف سرویس‌ها + شمارش)
     const d1 = await summaryV1.buildDashboard(bankKey, range.from, range.to, 20);
     const d2 = await summaryV2.buildDashboard(bankKey, range.from, range.to, 20);
-    entry.dashboard = { diffs: diff(d1, d2, 'dash').slice(0, 20), equal: hash(d1) === hash(d2) };
+    entry.dashboard = { diffs: diff(d1, d2, 'dash').slice(0, 20) };
+    entry.dashboard.equal = entry.dashboard.diffs.length === 0;
 
     // report HTML
     const r1 = await summaryV1.report(bankKey, range.from, range.to, 20);

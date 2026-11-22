@@ -30,7 +30,7 @@ function getLogger() {
 }
 
 const SAMPLE_COLUMNS = [
-  'ts', 'flags', 'service_kinds', 'path_bits', 'total_time_s', 'pd', 'score_req', 'avg36',
+  'ts', 'flags', 'service_kinds', 'path_bits', 'counter_present', 'total_time_s', 'pd', 'score_req', 'avg36',
   'ln_avg_installments', 'day', 'suggested_amount', 'overdue_amount', 'cheque_amount',
   'request_id', 'model_code', 'status_code', 'error_code', 'message_code', 'rotbe_code',
   'amount_kind', 'overdue_count', 'cheque_count', 'analysis_version', 'is_success',

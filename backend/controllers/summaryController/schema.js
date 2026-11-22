@@ -52,6 +52,8 @@ exports.list = {
     status: { type: 'string', errorMessages: { type: 'status must be a string' } },
     limit: { type: 'string', errorMessages: { type: 'limit must be numeric string' } },
     offset: { type: 'string', errorMessages: { type: 'offset must be numeric string' } },
+    // ۳-الف: صفحه‌بندی keyset (base64url از {d,t,id} یا {v,id})
+    cursor: { type: 'string', errorMessages: { type: 'cursor must be a string' } },
   },
 };
 

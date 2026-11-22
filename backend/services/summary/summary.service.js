@@ -392,8 +392,13 @@ class SummaryService {
     const { key, table } = bankTable(bankInput);
     const { from: f, to: t } = rangeOf(from, to);
     const cap = Math.min(Math.max(Number(rowsCap) || 100, 1), 100);
+    // SKIP LOCKED ندارد ولی یک صف سریال دارد: روی **هر** اتصال (pool یا client) یک کوئری
+    // در لحظه. با pool، درخواست‌های موازی از اتصال‌های مختلف می‌آیند و بی‌خطرند؛ با client
+    // تکی از بازگشت خالی ردیف‌ها جلوگیری می‌کند.
+    const db = { query: this.serialQuery(), exec: this.db.exec };
+    const dialect = this.dialect.onSerial ? this.dialect.onSerial(db) : this.dialect;
     const bank = this.evaluator.getBank(key);
-    const serviceKeysRes = await this.dialect
+    const serviceKeysRes = await dialect
       .serviceDiscovery(table, f, t)
       .catch(() => ({ rows: [] }));
     const presentKeys = new Set(bank.expectedServices ?? []);
@@ -409,12 +414,11 @@ class SummaryService {
     }
     const selectedServices = [...presentKeys].sort();
 
-    const [countRes, daysRes, runsRes, dictRes] = await Promise.all([
-      this.dialect.countRange(table, f, t),
-      this.dialect.days(table, f, t),
-      this.dialect.runsRange(key, f, t),
-      this.db.query("SELECT message_key, COALESCE(message_text, label, 'سایر پیامها') AS text FROM message_dict"),
-    ]);
+    // پشت سر هم (نه Promise.all): یک اتصال، یک کوئری در لحظه — وگرنه ردیف‌ها خالی برمی‌گردند
+    const countRes = await dialect.countRange(table, f, t);
+    const daysRes = await dialect.days(table, f, t);
+    const runsRes = await dialect.runsRange(key, f, t);
+    const dictRes = await db.query("SELECT message_key, COALESCE(message_text, label, 'سایر پیام‌ها') AS text FROM message_dict");
     const totalSamples = Number(countRes.rows[0]?.total ?? 0);
     const selectedDays = daysRes.rows.map((r) => String(r.day));
     const messageText = new Map(dictRes.rows.map((r) => [String(r.message_key), String(r.text)]));
@@ -433,12 +437,33 @@ class SummaryService {
     };
   }
 
+  /**
+   * اسکن یک‌بارِ ردیف‌ها با `bump` (مسیر قدیمی).
+   *
+   * چرا از `db` یک `query` غیرهم‌زمان استفاده می‌شود: کلاینت Postgres اجازهٔ کوئری موازی روی
+   * یک اتصال را نمی‌دهد؛ `cursorPage` ردیف‌ها را با await تودرتو hydrate می‌کرد و وقتی
+   * `buildDashboard` هم‌زمان چند دیکشنری می‌خواند، ردیف‌ها **خالی** برمی‌گشتند (باگ واقعی که
+   * باعث می‌شد مقایسهٔ مسیر قدیمی/جدید بی‌معنا شود). حالا همهٔ SELECTها پشت سر هم اجرا می‌شوند.
+   */
+  serialQuery() {
+    const raw = this.db.query.bind(this.db);
+    let tail = Promise.resolve();
+    return (text, params) => {
+      const run = tail.then(() => raw(text, params));
+      tail = run.catch(() => {});
+      return run;
+    };
+  }
+
   async buildDashboard(bankInput, from, to, rowsCap = 100) {
     const { key, table } = bankTable(bankInput);
     const { from: f, to: t } = rangeOf(from, to);
     const cap = Math.min(Math.max(Number(rowsCap) || 100, 1), 100);
+    // هیچ کوئری‌ای روی این اتصال موازی اجرا نمی‌شود (نه اینجا، نه داخل cursorPage)
+    const db = { query: this.serialQuery(), exec: this.db.exec };
+    const dialect = this.dialect.onSerial ? this.dialect.onSerial(db) : this.dialect;
     const bank = this.evaluator.getBank(key);
-    const serviceKeysRes = await this.dialect
+    const serviceKeysRes = await dialect
       .serviceDiscovery(table, f, t)
       .catch(() => ({ rows: [] }));
     const presentKeys = new Set(bank.expectedServices ?? []);
@@ -454,12 +479,12 @@ class SummaryService {
     }
     const selectedServices = [...presentKeys].sort();
 
-    const [countRes, daysRes, runsRes, dictRes] = await Promise.all([
-      this.dialect.countRange(table, f, t),
-      this.dialect.days(table, f, t),
-      this.dialect.runsRange(key, f, t),
-      this.db.query("SELECT message_key, COALESCE(message_text, label, 'سایر پیامها') AS text FROM message_dict"),
-    ]);
+    // پشت سر هم (نه Promise.all): روی یک اتصال، کوئری موازی مجاز نیست و ردیف‌ها خالی برمی‌گشتند
+    /* eslint-disable no-await-in-loop */
+    const countRes = await dialect.countRange(table, f, t);
+    const daysRes = await dialect.days(table, f, t);
+    const runsRes = await dialect.runsRange(key, f, t);
+    const dictRes = await db.query("SELECT message_key, COALESCE(message_text, label, 'سایر پیام‌ها') AS text FROM message_dict");
     const totalSamples = Number(countRes.rows[0]?.total ?? 0);
     const selectedDays = daysRes.rows.map((r) => String(r.day));
     const messageText = new Map(dictRes.rows.map((r) => [String(r.message_key), String(r.text)]));
@@ -473,7 +498,7 @@ class SummaryService {
     let cursor = ['', '', ''];
     const pageSize = 1000;
     for (;;) {
-      const batch = await this.dialect.cursorPage(table, f, t, cursor, pageSize);
+      const batch = await dialect.cursorPage(table, f, t, cursor, pageSize);
       const rows = batch.rows;
       if (!rows.length) break;
       for (const row of rows) this.consumeRow(row, state);
@@ -732,11 +757,15 @@ class SummaryService {
   async list(params) {
     const { table } = bankTable(params.bank);
     const { from, to } = rangeOf(params.from, params.to);
-    const limit = Math.min(Math.max(Number(params.limit ?? 100) || 100, 1), 100);
+    // اندازهٔ صفحه: پیش‌فرض ۱۰۰، سقف ۲۰۰ — هیچ سقف پنهانی روی «تعداد رکورد قابل مشاهده» نیست؛
+    // برای دیدن بقیه، `cursor` صفحهٔ بعد را می‌دهد (`nextCursor`).
+    const maxLimit = Number(process.env.CE_LIST_MAX_LIMIT || 200);
+    const limit = Math.min(Math.max(Number(params.limit ?? 100) || 100, 1), maxLimit);
     const offset = Math.max(Number(params.offset ?? 0) || 0, 0);
+    const cursor = typeof params.cursor === 'string' && params.cursor ? params.cursor : null;
 
     const result = await this.dialect.list({
-      table, params: { ...params, from, to }, from, to, limit, offset,
+      table, params: { ...params, from, to }, from, to, limit, offset, cursor,
     });
     return {
       bank: params.bank,
@@ -748,6 +777,8 @@ class SummaryService {
       limit,
       offset,
       total: result.total,
+      nextCursor: result.nextCursor ?? null,
+      cursor,
       rows: result.rows.map((row) => (row.true_flags ? row : {
         ...row,
         sid: row.sid ?? row.request_id,

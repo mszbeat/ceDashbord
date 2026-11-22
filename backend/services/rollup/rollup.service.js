@@ -119,12 +119,16 @@ function buildDayAggregateSql(bankKey, registry, bank) {
   }
 
   // سرویس‌ها: ۳ بیت به‌ازای هر سرویس (۰=missingService، ۱=ok، ۲=failed، ۳=other، ۴/۵=status)
-  const SERVICE_CODES = [['missingService', 0], ['ok', 1], ['failed', 2], ['other', 3], ['missingStatus', 4], ['invalidStatus', 5]];
+  // نسخهٔ نمایشی alias: شناسهٔ ۳۶ کاراکتری به‌صورت خودش می‌آید و برچسب (kind) کوتاه می‌شود تا
+  // نام ستون از ۶۳ بایت رد نشود (پستگرس نام بلندتر را **بی‌صدا** می‌برد و برچسب گم می‌شد)
+  // کدها باید با `SERVICE_KIND_CODE` یکی باشند: ok=1, failed=2, other=3, missingStatus=4,
+  // invalidStatus=5, missingService=6.
+  const SERVICE_CODES = [['ok', 'ok', 1], ['failed', 'fl', 2], ['other', 'ot', 3], ['missingStatus', 'mst', 4], ['invalidStatus', 'inv', 5], ['missingService', 'ms', 6]];
   (registry.service || []).forEach((serviceId, index) => {
     const shift = BigInt(index) * 3n;
-    for (const [kind, code] of SERVICE_CODES) {
+    for (const [, short, code] of SERVICE_CODES) {
       selects.push(
-        `COUNT(*) FILTER (WHERE ((service_kinds >> ${shift.toString()}) & 7) = ${code})::int AS ${aliasOf('service', `${serviceId}|${kind}`)}`,
+        `COUNT(*) FILTER (WHERE ((service_kinds >> ${shift.toString()}) & 7) = ${code})::int AS ${aliasOf(`service:${short}`, serviceId)}`,
       );
     }
   });
@@ -137,15 +141,24 @@ function buildDayAggregateSql(bankKey, registry, bank) {
 }
 
 /** نام ستون خروجی SQL (alias) — شناسه‌ها می‌توانند کاراکتر غیرمجاز داشته باشند */
-function aliasOf(prefix, id) {
-  return `"${prefix}__${Buffer.from(String(id), 'utf8').toString('hex')}"`;
+function aliasOf(prefix, id, sub = '') {
+  // `prefix` می‌تواند «service:fl» باشد؛ پیشوند ستون همان kind اصلی است
+  const [kind, tag] = String(prefix).split(':');
+  const payload = tag ? `${id}\u0000${tag}` : String(id);
+  return `"${kind}__${Buffer.from(payload, 'utf8').toString('hex')}"`;
 }
 
+/**
+ * شکستن alias کدشده. payload به‌صورت hex است و در متن **همیشه کوتاه** می‌ماند؛ بنابراین
+ * برچسب فرعی (نوع سرویس/مسیر) هم داخل همان payload می‌رود، نه در نام ستون — پستگرس
+ * نام‌های بیش از ۶۳ بایت را بی‌صدا می‌برد و همین باعث گم‌شدن `missingService` می‌شد.
+ */
 function decodeAlias(alias) {
   // درایور `pg` کوتیشن نام ستون را حذف می‌کند؛ در تست‌های خالص ممکن است باقی بماند
   const match = /^"?(flag|catTotal|crossRow|cross|service|path|rotbe)__([0-9a-f]+)"?$/.exec(alias);
   if (!match) return null;
-  return { kind: match[1], id: Buffer.from(match[2], 'hex').toString('utf8') };
+  const [id, sub] = Buffer.from(match[2], 'hex').toString('utf8').split('\u0000');
+  return { kind: match[1], id, sub: sub || null };
 }
 
 /** کد دسته برای یک مقدار متنی — از `cat_dict` (seed شده در زمان ingest) */
@@ -308,16 +321,26 @@ async function aggregateRange(ctx) {
 
   // کانترها و متریک‌ها با SQL (کوانتایل دقیق از همان توزیع)
   const counters = record();
-  for (const id of registry[bankKey].counter || []) {
-    const column = require('../db/indicator-registry').columnName('counter', id);
-    if (!sqlDays.length) continue; // legacy فقط کانترهای دیده‌شده را دارد (ورودی صفر نمی‌سازد)
+  const counterIds = registry[bankKey].counter || [];
+  if (sqlDays.length && counterIds.length) {
+    // مسیر قدیمی کلید را با `bump` می‌سازد — حتی وقتی جمع ۰ است (مثلاً شمارنده‌ای که در همهٔ
+    // ردیف‌ها مقدار ۰ دارد). پس «حضور» از `counter_present` می‌آید و «مقدار» از SUM.
+    const present = new Set();
+    const sums = new Array(counterIds.length).fill(0);
+    const columns = counterIds.map((id, index) => `COALESCE(SUM(${require('../db/indicator-registry').columnName('counter', id)}), 0)::bigint AS c${index}`);
+    const bits = counterIds.map((_, index) => `COALESCE(bool_or((counter_present >> ${index}) & 1 = 1), false) AS p${index}`);
     const res = await db.query(
-      `SELECT COALESCE(SUM(${column}), 0)::bigint AS v FROM ${agg.table} WHERE day = ANY($1::date[])`,
+      `SELECT ${[...columns, ...bits].join(', ')} FROM ${agg.table} WHERE day = ANY($1::date[])`,
       [sqlDays],
     );
-    const sum = Number(res.rows[0]?.v ?? 0);
-    if (!sum) continue;
-    counters[id] = sum;
+    const row = res.rows[0] || {};
+    counterIds.forEach((id, index) => {
+      sums[index] = Number(row[`c${index}`] ?? 0);
+      if (row[`p${index}`]) present.add(id);
+    });
+    counterIds.forEach((id, index) => {
+      if (present.has(id)) counters[id] = sums[index];
+    });
   }
   const metrics = record();
   for (const id of registry[bankKey].metric || []) {
@@ -459,10 +482,16 @@ function mergeStats(target, stats) {
   addTo(target.paths, stats.paths);
 }
 
+/**
+ * اعمال یک ردیف تجمیع SQL روی ساختار آمار.
+ * توجه: `services`/`paths` **همیشه** کلید می‌سازند (حتی با شمارش صفر) چون مسیر قدیمی
+ * (`bump`) برای هر سرویس/مسیر کشف‌شده یک ورودی دارد؛ فقط پرچم/دسته/متریک صفرساز نیستند.
+ */
 function applyAggregateRow(row, { flags, catTotals, cross, services, paths }) {
   for (const [column, value] of Object.entries(row)) {
     const decoded = decodeAlias(column);
-    if (!decoded || !Number(value)) continue;
+    if (!decoded) continue;
+    if (!Number(value) && !['service', 'path', 'rotbe'].includes(decoded.kind)) continue;
     if (decoded.kind === 'flag') flags[decoded.id] = Number(value);
     if (decoded.kind === 'catTotal') catTotals[decoded.id] = Number(value);
     if (decoded.kind === 'cross') {
@@ -484,9 +513,14 @@ function applyAggregateRow(row, { flags, catTotals, cross, services, paths }) {
       void PATH_KINDS;
     }
     if (decoded.kind === 'service') {
-      const [serviceId, kind] = decoded.id.split('|');
-      services[serviceId] ||= { ok: 0, failed: 0, other: 0, missingStatus: 0, invalidStatus: 0, missingService: 0 };
-      services[serviceId][kind] = Number(value);
+      services[decoded.id] ||= { ok: 0, failed: 0, other: 0, missingStatus: 0, invalidStatus: 0, missingService: 0 };
+      const kindOf = { ms: 'missingService', ok: 'ok', fl: 'failed', ot: 'other', mst: 'missingStatus', inv: 'invalidStatus' };
+      services[decoded.id][kindOf[decoded.sub] || 'missingService'] = Number(value);
+    }
+  }
+  for (const entry of Object.values(services)) {
+    for (const kind of ['ok', 'failed', 'other', 'missingStatus', 'invalidStatus', 'missingService']) {
+      entry[kind] = Number(entry[kind] || 0);
     }
   }
 }
