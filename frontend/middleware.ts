@@ -8,6 +8,7 @@ import {
   probeSessionWithCleanRecovery,
   resolveBackendOrigin,
 } from '@/lib/server-auth';
+import { signSession, SESSION_HEADER } from '@/lib/session-handoff.mjs';
 
 function buildPublicOrigin(request: NextRequest): string {
   const forwardedHost = request.headers.get('x-forwarded-host');
@@ -77,18 +78,29 @@ export async function middleware(request: NextRequest) {
     const probe = await probeSessionWithCleanRecovery(backendUrl, request.headers, cookieHeader);
 
     if (probe.ok && probe.data?.authenticated === true) {
-      if (probe.browserSetCookies.length) {
-        const requestHeaders = new Headers(request.headers);
-        requestHeaders.set('cookie', probe.cookieHeader);
-        const nextRes = NextResponse.next({
-          request: { headers: requestHeaders },
-        });
-        for (const c of probe.browserSetCookies) {
-          nextRes.headers.append('set-cookie', c);
-        }
-        return nextRes;
+      /**
+       * F2 — نشست تأییدشده را به صفحه تحویل می‌دهیم تا `/api/auth/me` دو بار صدا زده نشود.
+       * هدر امضاشده است (HMAC با `CE_SESSION_HANDOFF_SECRET`)؛ بدون کلید، این کار انجام
+       * نمی‌شود و صفحه مثل قبل خودش probe می‌زند.
+       */
+      const requestHeaders = new Headers(request.headers);
+      requestHeaders.set('cookie', probe.cookieHeader);
+      const handoff = await signSession({
+        authenticated: true,
+        username: probe.data.username ?? probe.data.samadUsername,
+        samadUsername: probe.data.samadUsername ?? probe.data.username,
+        roles: Array.isArray(probe.data.roles) ? probe.data.roles : [],
+        canRefresh: probe.data.canRefresh,
+        accessExpireMs: probe.data.accessExpireMs,
+        idleExpireMs: probe.data.idleExpireMs,
+      }, process.env.CE_SESSION_HANDOFF_SECRET || '');
+      if (handoff) requestHeaders.set(SESSION_HEADER, handoff);
+
+      const nextRes = NextResponse.next({ request: { headers: requestHeaders } });
+      for (const c of probe.browserSetCookies) {
+        nextRes.headers.append('set-cookie', c);
       }
-      return NextResponse.next();
+      return nextRes;
     }
 
     // پاسخ unauthenticated /api/auth/me ممکن است canRefresh:false بدهد، چون اکسس توکن
@@ -101,6 +113,17 @@ export async function middleware(request: NextRequest) {
       if (refreshed.ok && refreshed.data?.authenticated === true) {
         const requestHeaders = new Headers(request.headers);
         requestHeaders.set('cookie', refreshed.cookieHeader);
+        // F2: پس از تمدید هم نشست را به صفحه تحویل می‌دهیم
+        const handoff = await signSession({
+          authenticated: true,
+          username: refreshed.data.username ?? refreshed.data.samadUsername,
+          samadUsername: refreshed.data.samadUsername ?? refreshed.data.username,
+          roles: Array.isArray(refreshed.data.roles) ? refreshed.data.roles : [],
+          canRefresh: refreshed.data.canRefresh,
+          accessExpireMs: refreshed.data.accessExpireMs,
+          idleExpireMs: refreshed.data.idleExpireMs,
+        }, process.env.CE_SESSION_HANDOFF_SECRET || '');
+        if (handoff) requestHeaders.set(SESSION_HEADER, handoff);
         const nextRes = NextResponse.next({
           request: { headers: requestHeaders },
         });

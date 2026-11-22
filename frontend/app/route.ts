@@ -1,4 +1,6 @@
+import crypto from 'node:crypto';
 import { NextRequest } from 'next/server';
+import { fetchWithHeadersTimeout, isTimeoutError } from '@/lib/upstream-timeout.mjs';
 import {
   buildExpiredCookieLines,
   dedupeSetCookies,
@@ -26,6 +28,8 @@ const errorPage = (title: string, detail: string, status?: number) => `<!doctype
 <pre>${escapeHtml(status ? `HTTP ${status}\n` : '')}${escapeHtml(detail)}</pre>
 <p><a href="/login">ورود به سامانه</a> · <a href="/">تلاش دوباره</a></p>
 </main></body></html>`;
+
+const isHtmlDocument = (value: string) => /^\s*(<!doctype\s+html\b|<html\b)/i.test(value);
 
 function extractHtmlDocument(rawBody: string, depth = 0): string | null {
   if (depth > 4 || typeof rawBody !== 'string') return null;
@@ -125,10 +129,11 @@ export async function GET(request: NextRequest) {
     let activeCookie = cookieHeader;
     let collectedCookies: string[] = [];
 
-    let response = await fetch(target.toString(), {
+    // F1: مهلت اتصال/هدرها — بک‌اندی که پاسخ نمی‌دهد نباید سوکت را برای همیشه نگه دارد
+    let response = await fetchWithHeadersTimeout(fetch, target.toString(), {
       cache: 'no-store',
       headers: buildReportHeaders(request, activeCookie),
-    });
+    }, { signal: request.signal });
     collectedCookies.push(...extractSetCookies(response.headers));
 
     if (response.status === 401 && hasCookie(activeCookie, 'ce_refresh')) {
@@ -136,10 +141,10 @@ export async function GET(request: NextRequest) {
       collectedCookies.push(...refreshed.setCookies);
       if (refreshed.ok && refreshed.data?.authenticated === true) {
         activeCookie = refreshed.cookieHeader;
-        response = await fetch(target.toString(), {
+        response = await fetchWithHeadersTimeout(fetch, target.toString(), {
           cache: 'no-store',
           headers: buildReportHeaders(request, activeCookie),
-        });
+        }, { signal: request.signal });
         collectedCookies.push(...extractSetCookies(response.headers));
       }
     }
@@ -168,15 +173,33 @@ export async function GET(request: NextRequest) {
       headers.append('set-cookie', c);
     }
 
-    const body = await response.text();
+    /**
+     * F1 — بدنه بافر نمی‌شود.
+     *
+     * نسخهٔ قبلی بدنه را کامل می‌خواند (`response.text()`) و بعد در صورت JSON، HTML را از آن
+     * بیرون می‌کشید. برای گزارش بزرگ یعنی: کل HTML در حافظهٔ Node، تأخیر تا پایان دانلود،
+     * و از دست رفتن موتور جریان مرورگر (کاربر صفحهٔ سفید می‌دید).
+     *
+     * حالا بدنه به‌صورت **جریان** پاس داده می‌شود. فقط وقتی لازم است داخل JSON را نگاه
+     * کنیم (پاسخ JSON کوچک) بافر می‌کنیم؛ آستانه از `CE_REPORT_INLINE_MAX_BYTES` می‌آید.
+     */
     const contentType = response.headers.get('content-type') || '';
+    const looksJson = contentType.includes('application/json');
+    const inlineLimit = Number(process.env.CE_REPORT_INLINE_MAX_BYTES || 65536);
 
+    if (!looksJson) {
+      // HTML یا هر چیز دیگر: مستقیم و بدون بافر
+      headers.set('content-type', contentType || 'text/html; charset=utf-8');
+      return new Response(response.body, { status: response.status, headers });
+    }
+
+    const body = await response.text();
     const extractedHtml = extractHtmlDocument(body);
     if (extractedHtml !== null) {
       return new Response(extractedHtml, { status: response.status, headers });
     }
-
-    if (contentType.includes('text/html') && !body.trimStart().startsWith('{')) {
+    if (body.length <= inlineLimit && isHtmlDocument(body)) {
+      headers.set('content-type', 'text/html; charset=utf-8');
       return new Response(body, { status: response.status, headers });
     }
 
@@ -189,10 +212,29 @@ export async function GET(request: NextRequest) {
       { status: response.status, headers },
     );
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    /**
+     * F3 — متن خام خطا به کاربر نمی‌رود.
+     *
+     * پیام خطای شبکه/فریم‌ورک می‌تواند آدرس داخلی، نام پورت یا جزئیات پشته داشته باشد
+     * (نشت اطلاعات). به کاربر شناسهٔ پیگیری می‌دهیم و جزئیات را سمت سرور لاگ می‌کنیم.
+     */
+    const requestId = request.headers.get('x-request-id') || crypto.randomUUID();
+    const timedOut = isTimeoutError(error);
+    console.error('[report] upstream failure', {
+      requestId,
+      code: (error as any)?.code || 'UPSTREAM_ERROR',
+      name: error instanceof Error ? error.name : typeof error,
+      message: error instanceof Error ? error.message : String(error),
+      target: target.toString(),
+    });
     return new Response(
-      errorPage('ارتباط با سرور برقرار نشد', message),
-      { status: 502, headers },
+      errorPage(
+        timedOut ? 'سرور گزارش پاسخ نداد' : 'ارتباط با سرور برقرار نشد',
+        timedOut
+          ? `دریافت گزارش بیش از حد طول کشید. بازهٔ زمانی کوچک‌تری انتخاب کنید. شناسهٔ پیگیری: ${requestId}`
+          : `بارگذاری گزارش ممکن نشد. لطفاً چند لحظه بعد دوباره تلاش کنید. شناسهٔ پیگیری: ${requestId}`,
+      ),
+      { status: 502, headers: { ...Object.fromEntries(headers.entries()), 'x-request-id': requestId } },
     );
   }
 }

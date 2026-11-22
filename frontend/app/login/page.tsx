@@ -96,7 +96,8 @@ export default function LoginPage() {
     let hadExpiredParam = false;
     if (typeof window !== 'undefined') {
       const sp = new URLSearchParams(window.location.search);
-      resolvedNext = sanitizeNextPath(sp.get('next'), '/');
+      // F4: مبدأ جاری هم داده می‌شود تا مقایسهٔ origin در sanitizeNextPath واقعی باشد
+      resolvedNext = sanitizeNextPath(sp.get('next'), '/', window.location.origin);
       hadExpiredParam = sp.get('reason') === 'expired';
       setNextPath(resolvedNext);
       setExpiredReason(hadExpiredParam);

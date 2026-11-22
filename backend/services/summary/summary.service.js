@@ -32,6 +32,20 @@ function num(value) {
   return Number.isFinite(n) ? n : null;
 }
 
+/**
+ * ۳-الف — یک‌شکل‌سازی ردیف فهرست: `sid` تضمین‌شده و `true_flags` به‌صورت آرایه.
+ * برای هر دو کلید `rows` و `items` استفاده می‌شود (یک بار ساخته می‌شود، نه دو بار).
+ */
+function normalizeRows(rows) {
+  return rows.map((row) => (Array.isArray(row.true_flags) ? row : {
+    ...row,
+    sid: row.sid ?? row.request_id,
+    true_flags: Object.entries(asObject(row.flags))
+      .filter(([, v]) => v === true)
+      .map(([k]) => k),
+  }));
+}
+
 function asObject(value) {
   if (!value) return {};
   if (typeof value === 'string') {
@@ -844,13 +858,9 @@ class SummaryService {
       total: result.total,
       nextCursor: result.nextCursor ?? null,
       cursor,
-      rows: result.rows.map((row) => (row.true_flags ? row : {
-        ...row,
-        sid: row.sid ?? row.request_id,
-        true_flags: Object.entries(asObject(row.flags))
-          .filter(([, v]) => v === true)
-          .map(([k]) => k),
-      })),
+      // ۳-الف: `rows` برای سازگاری با کلاینت قدیمی می‌مانَد و `items` همان آرایه است
+      rows: normalizeRows(result.rows),
+      items: normalizeRows(result.rows),
     };
   }
 

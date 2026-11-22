@@ -145,6 +145,8 @@ function diff(a, b, label, out = [], depth = 0) {
         ...v,
         nextCursor: undefined,
         cursor: undefined,
+        // ۳-الف: `items` آینهٔ `rows` است (نام قراردادی صفحه‌بندی) و در v1 وجود ندارد
+        items: undefined,
         rows: v.rows.map(({ total_count, ...rest }) => rest),
       });
       entry.list[label] = { total: av.total, hashV1: hash(cleaned(av)), hashV2: hash(cleaned(bv)), diffs: diff(cleaned(av), cleaned(bv), label).slice(0, 8) };

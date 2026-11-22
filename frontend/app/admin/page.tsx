@@ -9,6 +9,7 @@ import {
   probeSessionWithCleanRecovery,
   resolveBackendOrigin,
 } from '@/lib/server-auth';
+import { readSession, SESSION_HEADER } from '@/lib/session-handoff.mjs';
 import AdminClient, { OverviewPayload } from './AdminClient';
 
 export const dynamic = 'force-dynamic';
@@ -41,7 +42,30 @@ export default async function AdminPage() {
   const cookieHeader = incomingHeaders.get('cookie') || '';
   const backendUrl = resolveBackendOrigin();
 
-  let probe = await probeSessionWithCleanRecovery(backendUrl, incomingHeaders, cookieHeader);
+  /**
+   * F2 — اگر middleware همین حالا نشست را تأیید کرده، دوباره `/api/auth/me` صدا زده
+   * نمی‌شود. هدر امضاشده است؛ در صورت نبود/نامعتبر بودن، به مسیر قبلی (probe) برمی‌گردیم.
+   */
+  const handoffSession = await readSession(
+    incomingHeaders.get(SESSION_HEADER),
+    process.env.CE_SESSION_HANDOFF_SECRET || '',
+  );
+
+  let probe;
+  if (handoffSession) {
+    probe = {
+      ok: true,
+      status: 200,
+      rawText: '',
+      rawJson: null,
+      data: handoffSession,
+      cookieHeader,
+      setCookies: [],
+      browserSetCookies: [],
+    } as unknown as Awaited<ReturnType<typeof probeSessionWithCleanRecovery>>;
+  } else {
+    probe = await probeSessionWithCleanRecovery(backendUrl, incomingHeaders, cookieHeader);
+  }
   let activeCookieHeader = probe.cookieHeader;
   let authData = probe.data;
 

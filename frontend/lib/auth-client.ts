@@ -55,22 +55,28 @@ export function formatRolesFa(roles?: string[] | null): string {
   return formatRoleShortFa(pickPrimaryRole(roles));
 }
 
-export function sanitizeNextPath(raw: string | null | undefined, fallback = '/'): string {
-  if (!raw || typeof raw !== 'string') return fallback;
-  const trimmed = raw.trim();
-  if (!trimmed.startsWith('/') || trimmed.startsWith('//') || trimmed.startsWith('/\\')) {
-    return fallback;
-  }
-  if (trimmed === '/login' || trimmed.startsWith('/login?')) {
-    return fallback;
-  }
-  return trimmed;
-}
+/* F4 — اعتبارسنجی `next` در `lib/next-path.mjs` است تا مستقل از Next تست شود. */
+export { sanitizeNextPath } from './next-path.mjs';
+
+/**
+ * F9 — کلیدهای تم در یک جا متمرکز شدند.
+ *
+ * قبلاً نام کلیدها در چند فایل تکرار می‌شد (و اپ قدیمی `bank-ce-dashboard-theme` را
+ * می‌نوشت)؛ اگر یکی جا می‌ماند، تم بین تب‌ها/صفحات هم‌خوان نمی‌شد. حالا فقط همین دو
+ * ثابت استفاده می‌شوند و نوشتن در هر دو کلید انجام می‌شود تا مهاجرت کاربران قدیمی بی‌درد باشد.
+ */
+export const THEME_STORAGE_KEY = 'ce-theme';
+export const LEGACY_THEME_STORAGE_KEY = 'bank-ce-dashboard-theme';
+const THEME_KEYS = [THEME_STORAGE_KEY, LEGACY_THEME_STORAGE_KEY] as const;
 
 export function getSavedTheme(): 'light' | 'dark' {
   if (typeof window === 'undefined') return 'light';
   try {
-    const val = window.localStorage.getItem('ce-theme') || window.localStorage.getItem('bank-ce-dashboard-theme');
+    let val: string | null = null;
+    for (const key of THEME_KEYS) {
+      val = window.localStorage.getItem(key);
+      if (val) break;
+    }
     return val === 'dark' ? 'dark' : 'light';
   } catch {
     return 'light';
@@ -80,11 +86,13 @@ export function getSavedTheme(): 'light' | 'dark' {
 export function applyTheme(theme: 'light' | 'dark'): void {
   if (typeof window === 'undefined') return;
   document.documentElement.setAttribute('data-theme', theme);
+  // F9: رنگ نوار مرورگر همراه تم تا آیکون/آدرس‌بار با صفحه هم‌خوان باشد
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute('content', theme === 'dark' ? '#0b1220' : '#ffffff');
   try {
-    window.localStorage.setItem('ce-theme', theme);
-    window.localStorage.setItem('bank-ce-dashboard-theme', theme);
+    for (const key of THEME_KEYS) window.localStorage.setItem(key, theme);
   } catch {
-    // ignore storage errors
+    // حالت ناشناس/سهمیهٔ پر: تم فقط برای همین صفحه اعمال می‌شود
   }
 }
 

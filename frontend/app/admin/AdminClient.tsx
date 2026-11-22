@@ -11,6 +11,12 @@ import {
   logoutSession,
   startSessionKeepalive,
 } from '@/lib/auth-client';
+import {
+  faNum, formatDateTimeFa, toSafeNumber, jobFilterSummary, jobProgressPercent, StatusBadge,
+} from './format';
+import JobsMonitor from './JobsMonitor';
+import { createPoller } from '../../lib/polling.mjs';
+import { safeText, toastA11y } from '../../lib/a11y.mjs';
 import './admin.css';
 
 export type BankKey = 'tavan_mellat' | 'tavan_resalat' | 'tavan_postbank';
@@ -71,68 +77,12 @@ const BANK_OPTIONS: { key: BankKey; label: string; reportParam: string }[] = [
   { key: 'tavan_postbank', label: 'پست‌بانک', reportParam: 'tavan_postbank' },
 ];
 
-function faNum(val: number | string | null | undefined): string {
-  if (val === null || val === undefined || val === '') return '—';
-  const n = typeof val === 'number' ? val.toLocaleString('en-US') : String(val);
-  return n.replace(/\d/g, (d) => '۰۱۲۳۴۵۶۷۸۹'[Number(d)]);
-}
-
-function formatDateTimeFa(iso?: string | null): string {
-  if (!iso) return '—';
-  try {
-    return new Intl.DateTimeFormat('fa-IR-u-ca-persian', {
-      timeZone: 'Asia/Tehran',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false,
-    }).format(new Date(iso));
-  } catch {
-    return iso;
-  }
-}
-
-function statusBadge(status?: string | null) {
-  switch (status) {
-    case 'complete':
-    case 'completed':
-    case 'done':
-      return <span className="adm-badge ok">تکمیل‌شده</span>;
-    case 'partial':
-      return <span className="adm-badge run">میانی / جزئی</span>;
-    case 'running':
-      return <span className="adm-badge run">⟳ در حال اجرا</span>;
-    case 'needs_review':
-    case 'partial_error':
-      return <span className="adm-badge warn">نیازمند بررسی</span>;
-    case 'failed':
-      return <span className="adm-badge err">ناموفق</span>;
-    case 'pending':
-      return <span className="adm-badge muted">در نوبت</span>;
-    default:
-      return <span className="adm-badge muted">{status || 'ثبت‌نشده'}</span>;
-  }
-}
+// F6: توابع نمایشی به `./format.ts` منتقل شدند (قابل تست، مستقل از React)
 
 /**
  * ورودی متنی فرم را به عدد امن تبدیل می‌کند (ارقام فارسی/عربی هم پذیرفته می‌شوند).
  * برای فیلترهای عددی الزامی است؛ رشتهٔ عددی باعث رد شدن در اعتبارسنجی بک‌اند می‌شود.
  */
-function toSafeNumber(raw: string | number | null | undefined): number | null {
-  if (raw === null || raw === undefined) return null;
-  const normalized = String(raw)
-    .trim()
-    .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)))
-    .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
-    .replace(/[,٬،\s]/g, '');
-  if (!normalized) return null;
-  const value = Number(normalized);
-  return Number.isFinite(value) ? value : null;
-}
-
 function unwrapPartEnvelope(raw: any): any {
   let cur = raw;
   if (
@@ -295,11 +245,41 @@ export default function AdminClient({ initialAuth, initialOverview }: AdminClien
     setCronDirty(false);
   }, []);
 
+  // F7: هر بار فراخوانی، درخواست قبلی را لغو می‌کند تا پاسخ قدیمی روی دادهٔ تازه ننشیند
+  const overviewControllerRef = useRef<AbortController | null>(null);
+  // F2: نتیجهٔ نشستی که سرور در رندر اولیه داده، یک‌بار و فقط یک‌بار استفاده می‌شود
+  const serverAuthRef = useRef<AuthSessionState | null>(initialAuth);
+  const useInitialAuthOnce = () => {
+    const value = serverAuthRef.current;
+    serverAuthRef.current = null;
+    return value;
+  };
+
   const fetchOverview = useCallback(
-    async (silent = false) => {
+    async (silent = false, externalSignal?: AbortSignal) => {
+      overviewControllerRef.current?.abort();
+      const controller = new AbortController();
+      overviewControllerRef.current = controller;
+      if (externalSignal) {
+        if (externalSignal.aborted) controller.abort();
+        else externalSignal.addEventListener('abort', () => controller.abort(), { once: true });
+      }
       if (!silent) setLoadingOverview(true);
       try {
-        const authCheck = await ensureAuthenticated().catch(() => null);
+        /**
+         * F2 — پرس‌وجوی تکراری نشست.
+         *
+         * صفحهٔ سروری `/admin` همین حالا نشست را با `/api/auth/me` تأیید کرده و نتیجه را در
+         * `initialAuth` داده است. نسخهٔ قبلی بلافاصله در کلاینت دوباره `ensureAuthenticated()`
+         * صدا می‌زد ⇒ دو رفت‌وبرگشت `/me` + `/overview` برای هر بار ورود به پنل.
+         *
+         * حالا `initialAuth` معتبر است و تنها در این موارد دوباره پرس‌وجو می‌شود:
+         *  • لود خودکار (polling) — تا نقش/انقضا هم‌زمان تازه شود،
+         *  • یا وقتی نتیجهٔ نشست در دست نیست.
+         */
+        const authCheck = useInitialAuthOnce()
+          ? initialAuth
+          : await ensureAuthenticated().catch(() => null);
         if (authCheck) setAuthUser(authCheck);
         if (!authCheck?.authenticated) {
           setRedirectingToLogin(true);
@@ -316,7 +296,8 @@ export default function AdminClient({ initialAuth, initialOverview }: AdminClien
           return;
         }
 
-        const data = await apiFetch<OverviewPayload>('/api/admin/overview');
+        const data = await apiFetch<OverviewPayload>('/api/admin/overview', { signal: controller.signal });
+        if (controller.signal.aborted) return; // پاسخ کهنه دور ریخته می‌شود
         setOverview(data);
         if (!initializedDatesRef.current && data.serverClock) {
           initializedDatesRef.current = true;
@@ -328,6 +309,8 @@ export default function AdminClient({ initialAuth, initialOverview }: AdminClien
           syncCronFormFromServer(data.cron);
         }
       } catch (err: any) {
+        // لغو عمدی خطا نیست و نباید toast بدهد
+        if (err?.name === 'AbortError' || controller.signal.aborted) return;
         if (err?.status === 401 || err?.status === 403) {
           const authState = await ensureAuthenticated().catch(() => null);
           if (authState) setAuthUser(authState);
@@ -348,11 +331,14 @@ export default function AdminClient({ initialAuth, initialOverview }: AdminClien
           setToast({ kind: 'error', text: err?.message || 'خطا در دریافت وضعیت پنل مدیریت' });
         }
       } finally {
-        if (!silent) setLoadingOverview(false);
+        if (!silent && !controller.signal.aborted) setLoadingOverview(false);
       }
     },
     [cronDirty, syncCronFormFromServer],
   );
+
+  // پایان عمر کامپوننت: درخواست در جریان لغو می‌شود
+  useEffect(() => () => overviewControllerRef.current?.abort(), []);
 
   useEffect(() => {
     // اگر SSR قبلاً داده را بررسی و دریافت کرده، نیازی به لودینگ مجدد نیست؛
@@ -367,14 +353,26 @@ export default function AdminClient({ initialAuth, initialOverview }: AdminClien
     [overview],
   );
 
-  // رفرش خودکار سریع هنگام اجرای جابها (هر ۲ ثانیه) و معمولی در حالت سکون (هر ۱۵ ثانیه)
+  /**
+   * F5 — رفرش خودکار با `createPoller` (نه `setInterval`).
+   *
+   *  * در تب پنهان درخواستی نمی‌رود و با بازگشت به تب، یک‌بار فوری تازه می‌شود.
+   *  * در خطا، backoff نمایی (۲s → ۶۰s) اعمال می‌شود؛ قبلاً هر ۲ ثانیه درخواست شکست‌خورده بود.
+   *  * با unmount تایمر و درخواست در جریان لغو می‌شود (بدون نشتی).
+   *  * بین دو کامیوننت فقط یک تایمر فعال است.
+   */
   useEffect(() => {
-    if (redirectingToDashboard || !overview) return;
-    const intervalMs = hasRunningJobs ? 2000 : 15000;
-    const id = window.setInterval(() => {
-      void fetchOverview(true);
-    }, intervalMs);
-    return () => window.clearInterval(id);
+    if (redirectingToDashboard || !overview) return undefined;
+    const poller = createPoller({
+      intervalMs: hasRunningJobs ? 2000 : 15000,
+      immediate: false,
+      task: ({ signal }: { signal: AbortSignal }) => fetchOverview(true, signal),
+      onError: (error: any) => {
+        if (error?.status === 401 || error?.status === 403) return; // مسیر خروج جداگانه دارد
+      },
+    });
+    poller.start();
+    return () => poller.stop();
   }, [hasRunningJobs, fetchOverview, redirectingToDashboard, overview]);
 
   // بستن مودال با کلید Escape
@@ -664,9 +662,14 @@ export default function AdminClient({ initialAuth, initialOverview }: AdminClien
 
         {/* Toast Notification */}
         {toast && (
-          <div className={`adm-toast ${toast.kind}`} role="alert">
-            <span>{toast.text}</span>
-            <button type="button" className="adm-btn adm-btn-sm" onClick={() => setToast(null)}>
+          <div className={`adm-toast ${toast.kind}`} {...toastA11y(toast.kind)}>
+            <span>{safeText(toast.text)}</span>
+            <button
+              type="button"
+              className="adm-btn adm-btn-sm"
+              onClick={() => setToast(null)}
+              aria-label="بستن اعلان"
+            >
               بستن
             </button>
           </div>
@@ -692,7 +695,7 @@ export default function AdminClient({ initialAuth, initialOverview }: AdminClien
                       )}
                     </small>
                   </div>
-                  {statusBadge(b.latestRun?.status)}
+                  <StatusBadge status={b.latestRun?.status} />
                 </div>
 
                 <div className="adm-bank-metrics">
@@ -1024,7 +1027,7 @@ export default function AdminClient({ initialAuth, initialOverview }: AdminClien
                 <div>
                   <span style={{ color: 'var(--adm-muted)' }}>آخرین اجرای خودکار/فوری: </span>
                   <span>{formatDateTimeFa(overview.cron.last_run_at)}</span>{' '}
-                  {overview.cron.last_status ? statusBadge(overview.cron.last_status) : null}
+                  {overview.cron.last_status ? <StatusBadge status={overview.cron.last_status} /> : null}
                 </div>
                 {overview.cron.last_error && (
                   <div style={{ color: 'var(--adm-red)' }}>
@@ -1213,100 +1216,9 @@ export default function AdminClient({ initialAuth, initialOverview }: AdminClien
           </section>
         </div>
 
-        {/* Live Jobs Monitor */}
-        <section className="adm-card" style={{ marginBottom: 22 }} ref={jobsSectionRef}>
-          <div className="adm-section-head">
-            <div>
-              <h2>وضعیت اجراهای تحلیل</h2>
-            </div>
-            {hasRunningJobs && <span className="adm-badge run">⟳ در حال تحلیل...</span>}
-          </div>
-
-          {!overview?.jobs?.length ? (
-            <p style={{ color: 'var(--adm-muted)', margin: 0, fontSize: 13 }}>
-              اجرایی ثبت نشده است.
-            </p>
-          ) : (
-            overview.jobs.map((job) => {
-              const finishedSteps = Number(job.completedSteps || 0) + Number(job.failedSteps || 0);
-              const pct = job.totalSteps > 0 ? Math.round((finishedSteps / job.totalSteps) * 100) : 0;
-              return (
-                <div className="adm-job-card" key={job.id}>
-                  <div className="adm-job-head">
-                    <div>
-                      <strong>
-                        {job.source === 'cron'
-                          ? '⏰ اجرای خودکار کران شبانه'
-                          : job.source === 'cron_manual'
-                            ? '▶ اجرای فوری تنظیمات کران'
-                            : '🛠 اجرای دستی ادمین'}
-                      </strong>{' '}
-                      <small className="adm-ltr" style={{ color: 'var(--adm-muted)' }}>
-                        ({job.id})
-                      </small>
-                      <div style={{ fontSize: 11.5, color: 'var(--adm-muted)', marginTop: 2 }}>
-                        شروع: {formatDateTimeFa(job.createdAt)} · استراتژی:{' '}
-                        <b>{job.conflictStrategy === 'rebuild' ? 'بازسازی کامل (Rebuild)' : 'بروزرسانی (Upsert)'}</b>
-                        {job.filters?.hasNationalCode && ' · فیلتر کدملی (حذف‌شده از لاگ)'}
-                        {job.filters?.requestId && ` · requestId: ${job.filters.requestId}`}
-                        {job.filters?.uniqueKey && ` · uniqueKey: ${job.filters.uniqueKey}`}
-                        {job.filters?.maxCount && ` · سقف: ${faNum(job.filters.maxCount)}`}
-                      </div>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{ fontSize: 12, fontWeight: 700 }}>
-                        {faNum(finishedSteps)} از {faNum(job.totalSteps)} گام
-                      </span>
-                      {statusBadge(job.status)}
-                    </div>
-                  </div>
-
-                  <div className="adm-progress-track">
-                    <div
-                      className="adm-progress-bar"
-                      style={{ width: `${job.status === 'running' ? Math.max(pct, 8) : pct}%` }}
-                    />
-                  </div>
-
-                  <div className="adm-step-list">
-                    {(job.steps ?? []).map((st: any, idx: number) => (
-                      <div className="adm-step-item" key={`${st.bank}-${st.day}-${idx}`}>
-                        <div>
-                          <strong>{st.bankLabel}</strong> — روز{' '}
-                          <b className="adm-ltr">{faNum(st.day)}</b>
-                        </div>
-
-                        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10 }}>
-                          {st.status === 'running' && st.liveProgress && (
-                            <span style={{ color: 'var(--adm-accent-strong)' }}>
-                              چک‌پوینت: {faNum(st.liveProgress.checkpoint)} /{' '}
-                              {faNum(st.liveProgress.source_total ?? '؟')} (موفق:{' '}
-                              {faNum(st.liveProgress.success_count)} · ناموفق:{' '}
-                              {faNum(st.liveProgress.fail_count)})
-                            </span>
-                          )}
-                          {st.result && (
-                            <span>
-                              کل منبع: <b>{faNum(st.result.source_total)}</b> · پردازش‌شده:{' '}
-                              <b>{faNum(st.result.processed)}</b> · موفق:{' '}
-                              <b style={{ color: 'var(--adm-green)' }}>{faNum(st.result.success)}</b> · ناموفق:{' '}
-                              <b style={{ color: 'var(--adm-amber)' }}>{faNum(st.result.fail)}</b>
-                              {st.result.rebuild ? ` · حذف قبلی: ${faNum(st.result.deleted)}` : ''}
-                            </span>
-                          )}
-                          {st.error && (
-                            <span style={{ color: 'var(--adm-red)', fontWeight: 700 }}>{st.error}</span>
-                          )}
-                          {statusBadge(st.status)}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </section>
+        {/* Live Jobs Monitor — F6: کامپوننت مستقل `JobsMonitor` */}
+        <div className="adm-card-anchor" ref={jobsSectionRef} aria-hidden="true" />
+        <JobsMonitor jobs={overview?.jobs as any} />
 
         {/* Recent day_runs Table */}
         <section className="adm-card">
@@ -1351,7 +1263,7 @@ export default function AdminClient({ initialAuth, initialOverview }: AdminClien
                         </td>
                         <td>{r.mode === 'intraday' ? 'میانی (intraday)' : 'شبانه (nightly)'}</td>
                         <td>
-                          {statusBadge(r.status)}
+                          <StatusBadge status={r.status} />
                           {r.error && (
                             <div style={{ color: 'var(--adm-red)', fontSize: 11, marginTop: 3 }}>
                               {r.error}
@@ -1447,7 +1359,7 @@ export default function AdminClient({ initialAuth, initialOverview }: AdminClien
                           <span style={{ color: 'var(--adm-muted)' }}>فاقد دادهٔ قبلی</span>
                         )}
                       </td>
-                      <td>{item.dayRun ? statusBadge(item.dayRun.status) : <span className="adm-badge muted">—</span>}</td>
+                      <td>{item.dayRun ? <StatusBadge status={item.dayRun.status} /> : <span className="adm-badge muted">—</span>}</td>
                     </tr>
                   ))}
                 </tbody>
