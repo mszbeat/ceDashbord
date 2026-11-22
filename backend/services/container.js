@@ -147,7 +147,30 @@ function createServices(options = {}) {
  * اطمینان از وجود جداول typed v2 (پارتیشن‌شده) بر اساس رجیستری هر بانک.
  * idempotent است و فقط در حالت `CE_DB_SCHEMA=v2` صدا زده می‌شود.
  */
+/**
+ * نگهبان: در v2، ستون `day_runs.day` **باید** از نوع date و میلادی باشد.
+ *
+ * اگر دیتابیس هنوز شکل v1 دارد (`day text` با مقدار شمسی)، بوت باید متوقف شود؛ وگرنه
+ * کوئری‌های بازه با «operator does not exist: text >= date» یا (بدتر) با تفسیر شمسی
+ * به‌عنوان میلادی، دادهٔ اشتباه برمی‌گردانند. این حالت با آزمایش واقعی دیده شد.
+ */
+async function assertDayRunsIsDate(db) {
+  const result = await db.query(
+    `SELECT data_type FROM information_schema.columns
+     WHERE table_schema = 'public' AND table_name = 'day_runs' AND column_name = 'day'`,
+  );
+  const dataType = String(result.rows[0]?.data_type ?? '(none)');
+  if (dataType === 'date') return;
+  const error = new Error(
+    `ستون day_runs.day از نوع «${dataType}» است، نه date. ` +
+      'برای اجرای v2 ابتدا `npm run migrate:v2` را اجرا کنید (غیرمخرب: جدول‌های فعلی به *_v1_backup تغییر نام می‌دهند).',
+  );
+  error.code = 'V2_SCHEMA_NOT_READY';
+  throw error;
+}
+
 async function ensureSchemaV2(db, writer, registry) {
+  await assertDayRunsIsDate(db);
   // `V2Writer` رجیستری را در `this.registry` نگه می‌دارد؛ منبع حقیقت همان است
   const source = registry || writer?.registry;
   if (!source) return; // رجیستری در دست نیست ⇒ چیزی برای ساختن نیست

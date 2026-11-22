@@ -41,30 +41,23 @@ pgTest('D3: اجرای مهاجرت‌ها یک‌بار اعمال و بار د
 }, { timeout: 120000 });
 
 /**
- * 005 — ارتقای `day_runs` از شکل v1 به v2.
+ * 005 — `day_runs` در v1 متنِ **شمسی** است و نباید با `::date` به date تبدیل شود.
  *
- * باگ واقعی که در حین کار پیدا شد: روی دیتابیسی که `day_runs` نسخهٔ v1 دارد،
- * `CREATE TABLE IF NOT EXISTS` در `002` هیچ کاری نمی‌کند و ستون‌های v2 اضافه نمی‌شوند.
- * نتیجه: `CE_DB_SCHEMA=v2` با «column "distinct_stored" does not exist» می‌شکست و
- * `day` هم text می‌ماند (مقایسهٔ date در کوئری‌های v2 نامعتبر).
- *
- * این تست همان مسیر واقعی را بازسازی می‌کند: اول فقط مبنای v1، بعد کل مهاجرت‌ها.
+ * باگی که با آزمایش واقعی پیدا شد: `USING day::date` مقدار «1405-08-01» را به‌عنوان
+ * تاریخ **میلادی** ۱۴۰۵ می‌پذیرد (۷۸۴ شمسی) و دادهٔ روز بی‌صدا خراب می‌شود.
+ * این تست همان فاجعه را قفل می‌کند: مهاجرت ۰۰۵ باید فقط ستون اضافه کند.
  */
-pgTest('005: ارتقای v1→v2 ستون date و distinct_stored را می‌آورد', async () => {
+pgTest('005: مهاجرت day را text نگه می‌دارد و ستون‌های v2 را اضافه می‌کند', async () => {
   const { createTestDatabase: createDb } = require('./helpers');
   const fs = require('node:fs');
   const db = await createDb('mig005');
   try {
-    // فقط مبنای v1 (همان کاری که نصب قدیمی دارد)
-    const baseline = await db.query('SELECT 1');
-    assert.ok(baseline);
     const v1Sql = fs.readFileSync(path.join(ROOT, 'services', 'db', 'migrations', '001-v1-baseline.sql'), 'utf8');
     await db.query(v1Sql);
-
-    const before = await db.query(
-      "SELECT data_type FROM information_schema.columns WHERE table_name='day_runs' AND column_name='day'",
+    // دادهٔ واقعی: روز شمسی + شمارش ردشده
+    await db.query(
+      `INSERT INTO day_runs(bank, day, status, skipped_count) VALUES ('tavan_mellat','1405-08-01','complete',3)`,
     );
-    assert.equal(before.rows[0].data_type, 'text', 'پیش‌شرط: جدول با شکل v1 (text)');
 
     await runMigrations(db);
 
@@ -72,16 +65,17 @@ pgTest('005: ارتقای v1→v2 ستون date و distinct_stored را می‌�
       "SELECT column_name, data_type FROM information_schema.columns WHERE table_name='day_runs'",
     );
     const byName = Object.fromEntries(after.rows.map((r) => [r.column_name, r.data_type]));
-    assert.equal(byName.day, 'date', 'day به date تبدیل شد');
+    assert.equal(byName.day, 'text', 'day نباید به date تبدیل شود (دادهٔ شمسی است)');
     assert.ok('distinct_stored' in byName, 'distinct_stored اضافه شد');
     assert.ok('skipped_other_method' in byName, 'skipped_other_method اضافه شد');
 
-    // کوئری واقعی v2 که قبلاً می‌شکست
-    const runs = await db.query(
-      "SELECT bank, day FROM day_runs WHERE day BETWEEN $1::date AND $2::date",
-      ['1405-08-01', '1405-08-23'],
-    );
-    assert.ok(Array.isArray(runs.rows), 'کوئری بازهٔ date بدون خطا اجرا شد');
+    const row = await db.query('SELECT day, skipped_other_method FROM day_runs');
+    assert.equal(row.rows[0].day, '1405-08-01', 'مقدار روز شمسی دست‌نخورده ماند');
+    assert.equal(row.rows[0].skipped_other_method, 3, 'skipped_count به skipped_other_method آینه شد');
+
+    // و همان نگهبان بوت: با day غیر date، v2 باید صریح رد شود
+    const { toDateIso } = require(path.join(ROOT, 'services', 'db', 'row-mapper-v2'));
+    assert.equal(toDateIso(row.rows[0].day), '2026-10-23', 'مبدل درست، شمسی را میلادی می‌کند');
   } finally {
     await db.close();
   }
