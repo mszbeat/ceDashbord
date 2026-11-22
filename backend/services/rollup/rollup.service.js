@@ -343,28 +343,42 @@ async function aggregateRange(ctx) {
     });
   }
   const metrics = record();
-  for (const id of registry[bankKey].metric || []) {
-    const column = require('../db/indicator-registry').columnName('metric', id);
+  const metricIds = registry[bankKey].metric || [];
+  if (sqlDays.length && metricIds.length) {
+    // یک کوئری برای همهٔ متریک‌ها: هر ستون ۷ تجمیع، همه در یک گذر روی همان ردیف‌ها.
+    // قبلاً ۲۷ کوئری جدا بود (≈۴۵۰ms سرد روی ۴۰۰ هزار ردیف) و همین گلوگاه اصلی بود.
+    const parts = [];
+    metricIds.forEach((id, index) => {
+      const column = require('../db/indicator-registry').columnName('metric', id);
+      parts.push(
+        `COUNT(${column})::int AS n${index}`,
+        `MIN(${column}) AS mn${index}`,
+        `MAX(${column}) AS mx${index}`,
+        `AVG(${column}) AS av${index}`,
+        `percentile_cont(0.25) WITHIN GROUP (ORDER BY ${column}) AS p25_${index}`,
+        `percentile_cont(0.5) WITHIN GROUP (ORDER BY ${column}) AS p50_${index}`,
+        `percentile_cont(0.75) WITHIN GROUP (ORDER BY ${column}) AS p75_${index}`,
+      );
+    });
     const res = await db.query(
-      `SELECT COUNT(*)::int AS count, MIN(${column}) AS min, MAX(${column}) AS max,
-              AVG(${column}) AS mean,
-              percentile_cont(0.25) WITHIN GROUP (ORDER BY ${column}) AS p25,
-              percentile_cont(0.5) WITHIN GROUP (ORDER BY ${column}) AS median,
-              percentile_cont(0.75) WITHIN GROUP (ORDER BY ${column}) AS p75
-         FROM ${agg.table} WHERE day = ANY($1::date[]) AND ${column} IS NOT NULL`,
-      [sqlDays.length ? sqlDays : [toDateIso(ctx.days?.[0] || '1400-01-01')]],
+      `SELECT ${parts.join(',\n ')} FROM ${agg.table} WHERE day = ANY($1::date[])`,
+      [sqlDays],
     );
     const rowStats = res.rows[0] || {};
-    if (!Number(rowStats.count ?? 0)) continue; // legacy فقط متریک‌های دیده‌شده را دارد
-    metrics[id] = {
-      count: Number(rowStats.count ?? 0),
-      min: rowStats.min === null ? null : Number(rowStats.min),
-      max: rowStats.max === null ? null : Number(rowStats.max),
-      mean: rowStats.mean === null ? null : Number(rowStats.mean),
-      p25: rowStats.p25 === null ? null : Number(rowStats.p25),
-      median: rowStats.median === null ? null : Number(rowStats.median),
-      p75: rowStats.p75 === null ? null : Number(rowStats.p75),
-    };
+    metricIds.forEach((id, index) => {
+      const count = Number(rowStats[`n${index}`] ?? 0);
+      if (!count) return; // legacy فقط متریک‌های دیده‌شده را دارد
+      const num = (value) => (value === null || value === undefined ? null : Number(value));
+      metrics[id] = {
+        count,
+        min: num(rowStats[`mn${index}`]),
+        max: num(rowStats[`mx${index}`]),
+        mean: num(rowStats[`av${index}`]),
+        p25: num(rowStats[`p25_${index}`]),
+        median: num(rowStats[`p50_${index}`]),
+        p75: num(rowStats[`p75_${index}`]),
+      };
+    });
   }
 
   // آمار هر روز (برای `daily` در `/api/summary`)

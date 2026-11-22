@@ -6,6 +6,10 @@ const { readQuery } = require('../../services/http/request');
 const { requireAuthenticatedSession } = require('../../services/http/session-guard');
 const { getActionLogger } = require('../../services/logger/action-logger.service');
 const { error: summaryError } = require('./config');
+const { ConcurrencyGate } = require('../../services/http/concurrency-gate');
+
+/** گیت هم‌زمانی مشترک برای مسیرهای سنگین (۴۲۹ بالاتر از سقف) */
+const heavyReads = new ConcurrencyGate();
 
 /**
  * سطح دسترسی ۱ — کاربر دارای سشن احرازشده:
@@ -76,13 +80,18 @@ exports.diagnostics = async function (session) {
 exports.summary = async function (queryString, session) {
   await requireAuthenticatedSession(session, () => summaryError.sessionRequired);
   const query = readQuery(queryString);
-  return getSummaryService().summary(query.bank || 'tavan_mellat', query.from || undefined, query.to || undefined);
+  const bank = query.bank || 'tavan_mellat';
+  return heavyReads.run(
+    () => getSummaryService().summary(bank, query.from || undefined, query.to || undefined),
+    { route: 'summary', bank },
+  );
 };
 
 exports.list = async function (queryString, session) {
   await requireAuthenticatedSession(session, () => summaryError.sessionRequired);
   const query = readQuery(queryString);
-  return getSummaryService().list({
+  // فهرست ارزان است (۱۰۰ ردیف) ولی برای محافظت از استخر، همان گیت با سقف بالاتر لازم است
+  return heavyReads.run(() => getSummaryService().list({
     bank: query.bank || 'tavan_mellat',
     from: query.from || undefined,
     to: query.to || undefined,
@@ -94,7 +103,7 @@ exports.list = async function (queryString, session) {
     limit: query.limit ? Number(query.limit) : undefined,
     offset: query.offset ? Number(query.offset) : undefined,
     cursor: query.cursor ? String(query.cursor) : undefined,
-  });
+  }), { route: 'list', bank: query.bank || 'tavan_mellat' });
 };
 
 exports.runs = async function (session) {

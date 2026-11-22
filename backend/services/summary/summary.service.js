@@ -398,9 +398,12 @@ class SummaryService {
     const db = { query: this.serialQuery(), exec: this.db.exec };
     const dialect = this.dialect.onSerial ? this.dialect.onSerial(db) : this.dialect;
     const bank = this.evaluator.getBank(key);
-    const serviceKeysRes = await dialect
-      .serviceDiscovery(table, f, t)
-      .catch(() => ({ rows: [] }));
+    // خطای کشف سرویس نباید بی‌صدا بلعیده شود: لاگ می‌شود و با فهرست پیش‌فرض بانک ادامه می‌دهیم
+    // (خروجی داشبورد با نبود همین کوئری، سرویس‌ها را «گم» می‌کرد و کسی خبردار نمی‌شد).
+    const serviceKeysRes = await this.guarded(
+      () => dialect.serviceDiscovery(table, f, t),
+      { action: 'summary.serviceDiscovery', meta: { bank: key, from: f, to: t }, fallback: { rows: [] } },
+    );
     const presentKeys = new Set(bank.expectedServices ?? []);
     for (const r of serviceKeysRes.rows) {
       const keys = asObject(r.display_extras).serviceKeys;
@@ -455,6 +458,33 @@ class SummaryService {
     };
   }
 
+  /**
+   * اجرای کوئری «کمکی» با ثبت خطا.
+   *
+   * قاعدهٔ فاز ۳: هیچ `.catch(() => {})` بی‌صدایی نمانَد. اگر شکست خوردن یک کوئری کمکی
+   * پذیرفتنی است (مثلاً کشف سرویس یا ثبت لاگ)، خطا باید در لاگ عمل دیده شود تا تفاوت
+   * خروجی قابل ردیابی باشد؛ در غیر این صورت همان خطا بالا می‌رود.
+   */
+  async guarded(run, { action, meta = {}, fallback } = {}) {
+    try {
+      return await run();
+    } catch (error) {
+      try {
+        require('../logger/action-logger.service').getActionLogger().warn({
+          category: 'db',
+          action,
+          errorCode: error?.code || 'QUERY_FAILED',
+          message: error?.message || 'کوئری کمکی شکست خورد',
+          meta,
+        });
+      } catch {
+        // لاگر در دسترس نیست (تست بدون لاگر) — فقط ادامه بده
+      }
+      if (fallback === undefined) throw error;
+      return fallback;
+    }
+  }
+
   async buildDashboard(bankInput, from, to, rowsCap = 100) {
     const { key, table } = bankTable(bankInput);
     const { from: f, to: t } = rangeOf(from, to);
@@ -463,9 +493,12 @@ class SummaryService {
     const db = { query: this.serialQuery(), exec: this.db.exec };
     const dialect = this.dialect.onSerial ? this.dialect.onSerial(db) : this.dialect;
     const bank = this.evaluator.getBank(key);
-    const serviceKeysRes = await dialect
-      .serviceDiscovery(table, f, t)
-      .catch(() => ({ rows: [] }));
+    // خطای کشف سرویس نباید بی‌صدا بلعیده شود: لاگ می‌شود و با فهرست پیش‌فرض بانک ادامه می‌دهیم
+    // (خروجی داشبورد با نبود همین کوئری، سرویس‌ها را «گم» می‌کرد و کسی خبردار نمی‌شد).
+    const serviceKeysRes = await this.guarded(
+      () => dialect.serviceDiscovery(table, f, t),
+      { action: 'summary.serviceDiscovery', meta: { bank: key, from: f, to: t }, fallback: { rows: [] } },
+    );
     const presentKeys = new Set(bank.expectedServices ?? []);
     for (const r of serviceKeysRes.rows) {
       const keys = asObject(r.display_extras).serviceKeys;
@@ -794,9 +827,10 @@ class SummaryService {
     const banksList = Object.keys(BANKS);
     const matched = await Promise.all(
       banksList.map(async (key) => {
-        const found = await this.dialect
-          .byRequestId(BANKS[key].table, requestId)
-          .catch(() => ({ rows: [] }));
+        const found = await this.guarded(
+          () => this.dialect.byRequestId(BANKS[key].table, requestId),
+          { action: 'summary.byRequestId', meta: { bank: key }, fallback: { rows: [] } },
+        );
         const hit = found.rows[0];
         return hit ? { bank: key, day: hit.day, is_success: hit.is_success, unique_key: hit.unique_key } : null;
       }),
@@ -873,13 +907,15 @@ class SummaryService {
       });
     }
 
-    await this.db
-      .query('INSERT INTO sample_access_logs(request_id, ip, user_agent) VALUES($1,$2,$3)', [
+    // ثبت دسترسی اگر شکست بخورد، خودِ درخواست نباید بشکند — ولی خطا **لاگ** می‌شود
+    await this.guarded(
+      () => this.db.query('INSERT INTO sample_access_logs(request_id, ip, user_agent) VALUES($1,$2,$3)', [
         requestId,
         req?.ip ?? null,
         String(req?.headers?.['user-agent'] ?? '').slice(0, 500),
-      ])
-      .catch(() => undefined);
+      ]),
+      { action: 'summary.sampleAccessLog', meta: { requestId } },
+    );
 
     if (!raw) return { requestId, found: false, fetchedAt: new Date().toISOString(), meta: {}, sample: null };
     const normalized = this.evaluator.normalizeSample(raw, { fromApi: true });

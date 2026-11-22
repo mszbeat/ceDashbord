@@ -1,0 +1,90 @@
+{
+  "engine": "17.11 (Debian 17.11-0+deb13u1)",
+  "rowsPerBank": {
+    "tavan_mellat": 400000,
+    "tavan_resalat": 400000,
+    "tavan_postbank": 400000
+  },
+  "totalRows": 1200000,
+  "sizing": {
+    "seedSeconds": 0,
+    "amplifySeconds": 0,
+    "rollupSeconds": 53,
+    "tableMb": {
+      "samples_mellat": 247,
+      "samples_postbank": 255,
+      "samples_resalat": 236
+    }
+  },
+  "summary": {
+    "bank": "tavan_mellat",
+    "coldMs": {
+      "p50": 59,
+      "p95": 77.9,
+      "runs": [
+        78,
+        59,
+        59,
+        59,
+        58
+      ]
+    },
+    "warmMs": {
+      "p50": 1.8,
+      "p95": 2.1,
+      "runs": [
+        2,
+        2,
+        2,
+        2,
+        2
+      ]
+    },
+    "queriesPerRequest": [
+      4,
+      4,
+      4,
+      4,
+      4
+    ],
+    "legacyMs": 60569,
+    "legacyTotal": 400000,
+    "sqlTotal": 400000
+  },
+  "pagination": {
+    "pages": 200,
+    "total": 400000,
+    "uniqueSeen": 20000,
+    "pageMs": {
+      "p50": 50.2,
+      "p95": 63.1,
+      "max": 76
+    },
+    "allPagesSeconds": 10,
+    "offsetCost": [
+      {
+        "offset": 0,
+        "ms": 49.1
+      },
+      {
+        "offset": 50000,
+        "ms": 150.6
+      },
+      {
+        "offset": 250000,
+        "ms": 251.9
+      }
+    ]
+  },
+  "memory": {
+    "rssMb": {
+      "start": 65,
+      "beforeRead": 83,
+      "afterRead": 86
+    },
+    "heapMb": {
+      "beforeRead": 15,
+      "afterRead": 20
+    }
+  }
+}
