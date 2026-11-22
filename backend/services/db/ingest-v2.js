@@ -56,7 +56,15 @@ class V2Writer {
     this.registry = options.registry;
     this.banksSpecs = options.banksSpecs || {};
     this.analysisVersions = options.analysisVersions || {};
-    this.chunkSize = options.chunkSize ?? 100;
+    // اندازهٔ دسته‌ها: تجربهٔ Postgres واقعی نشان می‌دهد ۱۰۰۰ ردیف × ~۴۰ ستون
+    // بهترین نقطه بین تعداد رفت‌وبرگشت و اندازهٔ پیام است (≥۵۰۰ تنهال پیشنهاد PG است).
+    this.chunkSize = options.chunkSize ?? 1000;
+    this.detailChunkSize = options.detailChunkSize ?? 500;
+    /**
+     * پارتیشن‌های ساخته‌شده در همین پروسه — تا هر دسته یک `CREATE TABLE … PARTITION OF`
+     * تکراری اجرا نکند (اندازه‌گیری: DDL تکراری، نرخ درج را چند برابر کم می‌کرد).
+     */
+    this.ensuredPartitions = new Set();
     this.valueDict = new ValueDict(db, { notify: true });
     this.catDict = createCatDict(db);
     this.loaded = false;
@@ -89,6 +97,16 @@ class V2Writer {
    * @param {object[]} rows خروجی `evaluator.evaluate`
    * @returns {Promise<{inserted:number, details:number, firstDay:string|null, lastDay:string|null}>}
    */
+  /**
+   * سقف سخت Postgres: ۶۵۵۳۵ پارامتر bind در هر دستور. تعداد ستون‌های typed هر بانک
+   * متفاوت است، پس اندازهٔ دسته از تعداد ستون‌ها هم محدود می‌شود (نه فقط از chunkSize).
+   */
+  chunkFor(bankKey, requested) {
+    const columns = this.columnsOf(bankKey).all.length;
+    const maxByParams = Math.max(1, Math.floor(60000 / columns));
+    return Math.max(1, Math.min(requested, maxByParams));
+  }
+
   async upsertBatch(client, bankKey, rows) {
     if (!rows.length) return { inserted: 0, details: 0, firstDay: null, lastDay: null, invalidIds: [] };
     await this.ready();
@@ -136,17 +154,30 @@ class V2Writer {
       }
     }
 
-    // پارتیشن ماهانه برای هر بازهٔ موجود در این دسته
-    if (firstDay) await ensureMonthlyPartitions(this.db, bankKey, firstDay, lastDay);
+    // پارتیشن ماهانه برای هر بازهٔ موجود در این دسته (فقط یک‌بار در هر پروسه)
+    if (firstDay) {
+      const monthKey = `${bankKey}:${String(firstDay).slice(0, 7)}..${String(lastDay).slice(0, 7)}`;
+      if (!this.ensuredPartitions.has(monthKey)) {
+        await ensureMonthlyPartitions(this.db, bankKey, firstDay, lastDay);
+        this.ensuredPartitions.add(monthKey);
+      }
+    }
 
+    // B5: اگر هیچ ستونی واقعاً عوض نشده باشد، UPDATE انجام نشود (جلوگیری از bloat در rebuild).
+    // مقایسه با `IS DISTINCT FROM` روی همان ستون‌هایی که در SET آمده‌اند.
     const updates = cols.all
       .filter((column) => column !== 'request_id' && column !== 'day')
       .map((column) => `${column}=EXCLUDED.${column}`)
       .join(', ');
+    const guard = cols.all
+      .filter((column) => column !== 'request_id' && column !== 'day')
+      .map((column) => `${table}.${column} IS DISTINCT FROM EXCLUDED.${column}`)
+      .join(' OR ');
 
+    const sampleChunk = this.chunkFor(bankKey, this.chunkSize);
     let inserted = 0;
-    for (let start = 0; start < mapped.length; start += this.chunkSize) {
-      const chunk = mapped.slice(start, start + this.chunkSize);
+    for (let start = 0; start < mapped.length; start += sampleChunk) {
+      const chunk = mapped.slice(start, start + sampleChunk);
       const values = [];
       const params = [];
       chunk.forEach(({ sampleRow }, index) => {
@@ -165,7 +196,7 @@ class V2Writer {
       });
       const result = await client.query(
         `INSERT INTO ${table} (${cols.all.join(',')}) VALUES ${values.join(',')}
-         ON CONFLICT (day, request_id) DO UPDATE SET ${updates}`,
+         ON CONFLICT (day, request_id) DO UPDATE SET ${updates} WHERE ${guard}`,
         params,
       );
       inserted += result.rowCount ?? chunk.length;
@@ -173,8 +204,9 @@ class V2Writer {
 
     // جزئیات نمایشی (اسپارس)
     const details = mapped.filter((item) => item.detailRow).map((item) => item.detailRow);
-    for (let start = 0; start < details.length; start += this.chunkSize) {
-      const chunk = details.slice(start, start + this.chunkSize);
+    const detailChunk = Math.max(1, Math.min(this.detailChunkSize, Math.floor(60000 / DETAIL_COLUMNS.length)));
+    for (let start = 0; start < details.length; start += detailChunk) {
+      const chunk = details.slice(start, start + detailChunk);
       const values = [];
       const params = [];
       chunk.forEach((detail, index) => {

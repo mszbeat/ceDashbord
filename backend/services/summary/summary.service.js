@@ -12,6 +12,7 @@ const { getVazirmatnFontCss } = require('../legacy-report/font-face');
 const { getActionLogger } = require('../logger/action-logger.service');
 const { buildReport } = require('../legacy-report/report-builder');
 const createV1Dialect = require('../db/dialect-v1-session');
+const { StatsCache } = require('./stats-cache');
 
 function rangeOf(from, to) {
   const fallback = defaultRange(30);
@@ -131,6 +132,21 @@ class SummaryService {
     this.db = db;
     this.evaluator = evaluator;
     this.dialect = options.dialect || createV1Dialect(db);
+    this.cache = options.cache || new StatsCache(options.cacheOptions || {});
+    /**
+     * سقف بازه (روز) — از `CE_MAX_RANGE_DAYS`؛ عبور از آن خطای ۴۱۳ می‌دهد
+     * تا یک درخواست نتواند کل تاریخچه را اسکن کند.
+     */
+    this.maxRangeDays = options.maxRangeDays ?? Number(process.env.CE_MAX_RANGE_DAYS || 400);
+  }
+
+  /** فاصلهٔ روزهای شمسی بازه (تقریبی، برای گارد سقف بازه) */
+  rangeLengthDays(from, to) {
+    const parse = (day) => {
+      const [y, m, d] = String(day).split('-').map(Number);
+      return y * 372 + m * 31 + d;
+    };
+    return Math.max(0, parse(to) - parse(from));
   }
 
   banks() {
@@ -367,6 +383,56 @@ class SummaryService {
     }
   }
 
+  /**
+   * اسکلت داشبورد (بدون پیمایش ردیف‌ها) — همان چیزی که هم `/api/report` و هم
+   * `/api/summary` لازم دارند. یک‌بار ساخته می‌شود و هر دو مسیر از آن استفاده می‌کنند
+   * (فاز ۳ — حذف کار تکراری).
+   */
+  async dashboardContext(bankInput, from, to, rowsCap = 100) {
+    const { key, table } = bankTable(bankInput);
+    const { from: f, to: t } = rangeOf(from, to);
+    const cap = Math.min(Math.max(Number(rowsCap) || 100, 1), 100);
+    const bank = this.evaluator.getBank(key);
+    const serviceKeysRes = await this.dialect
+      .serviceDiscovery(table, f, t)
+      .catch(() => ({ rows: [] }));
+    const presentKeys = new Set(bank.expectedServices ?? []);
+    for (const r of serviceKeysRes.rows) {
+      const keys = asObject(r.display_extras).serviceKeys;
+      if (Array.isArray(keys)) {
+        for (const k of keys) if (k) presentKeys.add(String(k));
+      } else {
+        for (const [k, kind] of Object.entries(asObject(r.services))) {
+          if (kind !== 'missingService' && kind !== undefined) presentKeys.add(k);
+        }
+      }
+    }
+    const selectedServices = [...presentKeys].sort();
+
+    const [countRes, daysRes, runsRes, dictRes] = await Promise.all([
+      this.dialect.countRange(table, f, t),
+      this.dialect.days(table, f, t),
+      this.dialect.runsRange(key, f, t),
+      this.db.query("SELECT message_key, COALESCE(message_text, label, 'سایر پیامها') AS text FROM message_dict"),
+    ]);
+    const totalSamples = Number(countRes.rows[0]?.total ?? 0);
+    const selectedDays = daysRes.rows.map((r) => String(r.day));
+    const messageText = new Map(dictRes.rows.map((r) => [String(r.message_key), String(r.text)]));
+    return {
+      key,
+      table,
+      f,
+      t,
+      cap,
+      bank,
+      selectedServices,
+      totalSamples,
+      selectedDays,
+      messageText,
+      runsRes,
+    };
+  }
+
   async buildDashboard(bankInput, from, to, rowsCap = 100) {
     const { key, table } = bankTable(bankInput);
     const { from: f, to: t } = rangeOf(from, to);
@@ -467,10 +533,140 @@ class SummaryService {
     return buildReport(built.scan, built.data, built.options);
   }
 
-  async summary(bankInput, from, to) {
+  /**
+   * خلاصهٔ آماری داشبورد — مسیر سریع و کم‌مصرف (فاز ۳).
+   *
+   * تفاوت با نسخهٔ قبلی: هیچ ردیفی در Node تجمیع نمی‌شود. `COUNT(*) FILTER`،
+   * `percentile_cont` و شمارش بیت‌ها در SQL انجام می‌شوند و نتیجه در `StatsCache`
+   * نگه داشته می‌شود (کلید شامل نسخهٔ تحلیل و شمارندهٔ rebuild روز است).
+   *
+   * @param {{useSql?: boolean, rowsCap?: number}} options
+   *   `useSql: false` مسیر قدیمی (بازسازی با bump) را اجرا می‌کند؛ برای مقایسه استفاده می‌شود.
+   */
+  async summary(bankInput, from, to, options = {}) {
+    if (options.useSql === false || this.dialect.name !== 'v2') {
+      return this.legacySummary(bankInput, from, to, options);
+    }
     const { key, label } = bankTable(bankInput);
     const { from: f, to: t } = rangeOf(from, to);
-    const built = await this.buildDashboard(bankInput, f, t, 100);
+    const length = this.rangeLengthDays(f, t);
+    if (this.maxRangeDays && length > this.maxRangeDays) {
+      const error = new Error(`بازهٔ درخواستی ${length} روز است؛ سقف ${this.maxRangeDays} روز`);
+      error.statusCode = 413;
+      error.meta = { code: 'rangeTooLarge' };
+      error.data = { message: { fa: error.message, en: 'range too large' } };
+      throw error;
+    }
+
+    const { aggregateRange, analysisVersionOf } = require('../rollup/rollup.service');
+    const bundle = options.registryBundle || require('../db/schema-registry').buildRuntimeRegistry(this.evaluator);
+    // متادیتای بازه (روزها و وضعیت اجراها) با TTL کوتاه کش می‌شود تا کلید کش پایدار بماند
+    // و چند درخواست هم‌زمان، کلید یکسان بسازند (single-flight واقعی).
+    const metaKey = this.cache.keyOf(['range-meta', key, f, t]);
+    const meta = await this.cache.remember(metaKey, async () => {
+      const runsRes = await this.dialect.runsRange(key, f, t);
+      const daysRes = await this.dialect.days(this.dialect.tableOf(key), f, t);
+      return { runs: runsRes, days: daysRes };
+    }, 2000);
+    const runs = meta.runs;
+    const days = meta.days;
+    const dayList = days.rows.map((row) => String(row.day));
+    const completeDays = new Set(
+      runs.rows.filter((row) => row.status === 'complete').map((row) => String(row.day)),
+    );
+    const rebuildCounter = runs.rows
+      .map((row) => `${row.day}:${row.status}:${row.updated_at instanceof Date ? row.updated_at.toISOString() : row.updated_at}`)
+      .join('|');
+    const cacheKey = this.cache.keyOf([
+      'summary', key, f, t, analysisVersionOf(this.evaluator, key), rebuildCounter,
+    ]);
+    const isCurrentRange = dayList.includes(new Date().toISOString().slice(0, 10)) ||
+      completeDays.size !== dayList.length;
+
+    const aggregated = await this.cache.remember(
+      cacheKey,
+      async () => {
+        const result = await aggregateRange({
+          db: this.db,
+          evaluator: this.evaluator,
+          registryBundle: bundle,
+          bankKey: key,
+          fromIso: require('../db/row-mapper-v2').toDateIso(f),
+          toIso: require('../db/row-mapper-v2').toDateIso(t),
+          days: dayList,
+          completeDays,
+        });
+        return { stats: result.stats, daily: result.daily };
+      },
+      isCurrentRange ? this.cache.currentDayTtlMs : this.cache.ttlMs,
+    );
+
+    return this.presentSummary(key, label, f, t, aggregated.stats, dayList, aggregated.daily);
+  }
+
+  /** ساخت خروجی `/api/summary` از آمار تجمیع‌شده (SQL یا legacy) */
+  async presentSummary(key, label, f, t, all, dayList, daily = []) {
+    const specs = this.evaluator.specs(key);
+    const metrics = {};
+    for (const [id, value] of Object.entries(all.metrics)) {
+      if (Array.isArray(value)) {
+        // مسیر legacy: آرایهٔ خام (برای سازگاری زمانی که useSql=false صدا زده می‌شود)
+        const sorted = [...value].sort((a, b) => a - b);
+        metrics[id] = {
+          count: sorted.length,
+          min: sorted[0] ?? null,
+          p25: quantile(sorted, 0.25),
+          median: quantile(sorted, 0.5),
+          mean: sorted.length ? sorted.reduce((sum, v) => sum + v, 0) / sorted.length : null,
+          p75: quantile(sorted, 0.75),
+          max: sorted.length ? sorted[sorted.length - 1] : null,
+        };
+      } else {
+        metrics[id] = { ...value };
+      }
+      metrics[id].id = id;
+      metrics[id].label = specs.metrics.find((spec) => spec.id === id)?.label ?? id;
+    }
+    const total = Number(all.total ?? 0);
+    const success = Number(all.byStatus?.success ?? 0);
+    return {
+      bank: { id: key, label },
+      from: f,
+      to: t,
+      stats: {
+        total,
+        success,
+        fail: Number(all.byStatus?.fail ?? total - success),
+        days: dayList.length,
+        success_rate: total ? Number(((success * 100) / total).toFixed(2)) : 0,
+      },
+      flags: Object.fromEntries(Object.entries(all.flags || {}).map(([id, count]) => [id, Number(count)])),
+      counters: Object.fromEntries(Object.entries(all.counters || {}).map(([id, count]) => [id, Number(count)])),
+      categories: Object.fromEntries(
+        Object.entries(all.cats || {}).map(([id, values]) => [
+          id,
+          Object.entries(values)
+            .map(([value, count]) => ({ value, count }))
+            .sort((a, b) => b.count - a.count),
+        ]),
+      ),
+      services: Object.fromEntries(
+        Object.entries(all.services || {}).map(([id, counts]) => [id, { id, label: SERVICE_FA[id] ?? id, counts }]),
+      ),
+      paths: Object.fromEntries(Object.entries(all.paths || {}).map(([id, entry]) => [id, entry])),
+      metrics,
+      daily,
+      runs: await this.runs(),
+      specs,
+      generatedAt: new Date().toISOString(),
+      source: 'sql_aggregate',
+    };
+  }
+
+  async legacySummary(bankInput, from, to, options = {}) {
+    const { key, label } = bankTable(bankInput);
+    const { from: f, to: t } = rangeOf(from, to);
+    const built = await this.buildDashboard(bankInput, f, t, options.rowsCap ?? 100);
     delete built.data.__cap;
     const all = built.data.groups.ALL;
     const specs = this.evaluator.specs(key);

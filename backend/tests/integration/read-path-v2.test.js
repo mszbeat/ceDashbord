@@ -98,6 +98,30 @@ pgTest('B4: شناسهٔ غیر-UUID در خواندن با خطای شفاف ر
   }
 }, { timeout: 120000 });
 
+pgTest('B4: صفحه‌بندی cursor با روز شمسی جلو می‌رود (رجیون باگ حلقهٔ بی‌پایان)', async () => {
+  const db = await createTestDatabase('b4c');
+  try {
+    const { dialect } = await stack(db, 1200);
+    let cursor = ['', '', ''];
+    let pages = 0;
+    let total = 0;
+    for (;;) {
+      const batch = await dialect.cursorPage('samples_mellat', '1405-08-01', '1405-08-01', cursor, 500);
+      pages += 1;
+      total += batch.rows.length;
+      if (!batch.rows.length) break;
+      const last = batch.rows[batch.rows.length - 1];
+      cursor = [String(last.day || ''), String(last.stamp_key || ''), String(last.request_id || '')];
+      if (batch.rows.length < 500) break;
+      assert.ok(pages < 20, 'صفحه‌بندی نباید تکرار شود');
+    }
+    assert.equal(total, 1200, 'جمع ردیف‌های همهٔ صفحه‌ها');
+    assert.ok(pages >= 3, `تعداد صفحه‌ها: ${pages}`);
+  } finally {
+    await db.close();
+  }
+}, { timeout: 120000 });
+
 pgTest('B5: بازنویسی ردیف بدون تغییر، tuple مرده نمی‌سازد', async () => {
   const db = await createTestDatabase('b5');
   try {

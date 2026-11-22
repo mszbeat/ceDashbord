@@ -60,6 +60,13 @@ class V2Dialect {
     this.loaded = false;
   }
 
+  /** جدول نمونهٔ یک بانک (برای مسیرهای تجمیع) */
+  tableOf(bankKey) {
+    const found = Object.entries(BANK_OF_TABLE).find(([, key]) => key === bankKey);
+    if (!found) throw new Error(`V2Dialect: بانک ناشناخته ${bankKey}`);
+    return found[0];
+  }
+
   bankOf(table) {
     const bankKey = BANK_OF_TABLE[table];
     if (!bankKey) throw new Error(`V2Dialect: جدول ناشناخته ${table}`);
@@ -171,13 +178,19 @@ class V2Dialect {
     const bankKey = this.bankOf(table);
     const [fromIso, toIso] = this.isoRange(from, to);
     const [cursorDay, cursorStamp, cursorId] = cursor;
+    // مهلک: `hydrate()` روز را **شمسی** برمی‌گرداند و سرویس همان را به‌عنوان cursor پس می‌دهد.
+    // اگر همان مقدار شمسی به ستون `date` داده شود، مقایسه با سال ۱۴۰۵ میلادی انجام می‌شود و
+    // صفحه‌بندی هرگز جلو نمی‌رود (با <۱۰۰۰ ردیف دیده نمی‌شد چون فقط یک صفحه بود).
+    const cursorIsoDay = /^1[34]\d{2}-/.test(String(cursorDay ?? ''))
+      ? toDateIso(String(cursorDay))
+      : String(cursorDay ?? '');
     const ts = cursorStamp ? stampEpochMs(cursorStamp) : null;
-    const hasCursor = Boolean(cursorDay) && ts !== null && UUID_RE.test(String(cursorId ?? ''));
+    const hasCursor = Boolean(cursorIsoDay) && ts !== null && UUID_RE.test(String(cursorId ?? ''));
     const whereCursor = hasCursor
       ? 'AND (s.day, s.ts, s.request_id) > ($3::date, $4::bigint, $5::uuid)'
       : '';
     const params = hasCursor
-      ? [fromIso, toIso, cursorDay, String(ts), String(cursorId), Number(limit)]
+      ? [fromIso, toIso, cursorIsoDay, String(ts), String(cursorId), Number(limit)]
       : [fromIso, toIso, Number(limit)];
     const result = await this.db.query(
       `SELECT ${this.selection(bankKey)}
