@@ -6,7 +6,7 @@ const PartRequest = require('partRequest');
 const pr = new PartRequest();
 
 const { getServices } = require('./services/container');
-const { config, cleanEnv, requiredEnv } = require('./services/config');
+const { config, cleanEnv, requiredEnv, assertEnv } = require('./services/config');
 
 const SessionManager = require('./controllers/auth/session-manager');
 const SamadService = require('./controllers/auth/samad.service');
@@ -104,6 +104,18 @@ class Program {
   }
 
   async run() {
+    /**
+     * D5/env fail-fast: پیش از هر اتصال یا گوش‌دادن روی پورت، تنظیمات محیط اعتبارسنجی می‌شود.
+     * بدون این، سرویس با `DATABASE_URL` خالی بالا می‌آمد و اولین درخواست، خطای مبهم می‌داد.
+     * خطای صریح و فوری = استارت ناموفق، نه سرویسِ نیمه‌کاره.
+     */
+    try {
+      assertEnv(process.env);
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error(`❌ ${error.message}`);
+      process.exit(1);
+    }
     installHttpCookiePathNormalizer();
     installHttpAuditLogger();
     await this.#core.init();

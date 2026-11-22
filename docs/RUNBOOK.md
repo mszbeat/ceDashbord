@@ -19,8 +19,17 @@ curl -s localhost:3000/api/diagnostics -b 'cookie: ...'   # فقط ادمین: �
 
 ```bash
 cd backend
-node services/db/migrations.js --status   # چه چیزی اعمال شده، آیا checksum می‌خورد
-node services/db/migrations.js            # اعمال مهاجرت‌های تازه (idempotent)
+npm run migrate:status    # چه چیزی اعمال شده، آیا checksum می‌خورد
+npm run migrate           # اعمال مهاجرت‌های تازه (idempotent)
+```
+
+خروجی واقعی روی PostgreSQL (اجرای اول و دوم):
+
+```
+فایل‌های مهاجرت: 4
+اعمال‌شده: 4 (آخرین: 004-sample-access-actor.sql)
+در انتظار: 0
+✅ اسکیما به‌روز است؛ مهاجرت جدیدی نبود.
 ```
 
 * `schema_migrations` تنها منبع حقیقت است؛ `schema.sql` دیگر در هر شروع اجرا نمی‌شود.
@@ -99,7 +108,22 @@ pg_restore -l ce-$(date +%F).dump | head          # فهرست محتوا
 | دادهٔ یک روز | اجرای دوباره با `--rebuild` (تراکنشی) |
 | پارتیشن | `DROP TABLE samples_x_YYYY_MM_DD_YYYY_MM_DD` فقط با تأیید صریح مالک داده |
 
-## ۸) هشدارها
+## ۸) چرخش گواهی TLS
+
+پروتکل `http` در production رد می‌شود (D5)؛ همهٔ ترافیک باید `https` باشد.
+برای چرخش بدون قطعی:
+
+1. گواهی جدید را در مسیر `CE_TLS_CERT_PATH` کنار گواهی فعلی قرار دهید (نه روی آن).
+2. اگر پروکسی معکوس (nginx/آپ‌استریم) دارید: ابتدا آن را با گواهی جدید ری‌لود کنید
+   (`nginx -t && nginx -s reload`) و با `curl -vI https://<host>` تاریخ `expire date` را ببینید.
+3. سپس سرویس بک‌اند را ری‌استارت کنید: `systemctl restart ce-backend`
+   (چون `CE_DB_SSL` و مسیر گواهی در بوت خوانده می‌شوند).
+4. بررسی سلامت: `curl -s https://<host>/api/readyz` باید `ready` بدهد، نه `degraded`.
+5. گواهی قدیمی را فقط بعد از یک چرخهٔ کامل ترافیک حذف کنید (rollback فوری ممکن بمانَد).
+
+* اعتبار گواهی را هشدار دهید: `openssl x509 -enddate -noout -in <cert>` — کمتر از ۳۰ روز = اقدام.
+
+## ۹) هشدارها
 
 | هشدار | معنی | اقدام |
 |---|---|---|
