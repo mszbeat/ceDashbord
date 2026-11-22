@@ -75,8 +75,32 @@ async function runMigrations(db) {
   const applied = [];
   const skipped = [];
   try {
-    // قفل مشورتی: دو نمونهٔ هم‌زمان نمی‌توانند هم‌زمان مهاجرت بزنند
-    await runner.query('SELECT pg_advisory_lock(hashtext($1))', [LOCK_KEY]);
+    /**
+     * قفل مشورتی: دو نمونهٔ هم‌زمان نمی‌توانند هم‌زمان مهاجرت بزنند.
+     *
+     * ⚠️ با مهلت: `pg_advisory_lock` بدون مهلت، اگر پروسهٔ دیگری (یا یک نمونهٔ قبلی که
+     * نیمه‌کاره killed شده) قفل را نگه داشته باشد، **بی‌نهایت** منتظر می‌ماند.
+     * در آن حالت `services.init()` هرگز تمام نمی‌شود، بک‌اند هیچ پاسخی نمی‌دهد و
+     * داشبورد/پنل ادمین تایم‌اوت می‌خورند. مهلت پیش‌فرض ۳۰ ثانیه است
+     * (`CE_MIGRATION_LOCK_TIMEOUT_MS`).
+     */
+    const lockTimeoutMs = Number(process.env.CE_MIGRATION_LOCK_TIMEOUT_MS || 30000);
+    await runner.query(`SET lock_timeout = ${Math.max(0, Math.round(lockTimeoutMs))}`);
+    try {
+      await runner.query('SELECT pg_advisory_lock(hashtext($1))', [LOCK_KEY]);
+    } catch (error) {
+      if (/lock_timeout|canceling statement/i.test(error?.message || '')) {
+        const timeoutError = new Error(
+          `قفل مهاجرت در ${lockTimeoutMs}ms آزاد نشد: نمونهٔ دیگری در حال مهاجرت است ` +
+            '(یا اجرای قبلی نیمه‌کاره مانده). دلیل را بررسی کنید: SELECT * FROM pg_locks WHERE locktype = \'advisory\';',
+        );
+        timeoutError.code = 'MIGRATION_LOCK_TIMEOUT';
+        throw timeoutError;
+      }
+      throw error;
+    } finally {
+      await runner.query('SET lock_timeout = 0').catch(() => undefined);
+    }
     await ensureTable(runner);
     const existing = await runner.query('SELECT version, name, checksum, applied_at FROM schema_migrations');
     const map = new Map(existing.rows.map((row) => [String(row.version), row]));

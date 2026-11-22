@@ -1,0 +1,251 @@
+{
+  "perBank": 400,
+  "banks": {
+    "tavan_mellat": {
+      "summary": {
+        "diffs": [],
+        "hashV1": "0d0a537e447eea44",
+        "hashV2": "bd6f661ac1d0bde0",
+        "equal": true
+      },
+      "list": {
+        "all:": {
+          "total": 400,
+          "hashV1": "aaaaf1e8b1673fd8",
+          "hashV2": "aaaaf1e8b1673fd8",
+          "diffs": []
+        },
+        "slow:": {
+          "total": 37,
+          "hashV1": "1fb4306ea4e7a771",
+          "hashV2": "1fb4306ea4e7a771",
+          "diffs": []
+        },
+        "creditAlert:": {
+          "total": 0,
+          "hashV1": "aa9f878f4bc7e0a2",
+          "hashV2": "aa9f878f4bc7e0a2",
+          "diffs": []
+        },
+        "flag:rotbeNull": {
+          "total": 400,
+          "hashV1": "95584939043f60d4",
+          "hashV2": "95584939043f60d4",
+          "diffs": []
+        },
+        "cat:depositLength:null": {
+          "total": 400,
+          "hashV1": "49b705abf9673547",
+          "hashV2": "49b705abf9673547",
+          "diffs": []
+        },
+        "metric:lnCount": {
+          "total": 400,
+          "hashV1": "2cf349a48ce6e26b",
+          "hashV2": "2cf349a48ce6e26b",
+          "diffs": []
+        },
+        "service:EstelamAsliRows": {
+          "total": 0,
+          "hashV1": "4aa33babae8863ab",
+          "hashV2": "4aa33babae8863ab",
+          "diffs": []
+        },
+        "flag:rotbeNull:success": {
+          "total": 342,
+          "hashV1": "9468c9e2e67fa3fb",
+          "hashV2": "9468c9e2e67fa3fb",
+          "diffs": []
+        },
+        "all::p5-3": {
+          "total": 400,
+          "hashV1": "be98aa03963095cd",
+          "hashV2": "be98aa03963095cd",
+          "diffs": []
+        }
+      },
+      "dashboard": {
+        "diffs": [],
+        "equal": true
+      },
+      "report": {
+        "lenV1": 1502851,
+        "lenV2": 1502851,
+        "equalNormalized": true
+      }
+    },
+    "tavan_resalat": {
+      "summary": {
+        "diffs": [],
+        "hashV1": "964fed17a9aafc96",
+        "hashV2": "f004c6b35810f326",
+        "equal": true
+      },
+      "list": {
+        "all:": {
+          "total": 400,
+          "hashV1": "fd3724061d39c3d0",
+          "hashV2": "fd3724061d39c3d0",
+          "diffs": []
+        },
+        "slow:": {
+          "total": 37,
+          "hashV1": "3c25b0323e2a4294",
+          "hashV2": "3c25b0323e2a4294",
+          "diffs": []
+        },
+        "creditAlert:": {
+          "total": 400,
+          "hashV1": "20d54a118bc6e4ec",
+          "hashV2": "20d54a118bc6e4ec",
+          "diffs": []
+        },
+        "flag:zeroRepayment": {
+          "total": 0,
+          "hashV1": "d009e9dd5706747f",
+          "hashV2": "d009e9dd5706747f",
+          "diffs": []
+        },
+        "cat:scoreCategory:null": {
+          "total": 400,
+          "hashV1": "d2f29a311c5ca4b7",
+          "hashV2": "d2f29a311c5ca4b7",
+          "diffs": []
+        },
+        "metric:rPd": {
+          "total": 0,
+          "hashV1": "29235deff418b242",
+          "hashV2": "29235deff418b242",
+          "diffs": []
+        },
+        "service:EstelamAsliRows": {
+          "total": 0,
+          "hashV1": "0e2baea446cf85df",
+          "hashV2": "0e2baea446cf85df",
+          "diffs": []
+        },
+        "flag:zeroRepayment:success": {
+          "total": 0,
+          "hashV1": "d009e9dd5706747f",
+          "hashV2": "d009e9dd5706747f",
+          "diffs": []
+        },
+        "all::p5-3": {
+          "total": 400,
+          "hashV1": "00260a6b1475d9b0",
+          "hashV2": "00260a6b1475d9b0",
+          "diffs": []
+        }
+      },
+      "dashboard": {
+        "diffs": [],
+        "equal": true
+      },
+      "report": {
+        "lenV1": 843188,
+        "lenV2": 843188,
+        "equalNormalized": true
+      }
+    },
+    "tavan_postbank": {
+      "summary": {
+        "diffs": [],
+        "hashV1": "df705c8bddc1d83f",
+        "hashV2": "09780901c541cf7b",
+        "equal": true
+      },
+      "list": {
+        "all:": {
+          "total": 400,
+          "hashV1": "282b41fa06ea04b0",
+          "hashV2": "282b41fa06ea04b0",
+          "diffs": []
+        },
+        "slow:": {
+          "total": 37,
+          "hashV1": "b853cc701328c5b5",
+          "hashV2": "b853cc701328c5b5",
+          "diffs": []
+        },
+        "creditAlert:": {
+          "total": 0,
+          "hashV1": "32f6da539dae9e85",
+          "hashV2": "32f6da539dae9e85",
+          "diffs": []
+        },
+        "flag:rotbeNull": {
+          "total": 400,
+          "hashV1": "83e412f705703c5a",
+          "hashV2": "83e412f705703c5a",
+          "diffs": []
+        },
+        "cat:installmentsStatus:null": {
+          "total": 400,
+          "hashV1": "aa55edeafda1e82e",
+          "hashV2": "aa55edeafda1e82e",
+          "diffs": []
+        },
+        "metric:postPd": {
+          "total": 400,
+          "hashV1": "71a079f6a1f76045",
+          "hashV2": "71a079f6a1f76045",
+          "diffs": []
+        },
+        "service:EstelamAsliRows": {
+          "total": 0,
+          "hashV1": "d3ce073d2941708a",
+          "hashV2": "d3ce073d2941708a",
+          "diffs": []
+        },
+        "flag:rotbeNull:success": {
+          "total": 342,
+          "hashV1": "56e2b46772aeef6f",
+          "hashV2": "56e2b46772aeef6f",
+          "diffs": []
+        },
+        "all::p5-3": {
+          "total": 400,
+          "hashV1": "95485e38eab5af59",
+          "hashV2": "95485e38eab5af59",
+          "diffs": []
+        }
+      },
+      "dashboard": {
+        "diffs": [],
+        "equal": true
+      },
+      "report": {
+        "lenV1": 1015380,
+        "lenV2": 1015380,
+        "equalNormalized": true
+      }
+    }
+  },
+  "v2Sizes": {
+    "sample_detail": "1816 KB",
+    "samples_postbank_2026_11_01_2026_12_01": "320 KB",
+    "samples_mellat_2026_11_01_2026_12_01": "312 KB",
+    "samples_resalat_2026_11_01_2026_12_01": "304 KB",
+    "samples_postbank_2026_10_01_2026_11_01": "208 KB",
+    "samples_mellat_2026_10_01_2026_11_01": "208 KB",
+    "samples_resalat_2026_10_01_2026_11_01": "192 KB",
+    "indicator_registry": "176 KB",
+    "samples_resalat_pdefault": "72 KB",
+    "samples_postbank_pdefault": "72 KB",
+    "samples_mellat_pdefault": "72 KB",
+    "day_runs": "64 KB",
+    "message_dict": "48 KB",
+    "auth_refresh_tokens": "48 KB",
+    "backend_action_logs": "48 KB",
+    "value_dict": "48 KB",
+    "schema_migrations": "32 KB",
+    "cat_dict": "32 KB",
+    "analysis_versions": "24 KB",
+    "admin_jobs": "24 KB",
+    "external_id_map": "24 KB",
+    "sample_access_logs": "24 KB",
+    "day_rollup": "16 KB",
+    "cron_configs": "16 KB",
+    "list_specs": "16 KB"
+  }
+}

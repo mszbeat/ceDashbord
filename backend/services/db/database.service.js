@@ -13,6 +13,15 @@ const { getActionLogger } = require('../logger/action-logger.service');
  *   CE_DB_POOL_MAX_READ / CE_DB_POOL_MAX_WRITE  — اندازهٔ استخر (پیش‌فرض ۱۰ / ۴)
  *   CE_DB_STATEMENT_TIMEOUT_MS                  — سقف زمان هر کوئری خواندن (پیش‌فرض ۳۰۰۰۰)
  *   CE_DB_IDLE_TIMEOUT_MS                       — بستن اتصال بیکار (پیش‌فرض ۳۰۰۰۰)
+ *   CE_DB_POOL_ACQUIRE_TIMEOUT_MS               — سقف انتظار برای گرفتن اتصال آزاد (پیش‌فرض ۱۰۰۰۰)
+ *   CE_DB_QUERY_TIMEOUT_MS                      — سقف سمت کلاینت برای هر کوئری (پیش‌فرض ۳۵۰۰۰)
+ *
+ * ⚠️ چرا acquire/query timeout لازم شد (باگ «صفحه لود نمی‌شود»):
+ *   `pg` به‌طور پیش‌فرض برای «گرفتن اتصال آزاد از استخر» هیچ مهلتی ندارد. اگر همهٔ
+ *   اتصال‌ها مشغول باشند (مثلاً یک ingest طولانی یا یک اتصال جامانده)، هر درخواست
+ *   **بی‌نهایت** منتظر می‌ماند: صفحهٔ گزارش با ۵۰۲ «سرور پاسخ نداد» و پنل ادمین با
+ *   اسپینر همیشگی «در حال بررسی سطح دسترسی…» — بدون هیچ خطایی در لاگ.
+ *   با این دو مهلت، همان شرایط به خطای صریح و ۵۰۳ تبدیل می‌شود.
  */
 function numeric(name, fallback) {
   const value = Number(process.env[name]);
@@ -38,6 +47,8 @@ class DatabaseService {
       idleTimeoutMillis: numeric('CE_DB_IDLE_TIMEOUT_MS', 30000),
       connectionTimeoutMillis: numeric('CE_DB_CONNECT_TIMEOUT_MS', 5000),
       application_name: `ce-${role}`,
+      // سقف سمت کلاینت: اگر سرور پاسخ ندهد (نه حتی خطا)، کوئری رها نمی‌شود
+      query_timeout: numeric('CE_DB_QUERY_TIMEOUT_MS', 35000),
       // D5: اتصال رمزنگاری‌شده به دیتابیس در production
       ssl: String(process.env.CE_DB_SSL || '').toLowerCase() === 'true'
         ? { rejectUnauthorized: String(process.env.CE_DB_SSL_STRICT || 'true').toLowerCase() !== 'false' }
@@ -58,12 +69,49 @@ class DatabaseService {
     });
   }
 
+  /**
+   * سقف انتظار برای گرفتن اتصال آزاد از استخر.
+   *
+   * بدون این، `pool.query`/`pool.connect` وقتی همهٔ اتصال‌ها مشغول‌اند **بی‌نهایت**
+   * منتظر می‌مانند و هیچ لاگی هم ثبت نمی‌شود — همان چیزی که صفحهٔ گزارش را به
+   * «سرور پاسخ نداد» و پنل ادمین را به اسپینر همیشگی تبدیل می‌کرد.
+   * حالا با خطای صریح `DB_POOL_ACQUIRE_TIMEOUT` و پیام «کارِ بعدی» برمی‌گردد.
+   */
+  #acquireTimeoutMs() {
+    return numeric('CE_DB_POOL_ACQUIRE_TIMEOUT_MS', 10000);
+  }
+
+  async #withAcquireTimeout(promise) {
+    const limit = this.#acquireTimeoutMs();
+    let timer;
+    try {
+      return await Promise.race([
+        promise,
+        new Promise((_resolve, reject) => {
+          timer = setTimeout(() => {
+            const error = new Error(
+              `هیچ اتصال آزادی از استخر دیتابیس در ${limit}ms آزاد نشد ` +
+                `(role=${this.role}, max=${this.pool.options?.max ?? '?'}, waiting=${this.pool.waitingCount}). ` +
+                'معمولاً یعنی یک عملیات طولانی (import/تحلیل) همهٔ اتصال‌ها را گرفته است؛ ' +
+                'یا `CE_DB_POOL_MAX_READ` را بالا ببرید یا بعد از پایان آن دوباره تلاش کنید.',
+            );
+            error.code = 'DB_POOL_ACQUIRE_TIMEOUT';
+            error.statusCode = 503;
+            reject(error);
+          }, limit);
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   query(text, params) {
-    return this.pool.query(text, params);
+    return this.#withAcquireTimeout(this.pool.query(text, params));
   }
 
   getClient() {
-    return this.pool.connect();
+    return this.#withAcquireTimeout(this.pool.connect());
   }
 
   /** اندازهٔ استخر (برای /healthz و متریک) */

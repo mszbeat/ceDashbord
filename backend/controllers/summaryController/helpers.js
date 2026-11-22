@@ -65,14 +65,21 @@ exports.report = async function (queryString, response, session) {
   const bank = query.bank || 'tavan_mellat';
   const rowsCap = query.rowsCap ? Number(query.rowsCap) : 100;
   try {
+    /**
+     * اندازه‌گیری زمان ساخت گزارش.
+     * بدون این عدد، «گزارش لود نشد» فقط یک علامت است؛ با آن مشخص می‌شود کندی از
+     * تولید گزارش است یا از شبکه/پروکسی (مقایسه با `durationMs` در لاگ فرانت).
+     */
+    const startedAt = Date.now();
     const html = await getSummaryService().report(bank, query.from || undefined, query.to || undefined, rowsCap);
+    const durationMs = Date.now() - startedAt;
     getActionLogger().info({
       category: 'summary',
       action: 'summary.report.rendered',
       actor: actor.username,
       roles: actor.roles,
       statusCode: 200,
-      meta: { bank, from: query.from || null, to: query.to || null, rowsCap },
+      meta: { bank, from: query.from || null, to: query.to || null, rowsCap, durationMs, bytes: html?.length ?? null },
     });
     return sendHtml(html, 200, response);
   } catch (err) {

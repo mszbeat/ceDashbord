@@ -12,6 +12,16 @@
 export const DEFAULT_HEADERS_TIMEOUT_MS = Number(process.env.CE_REPORT_HEADERS_TIMEOUT_MS || 30000);
 
 /**
+ * مهلت پیش‌فرض فراخوانی‌های نشست (`/api/auth/me`, `/api/auth/refresh`, ...).
+ *
+ * 🐞 چرا لازم شد: این فراخوانی‌ها با `fetch` خالی انجام می‌شدند (بدون مهلت).
+ * اگر بک‌اند اتصال را بپذیرد ولی پاسخ ندهد، `probeSessionWithCleanRecovery` هرگز
+ * settle نمی‌شد و پنل ادمین تا ابد روی «در حال بررسی سطح دسترسی…» می‌ماند —
+ * بدون خطا و بدون لاگ. اکنون با مهلت، پیام خطای روشن به کاربر می‌رسد.
+ */
+export const DEFAULT_SESSION_TIMEOUT_MS = Number(process.env.CE_SESSION_TIMEOUT_MS || 12000);
+
+/**
  * `fetch` را با کنترل زمان‌بندی فراخوانی می‌کند.
  * @param {typeof fetch} fetchImpl
  * @param {string} url

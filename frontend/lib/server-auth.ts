@@ -1,3 +1,5 @@
+import { fetchWithHeadersTimeout, DEFAULT_SESSION_TIMEOUT_MS } from '@/lib/upstream-timeout.mjs';
+
 export interface AuthPayload {
   authenticated?: boolean;
   username?: string;
@@ -490,11 +492,16 @@ export async function probeSessionWithCleanRecovery(
   const isHttps = isRequestHttps(incomingHeaders);
 
   const callMe = async (cookieVal: string) => {
-    const res = await fetch(new URL('/api/auth/me', backendUrl).toString(), {
-      method: 'GET',
-      cache: 'no-store',
-      headers: buildForwardClientHeaders(incomingHeaders, cookieVal),
-    });
+    const res = await fetchWithHeadersTimeout(
+      fetch,
+      new URL('/api/auth/me', backendUrl).toString(),
+      {
+        method: 'GET',
+        cache: 'no-store',
+        headers: buildForwardClientHeaders(incomingHeaders, cookieVal),
+      },
+      { timeoutMs: DEFAULT_SESSION_TIMEOUT_MS },
+    );
     const rawText = await res.text().catch(() => '');
     const rawJson = safeParseJson(rawText);
     const { setCookies, cleanText, cleanJson } = collectResponseCookies(res, rawText, rawJson);
@@ -639,7 +646,10 @@ async function executeRefreshWithRecovery(
   }
 
   const postRefresh = async (cookieVal: string) => {
-    const res = await fetch(new URL('/api/auth/refresh', backendUrl).toString(), {
+    const res = await fetchWithHeadersTimeout(
+      fetch,
+      new URL('/api/auth/refresh', backendUrl).toString(),
+      {
       method: 'POST',
       cache: 'no-store',
       headers: {
@@ -647,7 +657,9 @@ async function executeRefreshWithRecovery(
         'content-type': 'application/json',
       },
       body: '{}',
-    });
+    },
+      { timeoutMs: DEFAULT_SESSION_TIMEOUT_MS },
+    );
     const rawText = await res.text().catch(() => '');
     const rawJson = safeParseJson(rawText);
     const { setCookies, cleanText, cleanJson } = collectResponseCookies(res, rawText, rawJson);
@@ -730,11 +742,16 @@ export async function peekRefreshToken(
   incomingCookieHeader: string,
 ): Promise<{ ok: boolean; valid: boolean; rawText: string; rawJson: any } | null> {
   try {
-    const res = await fetch(new URL('/api/auth/refresh/peek', backendUrl).toString(), {
+    const res = await fetchWithHeadersTimeout(
+      fetch,
+      new URL('/api/auth/refresh/peek', backendUrl).toString(),
+      {
       method: 'GET',
       cache: 'no-store',
       headers: buildForwardClientHeaders(incomingHeaders, incomingCookieHeader),
-    });
+    },
+      { timeoutMs: DEFAULT_SESSION_TIMEOUT_MS },
+    );
     const rawText = await res.text().catch(() => '');
     const rawJson = safeParseJson(rawText);
     const data = unwrapAuthPayload(rawJson) as any;
@@ -796,7 +813,10 @@ export async function performLoginWithRecovery(
   const isHttps = isRequestHttps(incomingHeaders);
 
   const postLogin = async (cookieVal: string) => {
-    const res = await fetch(new URL('/api/auth/login', backendUrl).toString(), {
+    const res = await fetchWithHeadersTimeout(
+      fetch,
+      new URL('/api/auth/login', backendUrl).toString(),
+      {
       method: 'POST',
       cache: 'no-store',
       headers: {
@@ -804,7 +824,9 @@ export async function performLoginWithRecovery(
         'content-type': 'application/json',
       },
       body: bodyText,
-    });
+    },
+      { timeoutMs: DEFAULT_SESSION_TIMEOUT_MS },
+    );
     const rawText = await res.text().catch(() => '');
     const rawJson = safeParseJson(rawText);
     const { setCookies, cleanText, cleanJson } = collectResponseCookies(res, rawText, rawJson);
@@ -898,15 +920,19 @@ export async function performRegisterWithRecovery(
   const probe = await probeSessionWithCleanRecovery(backendUrl, incomingHeaders, incomingCookieHeader, {
     forceCleanTokenIfUnauthed: shouldAutoLogin,
   });
-  const res = await fetch(new URL('/api/auth/register', backendUrl).toString(), {
+  const res = await fetchWithHeadersTimeout(
+    fetch,
+    new URL('/api/auth/register', backendUrl).toString(),
+    {
     method: 'POST',
     cache: 'no-store',
     headers: {
       ...buildForwardClientHeaders(incomingHeaders, probe.cookieHeader),
       'content-type': 'application/json',
     },
-    body: sanitizedBody,
-  });
+    body: sanitizedBody,},
+    { timeoutMs: DEFAULT_SESSION_TIMEOUT_MS },
+  );
   const rawText = await res.text().catch(() => '');
   const rawJson = safeParseJson(rawText);
   const { setCookies, cleanText, cleanJson } = collectResponseCookies(res, rawText, rawJson);
@@ -937,15 +963,19 @@ export async function performLogoutWithRecovery(
   incomingCookieHeader: string,
 ): Promise<RefreshOutcome> {
   const isHttps = isRequestHttps(incomingHeaders);
-  const res = await fetch(new URL('/api/auth/logout', backendUrl).toString(), {
+  const res = await fetchWithHeadersTimeout(
+    fetch,
+    new URL('/api/auth/logout', backendUrl).toString(),
+    {
     method: 'POST',
     cache: 'no-store',
     headers: {
       ...buildForwardClientHeaders(incomingHeaders, incomingCookieHeader),
       'content-type': 'application/json',
     },
-    body: '{}',
-  });
+    body: '{}',},
+    { timeoutMs: DEFAULT_SESSION_TIMEOUT_MS },
+  );
   const rawText = await res.text().catch(() => '');
   const rawJson = safeParseJson(rawText);
   const { setCookies, cleanText, cleanJson } = collectResponseCookies(res, rawText, rawJson);

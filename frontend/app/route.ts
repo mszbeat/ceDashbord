@@ -89,6 +89,12 @@ export async function GET(request: NextRequest) {
 
   const backendUrl = resolveBackendOrigin();
   const isHttps = isRequestHttps(request.headers, request.url);
+  /**
+   * زمان شروع برای لاگ زمان‌بندی.
+   * اگر گزارش باز نشود، این عدد در لاگ فرانت نشان می‌دهد وقت کجا گذشته است
+   * (انتظار برای هدرهای بک‌اند، یا خواندن بدنه) — بدون این، فقط «لود نشد» می‌بینیم.
+   */
+  const startedAt = Date.now();
   const target = new URL('/api/report', backendUrl);
   request.nextUrl.searchParams.forEach((value, key) => {
     if (value !== '') target.searchParams.set(key, value);
@@ -187,6 +193,13 @@ export async function GET(request: NextRequest) {
     const extractedHtml = extractHtmlDocument(body);
     if (extractedHtml !== null) {
       headers.set('content-type', 'text/html; charset=utf-8');
+      console.info('[report] unwrapped JSON envelope', {
+        upstreamStatus: response.status,
+        upstreamContentType: contentType,
+        envelopeBytes: body.length,
+        htmlBytes: extractedHtml.length,
+        durationMs: Date.now() - startedAt,
+      });
       return new Response(extractedHtml, { status: response.status, headers });
     }
     if (body.length <= inlineLimit && isHtmlDocument(body)) {
@@ -217,6 +230,7 @@ export async function GET(request: NextRequest) {
       name: error instanceof Error ? error.name : typeof error,
       message: error instanceof Error ? error.message : String(error),
       target: target.toString(),
+      durationMs: Date.now() - startedAt,
     });
     return new Response(
       errorPage(

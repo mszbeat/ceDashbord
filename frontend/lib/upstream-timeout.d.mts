@@ -1,4 +1,5 @@
 export declare const DEFAULT_HEADERS_TIMEOUT_MS: number;
+export declare const DEFAULT_SESSION_TIMEOUT_MS: number;
 export declare function fetchWithHeadersTimeout(
   fetchImpl: typeof fetch,
   url: string,
