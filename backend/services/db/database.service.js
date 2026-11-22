@@ -38,6 +38,10 @@ class DatabaseService {
       idleTimeoutMillis: numeric('CE_DB_IDLE_TIMEOUT_MS', 30000),
       connectionTimeoutMillis: numeric('CE_DB_CONNECT_TIMEOUT_MS', 5000),
       application_name: `ce-${role}`,
+      // D5: اتصال رمزنگاری‌شده به دیتابیس در production
+      ssl: String(process.env.CE_DB_SSL || '').toLowerCase() === 'true'
+        ? { rejectUnauthorized: String(process.env.CE_DB_SSL_STRICT || 'true').toLowerCase() !== 'false' }
+        : undefined,
       // سقف زمان دستور: جلوی کوئری سرگردان (مثلاً بازهٔ بسیار بزرگ) را می‌گیرد
       statement_timeout: options.statementTimeoutMs
         ?? (role === 'write' ? numeric('CE_DB_WRITE_STATEMENT_TIMEOUT_MS', 120000) : numeric('CE_DB_STATEMENT_TIMEOUT_MS', 30000)),

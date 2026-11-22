@@ -22,6 +22,9 @@ const bankQuery = {
 };
 
 exports.health = { header: {}, params: {}, queryString: {} };
+// D8 — سلامت/آمادگی: بدون پارامتر ورودی
+exports.healthz = { header: {}, params: {}, queryString: {} };
+exports.readyz = { header: {}, params: {}, queryString: {} };
 
 exports.banks = { header: {}, params: {}, queryString: {} };
 

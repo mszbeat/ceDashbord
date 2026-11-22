@@ -11,6 +11,9 @@ module.exports = {
   },
   handlers: {
     health: { needProtocolRef: false, params: [] },
+    // D8 — liveness (بدون پارامتر) و readiness (به response نیاز دارد تا ۵۰۳ ست کند)
+    healthz: { needProtocolRef: false, params: [] },
+    readyz: { needProtocolRef: false, params: ['_protocolRef.response'] },
     banks: { needProtocolRef: false, params: ['_session'] },
     specs: { needProtocolRef: false, params: ['_protocolRef.request.queryString', '_session'] },
     report: {

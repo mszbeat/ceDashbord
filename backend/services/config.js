@@ -261,8 +261,78 @@ const config = {
   dbSchema: (process.env.CE_DB_SCHEMA || 'v1').toLowerCase() === 'v2' ? 'v2' : 'v1',
 };
 
+/**
+ * D5/D8 — اعتبارسنجی محیط در شروع («fail-fast»).
+ *
+ * هر مشکلی که در production به فاجعه تبدیل می‌شود، همان‌جا و با پیام روشن اعلام می‌شود،
+ * نه در نیمه‌شب با ۵۰۰. موارد بررسی‌شده:
+ *  * `CE_REPORT_PROTOCOL` در production نباید `http` باشد (توکن gateway روی شبکهٔ باز).
+ *  * آدرس بانک‌ها باید با https شروع شود (وقتی `CE_REQUIRE_HTTPS=true` یا production).
+ *  * `CE_DB_SCHEMA` فقط `v1` یا `v2`.
+ *  * `SESSION_SECRET`/`CE_ADMIN_ROLES` در production الزامی است.
+ *
+ * @returns {{errors: string[], warnings: string[]}}
+ */
+function validateEnv(env = process.env) {
+  const errors = [];
+  const warnings = [];
+  const isProd = String(env.NODE_ENV || '').toLowerCase() === 'production';
+  const requireHttps = isProd || String(env.CE_REQUIRE_HTTPS || '').toLowerCase() === 'true';
+
+  const protocols = [env.CE_REPORT_PROTOCOL, env.CE_REPORT_PROTOCOL_MELLAT, env.CE_REPORT_PROTOCOL_RESALAT, env.CE_REPORT_PROTOCOL_POSTBANK]
+    .filter(Boolean)
+    .map((value) => String(value).trim().toLowerCase());
+  if (requireHttps && protocols.includes('http')) {
+    errors.push('CE_REPORT_PROTOCOL=http در محیط امن پذیرفته نیست؛ https تنظیم کنید (D5)');
+  }
+  const urls = [env.CE_API_BASE_URL, env.CE_REPORT_HOST]
+    .filter(Boolean)
+    .map((value) => String(value).trim());
+  for (const url of urls) {
+    if (/^http:\/\//i.test(url) && requireHttps) {
+      errors.push(`آدرس با http شروع شده است: ${url.slice(0, 40)}… — از https استفاده کنید (D5)`);
+    }
+  }
+  const schema = String(env.CE_DB_SCHEMA || 'v1').toLowerCase();
+  if (!['v1', 'v2'].includes(schema)) {
+    errors.push(`CE_DB_SCHEMA نامعتبر است: ${env.CE_DB_SCHEMA} (فقط v1 یا v2)`);
+  }
+  if (!String(env.DATABASE_URL || '').trim()) {
+    errors.push('DATABASE_URL تنظیم نشده است');
+  }
+  if (isProd) {
+    if (!String(env.SESSION_SECRET || '').trim()) errors.push('SESSION_SECRET در production الزامی است');
+    if (!String(env.CE_ADMIN_ROLES || '').trim()) warnings.push('CE_ADMIN_ROLES تنظیم نشده؛ نقش‌های پیش‌فرض admin,ce-admin استفاده می‌شود');
+    if (String(env.CE_DB_SSL || '').toLowerCase() !== 'true') {
+      warnings.push('CE_DB_SSL=true توصیه می‌شود (اتصال رمزنگاری‌شده به دیتابیس)');
+    }
+  }
+  return { errors, warnings };
+}
+
+/** اجرای اعتبارسنجی و پرتاب خطا در صورت وجود مشکل مسدودکننده */
+function assertEnv(env = process.env) {
+  const { errors, warnings } = validateEnv(env);
+  for (const warning of warnings) {
+    try {
+      require('./logger/action-logger.service').getActionLogger().warn({
+        category: 'config', action: 'config.warning', message: warning,
+      });
+    } catch { /* لاگر آماده نیست */ }
+  }
+  if (errors.length) {
+    const error = new Error(`تنظیمات محیط نامعتبر است:\n- ${errors.join('\n- ')}`);
+    error.code = 'INVALID_ENV';
+    error.errors = errors;
+    throw error;
+  }
+  return { errors, warnings };
+}
+
 module.exports = {
   config,
+  validateEnv,
+  assertEnv,
   BANKS,
   cleanEnv,
   requiredEnv,

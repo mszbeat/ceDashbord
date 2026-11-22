@@ -1,9 +1,9 @@
 'use strict';
 
 const { getServices } = require('../../services/container');
-const { sendHtml } = require('../../services/http/result');
+const { sendHtml, sendJson } = require('../../services/http/result');
 const { readQuery } = require('../../services/http/request');
-const { requireAuthenticatedSession } = require('../../services/http/session-guard');
+const { requireAuthenticatedSession, requireAdminSession } = require('../../services/http/session-guard');
 const { getActionLogger } = require('../../services/logger/action-logger.service');
 const { error: summaryError } = require('./config');
 const { ConcurrencyGate } = require('../../services/http/concurrency-gate');
@@ -20,13 +20,32 @@ function getSummaryService() {
   return getServices().summary;
 }
 
-exports.health = function () {
+exports.health = async function () {
+  // `/api/health` سازگار با نسخهٔ قبل می‌مانَد؛ اطلاعات سلامت/آمادگی تفکیک‌شده‌اند
+  const { healthz } = require('../../services/health');
+  const live = await healthz();
   return {
     ok: true,
     service: 'ce-dashboard-backend',
     framework: 'partFramework',
     time: new Date().toISOString(),
+    uptimeSeconds: live.uptimeSeconds,
+    version: live.version,
   };
+};
+
+/** GET /api/healthz — liveness بدون احراز هویت و بدون وابستگی */
+exports.healthz = async function () {
+  const { healthz } = require('../../services/health');
+  return healthz();
+};
+
+/** GET /api/readyz — readiness با اتصال دیتابیس، جداول و روزهای ناقص (۵۰۳ در حالت ناسالم) */
+exports.readyz = async function (response) {
+  const { readyz } = require('../../services/health');
+  const { config } = require('../../services/config');
+  const result = await readyz(getServices().db, { schema: config.dbSchema });
+  return sendJson(result, result.ok ? 200 : 503, response);
 };
 
 exports.banks = async function (session) {
@@ -73,7 +92,8 @@ exports.report = async function (queryString, response, session) {
 };
 
 exports.diagnostics = async function (session) {
-  await requireAuthenticatedSession(session, () => summaryError.sessionRequired);
+  // D1: تشخیص‌ها اطلاعات عملیاتی/ساختاری‌اند و فقط برای ادمین‌اند (نه هر کاربر وارد‌شده)
+  await requireAdminSession(session, () => summaryError.sessionRequired);
   return getSummaryService().diagnostics();
 };
 

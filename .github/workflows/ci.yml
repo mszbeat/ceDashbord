@@ -1,0 +1,75 @@
+# D4 — خط لولهٔ CI: lint/typecheck، تست واحد، تست یکپارچه روی PostgreSQL واقعی،
+# ممیزی وابستگی‌ها و اسکن سادهٔ راز.
+#
+# چرا PostgreSQL واقعی: بیشتر باگ‌های این پروژه (نوع `date` در برابر روز شمسی، پارتیشن،
+# `percentile_cont`، قفل مشورتی) روی PGlite دیده نمی‌شوند. سرویس postgres همین‌جا بالا می‌آید.
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      CE_TEST_PG: '1'
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres
+      CE_API_BASE_URL: http://127.0.0.1:1/report
+      DISABLE_FILE_LOGS: '1'
+      DISABLE_DB_ACTION_LOGS: '1'
+      LOG_CONSOLE: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - name: نصب وابستگی‌های بک‌اند
+        run: npm ci --prefix backend
+      - name: lint / typecheck (در صورت وجود اسکریپت)
+        run: |
+          node -e "const p=require('./backend/package.json').scripts||{};console.log(Object.keys(p).join(' '))"
+          if node -e "process.exit(require('./backend/package.json').scripts?.lint?0:1)"; then npm run lint --prefix backend; fi
+          if node -e "process.exit(require('./backend/package.json').scripts?.typecheck?0:1)"; then npm run typecheck --prefix backend; fi
+      - name: تست واحد
+        run: cd backend && node --test tests/*.test.js
+      - name: تست یکپارچه روی PostgreSQL
+        run: cd backend && node --test tests/integration/*.test.js
+      - name: ممیزی وابستگی‌ها (high/critical)
+        run: npm audit --audit-level=high --prefix backend
+      - name: اسکن سادهٔ راز
+        run: node scripts/secret-scan.js
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci --prefix frontend
+      - run: npm run lint --prefix frontend
+        continue-on-error: true
+      - run: npm test --prefix frontend

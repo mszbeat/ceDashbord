@@ -53,6 +53,10 @@ module.exports = (router) => {
   // ───────────────── سطح ۱: کاربر عادی (صفحهٔ اول و تحلیل‌های کلی) ─────────────────
   router.setRoute('/api/health', 'summary-controller.health').method('GET');
 
+  // D8 — سلامت/آمادگی برای مانیتورینگ و orchestrator (بدون احراز هویت)
+  router.setRoute('/api/healthz', 'summary-controller.healthz').method('GET');
+  router.setRoute('/api/readyz', 'summary-controller.readyz').method('GET');
+
   router.setRoute('/api/banks', 'summary-controller.banks').method('GET').checkAccess(true);
 
   router

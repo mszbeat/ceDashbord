@@ -20,9 +20,19 @@ exports.controller = class SummaryController extends BaseController {
     super(core, schema, config);
   }
 
-  /** GET /api/health */
+  /** GET /api/health (سازگار با قبل) */
   health() {
     return helpers.health();
+  }
+
+  /** GET /api/healthz — liveness */
+  healthz() {
+    return helpers.healthz();
+  }
+
+  /** GET /api/readyz — readiness (503 وقتی دیتابیس/جداول مشکل دارند یا روز ناقص قدیمی هست) */
+  readyz(request, response) {
+    return helpers.readyz(response);
   }
 
   /** GET /api/banks */

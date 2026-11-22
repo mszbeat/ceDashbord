@@ -120,6 +120,22 @@ function baseOfRow(row, stamp) {
   };
 }
 
+/**
+ * ماسک IP برای ثبت دسترسی (D2): آخرین جزء IPv4 و ابتدای IPv6 حذف می‌شود تا نشانی کامل
+ * ذخیره نشود (همان سیاست «sourceip حذف/ماسک»).
+ */
+function maskIp(ip) {
+  const text = String(ip ?? '').trim();
+  if (!text) return null;
+  if (text.includes(':')) {
+    const parts = text.split(':').filter(Boolean);
+    return `${parts.slice(0, 2).join(':')}::`;
+  }
+  const parts = text.split('.');
+  if (parts.length === 4) return `${parts[0]}.${parts[1]}.${parts[2]}.0`;
+  return text.slice(0, 3) + '…';
+}
+
 class SummaryService {
   /**
    * @param {object} db آداپتور دیتابیس (query/getClient)
@@ -602,6 +618,19 @@ class SummaryService {
    *   `useSql: false` مسیر قدیمی (بازسازی با bump) را اجرا می‌کند؛ برای مقایسه استفاده می‌شود.
    */
   async summary(bankInput, from, to, options = {}) {
+    const startedAt = process.hrtime.bigint();
+    try {
+      return await this.#summaryImpl(bankInput, from, to, options);
+    } finally {
+      const ms = Number(process.hrtime.bigint() - startedAt) / 1e6;
+      require('../metrics').metrics.observe('summary_latency_ms', ms, { bank: bankInput });
+      if (ms > 1500) {
+        require('../metrics').metrics.inc('summary_slow_total', 1, { bank: bankInput });
+      }
+    }
+  }
+
+  async #summaryImpl(bankInput, from, to, options = {}) {
     if (options.useSql === false || this.dialect.name !== 'v2') {
       return this.legacySummary(bankInput, from, to, options);
     }
@@ -659,7 +688,10 @@ class SummaryService {
       isCurrentRange ? this.cache.currentDayTtlMs : this.cache.ttlMs,
     );
 
-    return this.presentSummary(key, label, f, t, aggregated.stats, dayList, aggregated.daily);
+    const payload = this.presentSummary(key, label, f, t, aggregated.stats, dayList, aggregated.daily);
+    const stats = this.cache.stats();
+    require('../metrics').metrics.set('summary_cache_hit_rate', Math.round((stats.hitRate || 0) * 100), { bank: key });
+    return payload;
   }
 
   /** ساخت خروجی `/api/summary` از آمار تجمیع‌شده (SQL یا legacy) */
@@ -822,7 +854,7 @@ class SummaryService {
     };
   }
 
-  async sample(requestId, req, bankHint) {
+  async sample(requestId, req, bankHint, actor = null) {
     // جست‌وجوی ردیف ذخیره‌شده در همهٔ بانک‌ها (جزئیات مسیر هر dialect جداست)
     const banksList = Object.keys(BANKS);
     const matched = await Promise.all(
@@ -909,12 +941,18 @@ class SummaryService {
 
     // ثبت دسترسی اگر شکست بخورد، خودِ درخواست نباید بشکند — ولی خطا **لاگ** می‌شود
     await this.guarded(
-      () => this.db.query('INSERT INTO sample_access_logs(request_id, ip, user_agent) VALUES($1,$2,$3)', [
-        requestId,
-        req?.ip ?? null,
-        String(req?.headers?.['user-agent'] ?? '').slice(0, 500),
-      ]),
-      { action: 'summary.sampleAccessLog', meta: { requestId } },
+      // D2: ثبت دسترسی با بازیگر و نقش‌ها (مسئولیت‌پذیری) — `ip` ماسک می‌شود
+      () => this.db.query(
+        'INSERT INTO sample_access_logs(request_id, ip, user_agent, actor, roles) VALUES($1,$2,$3,$4,$5::jsonb)',
+        [
+          requestId,
+          maskIp(req?.ip ?? null),
+          String(req?.headers?.['user-agent'] ?? '').slice(0, 500),
+          actor?.username ?? null,
+          JSON.stringify(Array.isArray(actor?.roles) ? actor.roles : []),
+        ],
+      ),
+      { action: 'summary.sampleAccessLog', meta: { requestId, actor: actor?.username ?? null } },
     );
 
     if (!raw) return { requestId, found: false, fetchedAt: new Date().toISOString(), meta: {}, sample: null };
@@ -1005,6 +1043,9 @@ class SummaryService {
     const result = {
       ok: false,
       framework: 'partFramework',
+      // D8: متریک‌های درون‌پروسه (ingestion/کش/تأخیر) و وضعیت استخرها
+      metrics: require('../metrics').metrics.snapshot(),
+      pools: typeof this.db.stats === 'function' ? this.db.stats() : null,
       generatedAt: new Date().toISOString(),
       databaseUrlConfigured: !!process.env.DATABASE_URL,
       apiBaseUrlConfigured: !!process.env.CE_API_BASE_URL,

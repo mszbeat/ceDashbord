@@ -47,7 +47,7 @@ function createServices(options = {}) {
   const ingestion = new IngestionService(db, evaluator, writer ? { writer } : {});
   const summary = new SummaryService(db, evaluator, dialect ? { dialect } : {});
   const admin = new AdminService(db, ingestion);
-  const cronScheduler = new CronSchedulerService(admin);
+  const cronScheduler = new CronSchedulerService(admin, { db });
   let initialized = false;
 
   return {

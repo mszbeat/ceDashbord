@@ -283,7 +283,8 @@ class ActionLoggerService {
       path: input.path || ctx?.path || null,
       statusCode,
       durationMs,
-      requestId: input.requestId || ctx?.requestId || null,
+      // D8: شناسهٔ درخواست — اگر صریح داده نشود از بافت درخواست (AsyncLocalStorage) می‌آید
+      requestId: input.requestId || ctx?.requestId || require('./request-context').currentId(),
       ip: input.ip !== undefined ? input.ip : ctx?.ip ?? null,
       userAgent: input.userAgent !== undefined ? (input.userAgent ? String(input.userAgent).slice(0, 300) : null) : ctx?.userAgent ?? null,
       errorCode: input.errorCode ? String(input.errorCode).slice(0, 128) : null,

@@ -27,6 +27,9 @@ const EXPECTED_ROUTES = [
   { verb: 'POST', url: '/api/auth/remove', target: 'auth-controller.removeUser', validate: true, checkAccess: true },
   // summary (سطح ۱)
   { verb: 'GET', url: '/api/health', target: 'summary-controller.health', validate: false, checkAccess: false },
+  // D8 — سلامت/آمادگی برای مانیتورینگ (بدون احراز هویت، مثل /api/health)
+  { verb: 'GET', url: '/api/healthz', target: 'summary-controller.healthz', validate: false, checkAccess: false },
+  { verb: 'GET', url: '/api/readyz', target: 'summary-controller.readyz', validate: false, checkAccess: false },
   { verb: 'GET', url: '/api/banks', target: 'summary-controller.banks', validate: false, checkAccess: true },
   { verb: 'GET', url: '/api/specs', target: 'summary-controller.specs', validate: true, checkAccess: true },
   { verb: 'GET', url: '/api/report', target: 'summary-controller.report', validate: true, checkAccess: true },

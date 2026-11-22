@@ -2,7 +2,7 @@
 
 const { getServices } = require('../../services/container');
 const { readRouteParam, readQuery, readQueryParam, readClientMeta } = require('../../services/http/request');
-const { requireAuthenticatedSession } = require('../../services/http/session-guard');
+const { requireAdminSession } = require('../../services/http/session-guard');
 const { getActionLogger } = require('../../services/logger/action-logger.service');
 const { error: ceError } = require('./config');
 
@@ -11,7 +11,8 @@ const { error: ceError } = require('./config');
  * مشاهدهٔ جزئیات کامل یک گزارش اعتبارسنجی.
  */
 exports.sample = async function (request, inputData, session) {
-  const actor = await requireAuthenticatedSession(session, () => ceError.sessionRequired);
+  // D1/D2: گزارش خام (شامل کد ملی و متن آزاد پیام) فقط برای ادمین؛ هر دسترسی با نقش‌ها ثبت می‌شود
+  const actor = await requireAdminSession(session, () => ceError.sessionRequired);
   // مسیر استاتیک است: GET /api/sample?requestId=… (پارامترهای پویا از query خوانده می‌شوند)
   const query = readQuery(request, inputData);
   const requestId =
@@ -19,7 +20,12 @@ exports.sample = async function (request, inputData, session) {
     readQueryParam(query, 'id') ||
     readRouteParam(request, inputData, 'requestId', /\/api\/sample\/([^/?#]+)/);
   if (!requestId) throw ceError.requestIdRequired;
-  const res = await getServices().summary.sample(requestId, readClientMeta(request), readQueryParam(query, 'bank'));
+  const res = await getServices().summary.sample(
+    requestId,
+    readClientMeta(request),
+    readQueryParam(query, 'bank'),
+    actor,
+  );
   getActionLogger().info({
     category: 'detail',
     action: res?.found ? 'detail.sample.viewed' : 'detail.sample.not_found',

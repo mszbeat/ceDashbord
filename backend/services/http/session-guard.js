@@ -87,7 +87,57 @@ async function requireAuthenticatedSession(session, errorFactory) {
   return state;
 }
 
+/**
+ * نقش‌های ادمین (D1/D2). از `CE_ADMIN_ROLES` خوانده می‌شود (پیش‌فرض `admin,ce-admin`).
+ * هر نقشی که با `admin` شروع شود (مثل `admin.bank`) هم پذیرفته است.
+ */
+const ADMIN_ROLES = String(process.env.CE_ADMIN_ROLES || 'admin,ce-admin')
+  .split(',')
+  .map((role) => role.trim().toLowerCase())
+  .filter(Boolean);
+
+function isAdminRoles(roles) {
+  const list = Array.isArray(roles) ? roles : [];
+  return list.some((role) => {
+    const value = String(role || '').trim().toLowerCase();
+    return value && ADMIN_ROLES.some((admin) => value === admin || value.startsWith(`${admin}.`) || value.startsWith(`${admin}:`));
+  });
+}
+
+/**
+ * سطح دسترسی ۲ — فقط ادمین (D1): تشخیص‌ها، دسترسی به نمونهٔ خام و هر چیز عملیاتی.
+ * تفکیک صریح از سطح ۱ («کاربر وارد‌شده») چون این مسیرها داده‌های حساس/عملیاتی دارند.
+ */
+async function requireAdminSession(session, errorFactory) {
+  const state = await requireAuthenticatedSession(session, errorFactory);
+  if (!isAdminRoles(state.roles)) {
+    getActionLogger().warn({
+      category: 'auth',
+      action: 'auth.admin_denied',
+      actor: state.username,
+      roles: state.roles,
+      statusCode: 403,
+      errorCode: 'adminRequired',
+      message: 'دسترسی به این مسیر فقط برای نقش ادمین مجاز است',
+    });
+    const error = typeof errorFactory === 'function' ? errorFactory() : errorFactory;
+    const forbidden = new Error('این مسیر فقط برای ادمین در دسترس است');
+    forbidden.statusCode = 403;
+    forbidden.code = 'adminRequired';
+    forbidden.data = {
+      code: 'adminRequired',
+      message: { fa: forbidden.message, en: 'admin role required' },
+    };
+    void error;
+    throw forbidden;
+  }
+  return state;
+}
+
 module.exports = {
   readSessionState,
   requireAuthenticatedSession,
+  requireAdminSession,
+  isAdminRoles,
+  ADMIN_ROLES,
 };

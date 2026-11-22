@@ -636,6 +636,8 @@ class IngestionService {
         rebuild,
         deleted,
       };
+      require('../metrics').metrics.inc('ingestion_days_total', 1, { bank: bankKey, status });
+      require('../metrics').metrics.observe('ingestion_day_rows', success + fail, { bank: bankKey });
       getActionLogger().info({
         category: 'ingestion',
         action: 'ingestion.day.completed',
