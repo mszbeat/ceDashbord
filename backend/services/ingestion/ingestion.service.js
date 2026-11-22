@@ -3,6 +3,8 @@ const { BANKS, config, resolveBankApiUrl } = require('../config');
 const { fetchBankJson } = require('../http/gateway-client');
 const { getActionLogger } = require('../logger/action-logger.service');
 const { error: adminError } = require('../../controllers/adminController/config');
+const { RunStore } = require('../db/run-store');
+const { toDateIso } = require('../db/row-mapper-v2');
 const {
   jalaliStampDigitsOf,
   normalizeDay,
@@ -21,6 +23,9 @@ const UPSERT_COLUMNS = [
 const JSON_COLUMNS = new Set([
   'flags', 'cats', 'counters', 'metrics', 'paths', 'services', 'credit_alerts', 'display_extras',
 ]);
+
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function bankKeyOfTable(table) {
   const found = Object.entries(BANKS).find(([, bank]) => bank.table === table);
@@ -64,6 +69,57 @@ class IngestionService {
      * پیام‌ها) بدون تغییر می‌ماند.
      */
     this.writer = options.writer || null;
+    /**
+     * لایهٔ دسترسی `day_runs` (نام ستون‌ها بین v1 و v2 فرق دارد).
+     * `schema` از config یا گزینه می‌آید و `runStore` را می‌سازد.
+     */
+    // اگر writer (اسکیمای v2) تزریق شده باشد، `day_runs` هم باید v2 خوانده شود؛
+    // در غیر این صورت ستون `day` درست نگاشت نمی‌شود و varchar/date قاطی می‌شود.
+    this.schema = options.dbSchema
+      || (this.writer && this.writer.constructor && this.writer.constructor.name === 'V2Writer' ? 'v2' : null)
+      || config.dbSchema;
+    this.runStore = options.runStore || new RunStore(db, { schema: this.schema });
+  }
+
+  /**
+   * `day_runs.day` در v2 ستون `date` میلادی است و در v1 متن شمسی.
+   * همهٔ کوئری‌های مربوط به نمونه هم از همین تابع عبور می‌کنند.
+   */
+  dayValue(day) {
+    return this.runStore.dayValue(day);
+  }
+
+  /** جدول نمونهٔ فعال برای این اسکیما */
+  samplesTable(bank) {
+    return bank.table;
+  }
+
+  /**
+   * B4 — `request_id` طبق تصمیم صاحب پروژه همیشه UUID است.
+   * شناسهٔ غیر-UUID با پیام شفاف رد می‌شود (به‌جای ساختن UUID جعلی با UUIDv5).
+   */
+  requireValidRequestId(requestId) {
+    const text = String(requestId ?? '').trim();
+    if (!text) return { ok: false, reason: 'شناسهٔ درخواست خالی است' };
+    if (!UUID_RE.test(text)) {
+      return { ok: false, reason: `شناسهٔ درخواست UUID معتبر نیست: ${text.slice(0, 64)}` };
+    }
+    return { ok: true, value: text.toLowerCase() };
+  }
+
+  /**
+   * ساخت `day_rollup` برای یک روز کامل (فاز ۳). اگر rollup از نسخهٔ تحلیل قدیمی باشد
+   * بازسازی می‌شود؛ در غیر این صورت کاری نمی‌کند (idempotent).
+   */
+  async buildRollup(bankKey, day) {
+    if (this.schema !== 'v2') return null;
+    const { buildDayRollup } = require('../rollup/rollup.service');
+    return buildDayRollup(this.db, {
+      bankKey,
+      day,
+      evaluator: this.evaluator,
+      registryBundle: require('../db/schema-registry').buildRuntimeRegistry(this.evaluator),
+    });
   }
 
   async fetchPage(page, limit, day, filters, bankKey = 'tavan_mellat') {
@@ -111,6 +167,10 @@ class IngestionService {
       dedupedMap.set(`${row.day}\0${row.request_id}`, row);
     }
     const uniqueRows = [...dedupedMap.values()];
+    if (this.schema === 'v2') {
+      // v2: ستون `day` تاریخ میلادی است؛ نگاشت همین‌جا انجام می‌شود
+      for (const row of uniqueRows) row.day = toDateIso(String(row.day));
+    }
 
     const values = [];
     const params = [];
@@ -122,6 +182,11 @@ class IngestionService {
         params.push(JSON_COLUMNS.has(col) && v !== null && v !== undefined ? JSON.stringify(v) : v);
       }
     });
+    // B5: اگر مقدارها عوض نشده‌اند، هیچ نوشتنی انجام نشود (جلوگیری از bloat در rebuild)
+    const changed = UPSERT_COLUMNS
+      .filter((c) => c !== 'request_id' && c !== 'day')
+      .map((c) => `(${table}.${c} IS DISTINCT FROM EXCLUDED.${c})`)
+      .join(' OR ');
     const updates = UPSERT_COLUMNS
       .filter((c) => c !== 'request_id' && c !== 'day')
       .map((c) => `${c}=EXCLUDED.${c}`)
@@ -129,35 +194,97 @@ class IngestionService {
       .join(', ');
     await client.query(
       `INSERT INTO ${table} (${UPSERT_COLUMNS.join(',')}) VALUES ${values.join(',')}
-       ON CONFLICT (day, request_id) DO UPDATE SET ${updates}`,
+       ON CONFLICT (day, request_id) DO UPDATE SET ${updates} WHERE ${changed}`,
       params,
     );
   }
 
   async startRun(client, bankKey, day, mode) {
-    const existing = await client.query(
-      'SELECT checkpoint, status FROM day_runs WHERE bank=$1 AND day=$2',
-      [bankKey, day],
-    );
-    const row = existing.rows[0];
-    const checkpoint = row?.status === 'complete' ? 0 : Number(row?.checkpoint ?? 0);
-    await client.query(
-      `INSERT INTO day_runs(bank,day,mode,status,checkpoint,analysis_version,started_at)
-       VALUES($1,$2,$3,'running',$4,$5,now())
-       ON CONFLICT(bank,day) DO UPDATE SET mode=EXCLUDED.mode, status='running', checkpoint=$4,
-         analysis_version=EXCLUDED.analysis_version, started_at=now(), finished_at=NULL, error=NULL, updated_at=now()`,
-      [bankKey, day, mode, checkpoint, this.evaluator.versionOf(bankKey)],
-    );
+    const existing = await this.runStore.find(client, bankKey, day);
+    const checkpoint = existing?.status === 'complete' ? 0 : Number(existing?.checkpoint ?? 0);
+    await this.runStore.upsert(client, bankKey, day, {
+      mode,
+      status: 'running',
+      checkpoint,
+      analysis_version: this.evaluator.versionOf(bankKey),
+      started_at: new Date(),
+      finished_at: null,
+      error: null,
+    });
     return checkpoint;
   }
 
+  /**
+   * به‌روزرسانی وضعیت اجرا. کلیدهای ورودی «نام عمومی» هستند
+   * (`skipped_count`/`ingested_count`/`error_count`/`distinct_stored`) و
+   * `RunStore` آن‌ها را به ستون واقعی اسکیمای فعال نگاشت می‌کند.
+   */
   async updateRun(client, bankKey, day, patch) {
-    const keys = Object.keys(patch);
-    const sets = keys.map((k, idx) => `${k}=$${idx + 3}`).concat('updated_at=now()');
-    await client.query(
-      `UPDATE day_runs SET ${sets.join(', ')} WHERE bank=$1 AND day=$2`,
-      [bankKey, day, ...keys.map((k) => patch[k])],
+    await this.runStore.update(client, bankKey, day, patch);
+  }
+
+  /** شمارش متمایز شناسه‌های ذخیره‌شدهٔ روز + به‌روزرسانی `distinct_stored` (C1) */
+  async refreshDistinctStored(client, bankKey, day, table) {
+    const distinct = await this.runStore.countDistinct(client, bankKey, day, table);
+    await this.updateRun(client, bankKey, day, { distinct_stored: distinct });
+    return distinct;
+  }
+
+  /**
+   * آماده‌سازی ذخیره‌گاه روز **پیش از** تراکنش: پارتیشن ماهانه + میزبان rollup.
+   * @param {string} day روز شمسی
+   */
+  async prepareDayStorage(day) {
+    if (this.schema !== 'v2') return;
+    const isoDay = toDateIso(String(day));
+    if (!isoDay) throw new Error(`روز نامعتبر برای آماده‌سازی: ${day}`);
+    const builder = require('../db/schema-v2-builder');
+    for (const bankKey of Object.keys(BANKS)) {
+      await builder.ensureMonthlyPartitions(this.db, bankKey, isoDay, isoDay);
+    }
+  }
+
+  /**
+   * حذف کامل دادهٔ یک روز (B2). در v2 `day` تاریخ میلادی است و `sample_detail` و
+   * `day_rollup` هم در همان تراکنش پاک می‌شوند. پارتیشن ماهانه DROP نمی‌شود
+   * (روزهای دیگر همان ماه باید دست‌نخورده بمانند).
+   */
+  async deleteDay(client, bank, dayValue) {
+    const removed = { samples: 0, details: 0, rollups: 0 };
+    const cast = this.schema === 'v2' ? '$1::date' : '$1::text';
+    const samples = await client.query(
+      `DELETE FROM ${this.samplesTable(bank)} WHERE day=${cast}`, [dayValue],
     );
+    removed.samples = samples.rowCount ?? 0;
+    if (this.schema === 'v2') {
+      const details = await client.query('DELETE FROM sample_detail WHERE day=$1::date', [dayValue]);
+      removed.details = details.rowCount ?? 0;
+      const rollups = await client.query('DELETE FROM day_rollup WHERE day=$1::date', [dayValue]);
+      removed.rollups = rollups.rowCount ?? 0;
+    }
+    return removed;
+  }
+
+  /**
+   * ثبت وضعیت `interrupted` برای اجراهای نیمه‌کاره موقع خاموشی (فاز ۴).
+   * SIGTERM در سطح پروسه ثبت می‌شود و این متد از آن مسیر صدا زده می‌شود.
+   */
+  async markInterrupted(reason = 'SIGTERM') {
+    const stale = await this.runStore.db.query(
+      `SELECT bank, day FROM day_runs WHERE status IN ('running','partial') AND updated_at > now() - interval '2 days'`,
+    ).catch(() => ({ rows: [] }));
+    let marked = 0;
+    for (const row of stale.rows) {
+      const day = this.schema === 'v2'
+        ? require('../db/row-mapper-v2').toJalaliDay(row.day)
+        : row.day;
+      await this.updateRun(null, row.bank, day, {
+        status: 'interrupted',
+        error: `خاموشی سرور (${reason}) — اجرا نیمه‌کاره ماند`,
+        finished_at: new Date(),
+      }).then(() => { marked += 1; }).catch(() => undefined);
+    }
+    return { marked };
   }
 
   async runDay(bankInput, dayInput, mode = 'nightly', options = {}) {
@@ -179,9 +306,11 @@ class IngestionService {
       throw adminError.rebuildRequiresExplicitDay;
     }
     const day = normalizeDay(dayInput ?? (mode === 'nightly' ? tehranYesterday() : tehranToday()));
+    const dayValue = this.dayValue(day);
     const client = await this.db.getClient();
     const lockKey = `ce-ingest:${bankKey}:${day}`;
     let checkpoint = 0, sourceTotal = 0, success = 0, fail = 0, skipped = 0, processed = 0;
+    let skippedOtherMethod = 0, errors = 0, invalidIds = 0;
     let inTransaction = false, deleted = 0;
     const messageTemplates = new Map();
     const writtenTemplates = new Set();
@@ -206,29 +335,34 @@ class IngestionService {
         throw adminError.emptyRebuildAborted(day);
       }
       if (rebuild) {
+        // B3: پارتیشن‌ها بیرون از تراکنش ساخته می‌شوند. `CREATE TABLE ... PARTITION OF`
+        // به قفل قوی جدول مادر نیاز دارد و اگر داخل همان تراکنش rebuild باشد، بن‌بست می‌شود.
+        await this.prepareDayStorage(day);
         await client.query('BEGIN');
         inTransaction = true;
-        const removed = await client.query(`DELETE FROM ${bank.table} WHERE day=$1`, [day]);
-        deleted = removed.rowCount ?? 0;
-        await client.query('DELETE FROM day_runs WHERE bank=$1 AND day=$2', [bankKey, day]);
+        const removed = await this.deleteDay(client, bank, dayValue);
+        deleted = removed.samples;
+        await this.runStore.remove(client, bankKey, day);
         getActionLogger().warn({
           category: 'ingestion',
           action: 'ingestion.day.rebuild_reset',
           message: `Deleted ${deleted} existing rows for ${bankKey}/${day} inside transaction`,
-          meta: { bank: bankKey, day, deleted },
+          meta: { bank: bankKey, day, deleted, ...removed },
         });
       }
       const effectiveInitial = maxCount !== null ? Math.min(preflight, maxCount) : preflight;
       const initialTotal = effectiveInitial;
       checkpoint = filteredRun ? 0 : await this.startRun(client, bankKey, day, mode);
       if (filteredRun) {
-        await client.query(
-          `INSERT INTO day_runs(bank,day,mode,status,checkpoint,analysis_version,started_at)
-           VALUES($1,$2,$3,'running',0,$4,now())
-           ON CONFLICT(bank,day) DO UPDATE SET mode=EXCLUDED.mode, status='running', checkpoint=0,
-             analysis_version=EXCLUDED.analysis_version, started_at=now(), finished_at=NULL, error=NULL, updated_at=now()`,
-          [bankKey, day, mode, this.evaluator.versionOf(bankKey)],
-        );
+        await this.runStore.upsert(client, bankKey, day, {
+          mode,
+          status: 'running',
+          checkpoint: 0,
+          analysis_version: this.evaluator.versionOf(bankKey),
+          started_at: new Date(),
+          finished_at: null,
+          error: null,
+        });
       }
       sourceTotal = effectiveInitial;
       await this.updateRun(client, bankKey, day, { source_total: sourceTotal });
@@ -244,7 +378,8 @@ class IngestionService {
             const sample = this.evaluator.normalizeSample(raw, { fromApi: true });
             const method = String(sample?.input?.method ?? '').trim().toLowerCase();
             if (method !== bank.method) {
-              if (countProcessed) skipped++;
+              // «رد مجاز» — روش دیگر است، خطا نیست و مانع complete نمی‌شود
+              if (countProcessed) { skipped++; skippedOtherMethod++; }
               continue;
             }
             const isSuccess = this.evaluator.isReportSuccess(sample);
@@ -252,7 +387,19 @@ class IngestionService {
             if (template) messageTemplates.set(template.key, template.text);
             const row = this.evaluator.evaluate(sample, isSuccess, day, bankKey);
             if (!row.request_id) {
-              if (countProcessed) skipped++;
+              if (countProcessed) { skipped++; invalidIds++; }
+              continue;
+            }
+            // B4: شناسه باید UUID معتبر باشد؛ در غیر این صورت ردیف با خطای شفاف رد می‌شود
+            const idCheck = this.requireValidRequestId(row.request_id);
+            if (!idCheck.ok) {
+              if (countProcessed) { skipped++; invalidIds++; }
+              getActionLogger().warn({
+                category: 'ingestion',
+                action: 'ingestion.sample.invalid_request_id',
+                message: idCheck.reason,
+                meta: { bank: bankKey, day, requestId: String(row.request_id).slice(0, 64) },
+              });
               continue;
             }
             rows.push(row);
@@ -265,7 +412,8 @@ class IngestionService {
               if (isSuccess) { success++; fail--; } else { fail++; success--; }
             }
           } catch (error) {
-            if (countProcessed) skipped++;
+            // خطای واقعی در پردازش یک نمونه — مانع `complete` است
+            if (countProcessed) { skipped++; errors++; }
             getActionLogger().warn({
               category: 'ingestion',
               action: 'ingestion.sample.skipped',
@@ -325,7 +473,8 @@ class IngestionService {
           ingested_count: processed,
           success_count: success,
           fail_count: fail,
-          skipped_count: skipped,
+          skipped_count: skippedOtherMethod,
+          error_count: errors,
         });
 
         if (reports.length < pageSize || (maxCount !== null && checkpoint >= maxCount)) {
@@ -355,12 +504,30 @@ class IngestionService {
         processed = Math.max(processed, success + fail + skipped);
       }
 
+      // C1: `complete` فقط وقتی که همهٔ ردیف‌های منبع (متمایز) ذخیره شده باشند
+      const distinctStored = await this.runStore.countDistinct(
+        client, bankKey, day, this.samplesTable(bank),
+      );
+      const expectedDistinct = Math.max(0, sourceTotal - skippedOtherMethod);
+      const countMatches =
+        distinctStored === expectedDistinct ||
+        (maxCount !== null && distinctStored >= Math.min(maxCount, expectedDistinct));
+      const reachedAll =
+        checkpoint >= sourceTotal || (reachedEndOfPages && checkpoint > 0);
       const complete =
         mode === 'nightly' &&
         !filteredRun &&
-        (checkpoint >= sourceTotal || (reachedEndOfPages && checkpoint > 0)) &&
-        skipped === 0;
+        reachedAll &&
+        countMatches &&
+        errors === 0;
       const status = mode === 'intraday' || filteredRun ? 'partial' : complete ? 'complete' : 'needs_review';
+      const countGap = {
+        source_total: sourceTotal,
+        distinct_stored: distinctStored,
+        expected_distinct: expectedDistinct,
+        skipped_other_method: skippedOtherMethod,
+        error_count: errors,
+      };
       await this.updateRun(client, bankKey, day, {
         status,
         finished_at: new Date(),
@@ -369,11 +536,32 @@ class IngestionService {
         ingested_count: processed,
         success_count: success,
         fail_count: fail,
-        skipped_count: skipped,
+        skipped_count: skippedOtherMethod,
+        error_count: errors,
+        distinct_stored: distinctStored,
       });
+      if (!complete && status === 'needs_review') {
+        getActionLogger().warn({
+          category: 'ingestion',
+          action: 'ingestion.day.needs_review',
+          message: `روز ${bankKey}/${day} کامل نشد؛ اختلاف شمارش یا خطا`,
+          meta: { bank: bankKey, day, ...countGap },
+        });
+      }
       if (inTransaction) {
         await client.query('COMMIT');
         inTransaction = false;
+      }
+      // rollup روز فقط بعد از commit و فقط برای روز `complete` (فاز ۳)
+      if (status === 'complete') {
+        await this.buildRollup(bankKey, day).catch((error) => {
+          getActionLogger().warn({
+            category: 'ingestion',
+            action: 'ingestion.rollup.failed',
+            message: error?.message ?? String(error),
+            meta: { bank: bankKey, day },
+          });
+        });
       }
       const summaryOut = {
         bank: bankKey,
@@ -385,6 +573,10 @@ class IngestionService {
         success,
         fail,
         skipped,
+        skipped_other_method: skippedOtherMethod,
+        error_count: errors,
+        invalid_ids: invalidIds,
+        distinct_stored: distinctStored,
         checkpoint,
         rebuild,
         deleted,
@@ -401,7 +593,15 @@ class IngestionService {
         await client.query('ROLLBACK').catch(() => undefined);
         inTransaction = false;
       }
-      if (!rebuild) {
+      if (rebuild) {
+        // تراکنش rollback شد ⇒ دادهٔ قبلی روز دست‌نخورده است؛ ولی اجرا نیمه‌کاره مانده.
+        // ثبت `interrupted` مانع می‌شود اپراتور آن را «اجرای موفق» ببیند (فاز ۴).
+        await this.updateRun(client, bankKey, day, {
+          status: 'interrupted',
+          error: message.slice(0, 1000),
+          finished_at: new Date(),
+        }).catch(() => undefined);
+      } else {
         await this.updateRun(client, bankKey, day, {
           status: 'failed',
           error: message.slice(0, 1000),
@@ -410,7 +610,8 @@ class IngestionService {
           ingested_count: processed,
           success_count: success,
           fail_count: fail,
-          skipped_count: skipped,
+          skipped_count: skippedOtherMethod,
+          error_count: errors + 1,
         }).catch(() => undefined);
       }
       getActionLogger().error({
