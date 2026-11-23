@@ -434,6 +434,7 @@ class SummaryService {
       () => dialect.serviceDiscovery(table, f, t),
       { action: 'summary.serviceDiscovery', meta: { bank: key, from: f, to: t }, fallback: { rows: [] } },
     );
+    const __tDiscovery = process.hrtime.bigint();
     const presentKeys = new Set(bank.expectedServices ?? []);
     for (const r of serviceKeysRes.rows) {
       const keys = asObject(r.display_extras).serviceKeys;
@@ -452,6 +453,7 @@ class SummaryService {
     const daysRes = await dialect.days(table, f, t);
     const runsRes = await dialect.runsRange(key, f, t);
     const dictRes = await db.query("SELECT message_key, COALESCE(message_text, label, 'سایر پیام‌ها') AS text FROM message_dict");
+    const __tQueries = process.hrtime.bigint();
     const totalSamples = Number(countRes.rows[0]?.total ?? 0);
     const selectedDays = daysRes.rows.map((r) => String(r.day));
     const messageText = new Map(dictRes.rows.map((r) => [String(r.message_key), String(r.text)]));
@@ -516,6 +518,7 @@ class SummaryService {
   }
 
   async buildDashboard(bankInput, from, to, rowsCap = 100) {
+    const __t0 = process.hrtime.bigint();
     const { key, table } = bankTable(bankInput);
     const { from: f, to: t } = rangeOf(from, to);
     const cap = Math.min(Math.max(Number(rowsCap) || 100, 1), 100);
@@ -570,6 +573,7 @@ class SummaryService {
       if (rows.length < pageSize) break;
     }
     data.processedSamples = state.sequence;
+    const __tScan = process.hrtime.bigint();
 
     const badReports = state.badReports;
     const renderBank = {
@@ -612,6 +616,22 @@ class SummaryService {
       status: latestRun?.status ?? '',
       updatedAt: latestRun?.updated_at ? new Date(latestRun.updated_at).toISOString() : '',
     };
+    try {
+      const ms = (a, b) => Number(b - a) / 1e6;
+      require('../logger/action-logger.service').getActionLogger().info({
+        category: 'summary',
+        action: 'summary.report.build_phases',
+        statusCode: 200,
+        meta: {
+          bank: key, from: f, to: t,
+          discoveryMs: Math.round(ms(__t0, __tDiscovery)),
+          queriesMs: Math.round(ms(__tDiscovery, __tQueries)),
+          scanRows: state.sequence,
+          scanMs: Math.round(ms(__tQueries, __tScan)),
+          buildMs: Math.round(ms(__t0, __tScan)),
+        },
+      });
+    } catch { /* لاگر آماده نیست */ }
     return { scan, data, options: { rowsCap: cap, controls } };
   }
 

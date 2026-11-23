@@ -1,6 +1,7 @@
 'use strict';
 
 const { getServices } = require('../../services/container');
+const { reportCache } = require('../../services/report/report-cache');
 const { sendHtml, sendJson } = require('../../services/http/result');
 const { readQuery } = require('../../services/http/request');
 const { requireAuthenticatedSession, requireAdminSession } = require('../../services/http/session-guard');
@@ -69,9 +70,18 @@ exports.report = async function (queryString, response, session) {
      * اندازه‌گیری زمان ساخت گزارش.
      * بدون این عدد، «گزارش لود نشد» فقط یک علامت است؛ با آن مشخص می‌شود کندی از
      * تولید گزارش است یا از شبکه/پروکسی (مقایسه با `durationMs` در لاگ فرانت).
+     *
+     * خروجی HTML به نقش کاربر وابسته نیست، پس پشت کش تکی‌پرواز می‌رود:
+     * پیمایش کامل ۳۰ روزه‌ی ردیف‌ها فقط یک‌بار انجام می‌شود و کاربران بعدی
+     * (تا انقضای کش) همان لحظه پاسخ می‌گیرند — رفع تام‌اوت داشبورد در تولید.
      */
     const startedAt = Date.now();
-    const html = await getSummaryService().report(bank, query.from || undefined, query.to || undefined, rowsCap);
+    const from = query.from || undefined;
+    const to = query.to || undefined;
+    const cacheKey = require('../../services/report/report-cache').ReportCache.keyOf(bank, from, to, rowsCap);
+    const { html, fromCache } = await reportCache.getOrBuild(cacheKey, () =>
+      getSummaryService().report(bank, from, to, rowsCap),
+    );
     const durationMs = Date.now() - startedAt;
     getActionLogger().info({
       category: 'summary',
@@ -79,7 +89,7 @@ exports.report = async function (queryString, response, session) {
       actor: actor.username,
       roles: actor.roles,
       statusCode: 200,
-      meta: { bank, from: query.from || null, to: query.to || null, rowsCap, durationMs, bytes: html?.length ?? null },
+      meta: { bank, from: query.from || null, to: query.to || null, rowsCap, durationMs, bytes: html?.length ?? null, cache: fromCache },
     });
     return sendHtml(html, 200, response);
   } catch (err) {

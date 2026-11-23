@@ -358,6 +358,8 @@ test('summary-controller: خطای ساخت گزارش به صفحهٔ HTML با
   const config = require(path.join(ROOT, 'controllers', 'summaryController', 'config.js'));
   const controller = new SummaryController({}, {}, config);
 
+  // کش بین تست‌ها به اشتراک گذاشته می‌شود؛ برای مسیر «خطا» باید خالی باشد
+  require(path.join(ROOT, 'services', 'report', 'report-cache')).reportCache.clear();
   container.setServicesForTest({
     summary: fakeSummaryService({
       report: async () => {

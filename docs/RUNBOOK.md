@@ -349,3 +349,40 @@ return redirectToLogin(request, 'expired', clearAll);   // کوکی‌های س�
 - اگر دلیل `stale_timestamp` بود → ساعت دو سرور به هم نخورده (skew > 60s)؛ `chrony`/`systemd-timesyncd` یا NTP را تنظیم کنید.
 - اگر دلیل `replayed_nonce` بود → احتمالاً یک پروکسی/لایهٔ میانی درخواست‌ها را دوباره ارسال می‌کند.
 - در production، نبود کلید با `BACKEND_HOST=0.0.0.0` در لاگ config به‌عنوان warning ثبت می‌شود.
+
+## ۱۶) «پنل ادمین باز می‌شود ولی داشبورد گزارش تام‌اوت می‌شود»
+
+**چرا ادمین باز می‌شود و داشبورد نه؟** `/api/report` گزارش ۳۰ روز اخیر را با پیمایش
+**تمام ردیف‌ها** می‌سازد (cursor + تجمیع JS)، روی جدول بزرگ چند ده ثانیه تا چند دقیقه؛
+ولی مهلت پاسخ فرانت به بک‌اند پیش‌فرض ۳۰ ثانیه (`CE_REPORT_HEADERS_TIMEOUT_MS`).
+پنل ادمین کوئری‌های کوچک دارد و همیشه سریع است — به همین دلیل دقیقاً همین علامت را می‌بینید.
+
+**رفع در این نسخه:** گزارش پشت کشِ تکی‌پرواز با stale-while-revalidate می‌رود
+(`services/report/report-cache.js`). خروجی به نقش کاربر وابسته نیست، پس:
+- بارگذاری **اول** بعد از هر restart ممکن است کند باشد (پیمایش کامل؛ اجتناب‌ناپذیر)؛
+- کلیک‌های بعدی **تا ۱۰ دقیقه** همان لحظه از کش پاسخ می‌گیرند؛
+- بعد از TTL (تا ۱ ساعت): نسخهٔ کهنه فوراً + نوسازی در پس‌زمینه؛
+- درخواست‌های هم‌زمان فقط **یک** پیمایش کامل اجرا می‌کنند (تکی‌پرواز) نه چند تا.
+
+تنظیمات (در `backend/.env`):
+```bash
+CE_REPORT_CACHE_TTL_MS=600000     # ۰ = غیرفعال؛ TTL بیش‌تر یعنی پاسخ‌های تندتر و دادهٔ اندکی کهنه‌تر
+CE_REPORT_CACHE_STALE_MS=3600000
+CE_REPORT_CACHE_MAX_ENTRIES=12
+```
+
+**عیب‌یابی (مهم):**
+```bash
+# تفکیک «آهسته» از «ناموفق» — durationMs زمانِ واقعی ساخت گزارش است
+journalctl -u ce-backend -f | grep -E "summary.report.rendered|summary.report.failed"
+# شکست مراحل داخلی: کشف سرویس / کوئری‌ها / پیمایش ردیف‌ها + تعداد ردیف‌های پیمایش‌شده
+journalctl -u ce-backend -f | grep "summary.report.build_phases"
+# نوسازی پس‌زمینه
+journalctl -u ce-backend -f | grep -E "summary.report.cache_rebuilt|summary.report.cache_rebuild_failed"
+```
+اگر `build_phases` نشان داد `scanRows` خیلی بزرگ است یا `scanMs` بالاست، خود دیتابیس
+کند است: ابتدا §۴ (VACUUM FULL ANALYZE / bloat) را اجرا کنید؛ اگر بازهم کند بود،
+`CE_REPORT_HEADERS_TIMEOUT_MS` را آگاهانه بالا ببرید (مثلاً ۶۰۰۰۰) — نه بی‌نهایت.
+
+کش بعد از restart خالی است (in-memory). اگر می‌خواهید گزارش را اجباراً تازه کنید،
+سرویس را ری‌استارت کنید یا کلید `CE_REPORT_CACHE_TTL_MS=0` بگذارید و برگردانید.
