@@ -6,6 +6,7 @@ const { requireAdminSession } = require('../../services/http/session-guard');
 const { getActionLogger } = require('../../services/logger/action-logger.service');
 const { error: adminError } = require('./config');
 const { tehranToday, tehranYesterday } = require('../../services/utils/date');
+const { reportCache } = require('../../services/report/report-cache');
 
 /**
  * سطح دسترسی ۳ — فقط نقش `admin` (با الزام سشن معتبر):
@@ -90,6 +91,8 @@ exports.updateCron = async function (body, session) {
 exports.runCronNow = async function (session) {
   const actor = await requireAdminSession(session, () => adminError.sessionRequired);
   const job = await getAdminService().triggerCronExecution('cron_manual', undefined, { actor: actor.username });
+  //_INVALIDATE CACHE: analyze دستی داده جدید تولید می‌کند — کش گزارش قبلی منسوخ شود
+  reportCache.clear();
   getActionLogger().info({
     category: 'admin',
     action: 'admin.cron.run_now',
@@ -125,6 +128,8 @@ exports.checkExisting = async function (body, session) {
 exports.startRun = async function (body, session) {
   const actor = await requireAdminSession(session, () => adminError.sessionRequired);
   const job = await getAdminService().startManualRun(readBody(body), { actor: actor.username });
+  //_INVALIDATE CACHE: analyze دستی داده جدید تولید می‌کند — کش گزارش قبلی منسوخ شود
+  reportCache.clear();
   getActionLogger().info({
     category: 'admin',
     action: 'admin.run.started',
