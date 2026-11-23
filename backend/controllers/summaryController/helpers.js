@@ -4,6 +4,7 @@ const { getServices } = require('../../services/container');
 const { reportCache } = require('../../services/report/report-cache');
 const { sendHtml, sendJson } = require('../../services/http/result');
 const { readQuery } = require('../../services/http/request');
+const { normalizeDay } = require('../../services/utils/date');
 const { requireAuthenticatedSession, requireAdminSession } = require('../../services/http/session-guard');
 const { getActionLogger } = require('../../services/logger/action-logger.service');
 const { error: summaryError } = require('./config');
@@ -76,11 +77,20 @@ exports.report = async function (queryString, response, session) {
      * (تا انقضای کش) همان لحظه پاسخ می‌گیرند — رفع تام‌اوت داشبورد در تولید.
      */
     const startedAt = Date.now();
-    const from = query.from || undefined;
-    const to = query.to || undefined;
+    const summaryService = getSummaryService();
+    const from = query.from ? normalizeDay(query.from) : undefined;
+    const to = query.to ? normalizeDay(query.to) : undefined;
+    // P6: سقف بازه برای گزارش — جلوگیری از اسکن کل تاریخچه و اشباع استخر
+    if (summaryService.maxRangeDays && summaryService.rangeLengthDays(from, to) > summaryService.maxRangeDays) {
+      const err = new Error(`بازهٔ درخواستی ${summaryService.rangeLengthDays(from, to)} روز است؛ سقف ${summaryService.maxRangeDays} روز`);
+      err.statusCode = 413;
+      err.code = 'rangeTooLarge';
+      err.data = { code: 'rangeTooLarge', message: { fa: err.message, en: 'range too large' } };
+      throw err;
+    }
     const cacheKey = require('../../services/report/report-cache').ReportCache.keyOf(bank, from, to, rowsCap);
     const { html, fromCache } = await reportCache.getOrBuild(cacheKey, () =>
-      getSummaryService().report(bank, from, to, rowsCap),
+      heavyReads.run(() => summaryService.report(bank, from, to, rowsCap), { route: 'report', bank }),
     );
     const durationMs = Date.now() - startedAt;
     getActionLogger().info({
