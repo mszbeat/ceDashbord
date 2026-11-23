@@ -88,9 +88,15 @@ exports.report = async function (queryString, response, session) {
       err.data = { code: 'rangeTooLarge', message: { fa: err.message, en: 'range too large' } };
       throw err;
     }
+    // P6: سیگنال ابort — وقتی کلاینت قطع می‌شود (499)، اسکن در بک‌اند متوقف می‌شود
+    const controller = new AbortController();
+    const { signal } = controller;
+    if (typeof response.on === 'function') {
+      response.on('close', () => controller.abort());
+    }
     const cacheKey = require('../../services/report/report-cache').ReportCache.keyOf(bank, from, to, rowsCap);
     const { html, fromCache } = await reportCache.getOrBuild(cacheKey, () =>
-      heavyReads.run(() => summaryService.report(bank, from, to, rowsCap), { route: 'report', bank }),
+      heavyReads.run(() => summaryService.report(bank, from, to, rowsCap, { signal }), { route: 'report', bank }),
     );
     const durationMs = Date.now() - startedAt;
     getActionLogger().info({
@@ -103,6 +109,21 @@ exports.report = async function (queryString, response, session) {
     });
     return sendHtml(html, 200, response);
   } catch (err) {
+    // اگر کلاینت قطع شده است، پاسخ ارسال نمی‌شود (わざ和 503 ارسال نکنیم — کلاینت دیگر گ 숨어있다)
+    if (err?.name === 'AbortError' || err?.code === 'ABORTED') {
+      try {
+        getActionLogger().warn({
+          category: 'summary',
+          action: 'summary.report.aborted',
+          actor: actor.username,
+          roles: actor.roles,
+          statusCode: 0,
+          errorCode: 'REPORT_CLIENT_ABORTED',
+          meta: { bank, from: query.from || null, to: query.to || null },
+        });
+      } catch { /* لاگر در دسترس نیست */ }
+      return;
+    }
     getActionLogger().error({
       category: 'summary',
       action: 'summary.report.failed',

@@ -517,8 +517,9 @@ class SummaryService {
     }
   }
 
-  async buildDashboard(bankInput, from, to, rowsCap = 100) {
+  async buildDashboard(bankInput, from, to, rowsCap = 100, options = {}) {
     const __t0 = process.hrtime.bigint();
+    const { signal } = options;
     const { key, table } = bankTable(bankInput);
     const { from: f, to: t } = rangeOf(from, to);
     const cap = Math.min(Math.max(Number(rowsCap) || 100, 1), 100);
@@ -571,6 +572,15 @@ class SummaryService {
       const last = rows[rows.length - 1];
       cursor = [String(last.day || ''), String(last.stamp_key || ''), String(last.request_id || '')];
       if (rows.length < pageSize) break;
+      // P6: اگر کلاینت قطع شده است (499)، اسکن را متوقف کن تا اتصال آزاد شود.
+      // خطا می‌دهیم (نه جزئیات برگرداندن) تا کش-write نکند و درخواست‌های دیگر
+      // از یک-building共享 شده Gone شده، دوباره بسازند.
+      if (signal?.aborted) {
+        const abortErr = new Error('گزارش توسط کلاینت لغو شد');
+        abortErr.name = 'AbortError';
+        abortErr.code = 'ABORTED';
+        throw abortErr;
+      }
     }
     data.processedSamples = state.sequence;
     const __tScan = process.hrtime.bigint();
@@ -635,8 +645,8 @@ class SummaryService {
     return { scan, data, options: { rowsCap: cap, controls } };
   }
 
-  async report(bankInput, from, to, rowsCap = 100) {
-    const built = await this.buildDashboard(bankInput, from, to, rowsCap);
+  async report(bankInput, from, to, rowsCap = 100, options = {}) {
+    const built = await this.buildDashboard(bankInput, from, to, rowsCap, options);
     delete built.data.__cap;
     return buildReport(built.scan, built.data, built.options);
   }
