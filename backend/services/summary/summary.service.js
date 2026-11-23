@@ -213,7 +213,7 @@ class SummaryService {
     };
   }
 
-  consumeRow(row, state, skipAggregate = false) {
+  consumeRow(row, state) {
     const { bank, selectedServices, cap, messageText } = state;
     const data = state.data;
     const status = row.is_success ? 'success' : 'fail';
@@ -278,13 +278,11 @@ class SummaryService {
       creditAlerts: { overdue: hasOverdue ? {} : null, cheque: hasCheque ? {} : null },
     };
 
-    if (!skipAggregate) {
-      bump(data.groups.ALL, bank, result, status, selectedServices, false);
-      bump(data.groups[status], bank, result, status, selectedServices, false);
-      const dayKey = `day:${row.day}`;
-      data.groups[dayKey] ||= newStats();
-      bump(data.groups[dayKey], bank, result, status, selectedServices, true);
-    }
+    bump(data.groups.ALL, bank, result, status, selectedServices, false);
+    bump(data.groups[status], bank, result, status, selectedServices, false);
+    const dayKey = `day:${row.day}`;
+    data.groups[dayKey] ||= newStats();
+    bump(data.groups[dayKey], bank, result, status, selectedServices, true);
 
     const retainRanked = (rows, rank, sequence, makeRow) => {
       if (
@@ -521,7 +519,7 @@ class SummaryService {
 
   async buildDashboard(bankInput, from, to, rowsCap = 100, options = {}) {
     const __t0 = process.hrtime.bigint();
-    const { signal, useSql = false } = options;
+    const { signal } = options;
     const { key, table } = bankTable(bankInput);
     const { from: f, to: t } = rangeOf(from, to);
     const cap = Math.min(Math.max(Number(rowsCap) || 100, 1), 100);
@@ -565,40 +563,6 @@ class SummaryService {
 
     const state = { bank, selectedServices, cap, messageText, data, sequence: 0, badReports: 0 };
 
-    // P5/P2: وقتی useSql است، تجمیع گروه‌ها از day_rollup + SQL aggregates (aggregateRange) می‌آید
-    // و اسکن cursorPage فقط برای جمع‌آوری نمونه‌های ردیفی (serviceRows, categoryRows, …) اجرا می‌شود.
-    if (useSql && this.dialect.name === 'v2') {
-      const { aggregateRange } = require('../rollup/rollup.service');
-      const bundle = options.registryBundle || require('../db/schema-registry').buildRuntimeRegistry(this.evaluator);
-      const runs = runsRes.rows;
-      const completeDays = new Set(runs.filter((r) => r.status === 'complete').map((r) => String(r.day)));
-      const aggregated = await aggregateRange({
-        db: this.db,
-        evaluator: this.evaluator,
-        registryBundle: bundle,
-        bankKey: key,
-        fromIso: require('../db/row-mapper-v2').toDateIso(f),
-        toIso: require('../db/row-mapper-v2').toDateIso(t),
-        days: selectedDays,
-        completeDays,
-      });
-      const aggStats = aggregated.stats || {};
-      // گروه ALL از آمار SQL پر می‌شود
-      Object.assign(data.groups.ALL, aggStats);
-      // گروه‌های success/fail از byStatus ست می‌شوند
-      const byStatus = aggStats.byStatus || {};
-      const baseGroup = { total: 0, byStatus: { success: 0, fail: 0 }, paths: {}, flags: {}, cats: {}, catTotals: {}, catSplit: {}, catAlerts: {}, cross: {}, counters: {}, metrics: {}, services: {} };
-      data.groups.success = { ...baseGroup, total: Number(byStatus.success || 0), byStatus: { success: Number(byStatus.success || 0), fail: 0 } };
-      data.groups.fail = { ...baseGroup, total: Number(byStatus.fail || 0), byStatus: { success: 0, fail: Number(byStatus.fail || 0) } };
-      // روزها: از aggregateRange daily (اگر موجود است) یا خالی
-      const dailyMap = new Map();
-      if (aggregated.daily) {
-        for (const d of aggregated.daily) {
-          dailyMap.set(String(d.day || d.from || ''), d);
-        }
-      }
-    }
-
     let cursor = ['', '', ''];
     const pageSize = 1000;
     // P6: شمارنده ایمنی برای جلوگیری از حلقهٔ بی‌نهایت در cursorPage.
@@ -638,7 +602,7 @@ class SummaryService {
       const batch = await dialect.cursorPage(table, f, t, cursor, pageSize);
       const rows = batch.rows;
       if (!rows.length) break;
-      for (const row of rows) this.consumeRow(row, state, useSql);
+      for (const row of rows) this.consumeRow(row, state);
       const last = rows[rows.length - 1];
       cursor = [String(last.day || ''), String(last.stamp_key || ''), String(last.request_id || '')];
       if (rows.length < pageSize) break;
@@ -712,11 +676,6 @@ class SummaryService {
   }
 
   async report(bankInput, from, to, rowsCap = 100, options = {}) {
-    // P2/P5: مسیر پیش‌فرض گزارش از تجمیع SQL (day_rollup) استفاده می‌کند؛
-    // برای Karbarی که می‌خواهد مسیر قدیمی bump، useSql:false بفرستد.
-    if (options.useSql === undefined && this.dialect.name === 'v2') {
-      options.useSql = true;
-    }
     const built = await this.buildDashboard(bankInput, from, to, rowsCap, options);
     delete built.data.__cap;
     return buildReport(built.scan, built.data, built.options);
