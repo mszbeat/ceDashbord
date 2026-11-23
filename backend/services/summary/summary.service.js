@@ -565,13 +565,6 @@ class SummaryService {
     let cursor = ['', '', ''];
     const pageSize = 1000;
     for (;;) {
-      const batch = await dialect.cursorPage(table, f, t, cursor, pageSize);
-      const rows = batch.rows;
-      if (!rows.length) break;
-      for (const row of rows) this.consumeRow(row, state);
-      const last = rows[rows.length - 1];
-      cursor = [String(last.day || ''), String(last.stamp_key || ''), String(last.request_id || '')];
-      if (rows.length < pageSize) break;
       // P6: اگر کلاینت قطع شده است (499)، اسکن را متوقف کن تا اتصال آزاد شود.
       // خطا می‌دهیم (نه جزئیات برگرداندن) تا کش-write نکند و درخواست‌های دیگر
       // از یک-building共享 شده Gone شده، دوباره بسازند.
@@ -581,6 +574,13 @@ class SummaryService {
         abortErr.code = 'ABORTED';
         throw abortErr;
       }
+      const batch = await dialect.cursorPage(table, f, t, cursor, pageSize);
+      const rows = batch.rows;
+      if (!rows.length) break;
+      for (const row of rows) this.consumeRow(row, state);
+      const last = rows[rows.length - 1];
+      cursor = [String(last.day || ''), String(last.stamp_key || ''), String(last.request_id || '')];
+      if (rows.length < pageSize) break;
     }
     data.processedSamples = state.sequence;
     const __tScan = process.hrtime.bigint();
