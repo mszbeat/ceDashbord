@@ -13,6 +13,7 @@ const SamadService = require('./controllers/auth/samad.service');
 const { installHttpCookiePathNormalizer } = require('./services/http/cookie-normalize');
 const { installHttpAuditLogger } = require('./services/logger/http-audit');
 const { getActionLogger } = require('./services/logger/action-logger.service');
+const { reportCache } = require('./services/report/report-cache');
 
 /**
  * بوت‌استرپ بک‌اند داشبورد روی `partFramework` — الگوی `samplePF`.
@@ -134,6 +135,52 @@ class Program {
     console.log(
       `✅ CE Dashboard backend (partFramework) running on http://${config.backendHost}:${config.backendPort}/api`,
     );
+
+    // P4: گرم‌سازی پیش‌emptive کش گزارش پس از استارت (اختیاری)
+    // CE_REPORT_WARM_CACHE=1 → برای هر بانک، بازهٔ ۳۰ روزه پیش‌فرض را یک‌بار بسازد
+    // تا اولین کاربر tùيench 아니라 لا بازد waits نکند. فایربند است و استارت را مسدود نمی‌کند.
+    if (process.env.CE_REPORT_WARM_CACHE === '1') {
+      void (async () => {
+        try {
+          const summaryService = getServices().summary;
+          const banks = typeof summaryService.banks === 'function'
+            ? summaryService.banks()
+            : [];
+          const { defaultRange } = require('./services/utils/date');
+          const { from, to } = defaultRange(30);
+          const rowsCap = 100;
+          for (const { key: bank } of banks) {
+            try {
+              const { ReportCache } = require('./services/report/report-cache');
+              const cacheKey = ReportCache.keyOf(bank, from, to, rowsCap);
+              await reportCache.getOrBuild(cacheKey, () =>
+                summaryService.report(bank, from, to, rowsCap),
+              );
+              getActionLogger().info({
+                category: 'system',
+                action: 'system.report.cache.warmed',
+                meta: { bank, from, to },
+              });
+            } catch (error) {
+              getActionLogger().warn({
+                category: 'system',
+                action: 'system.report.cache.warm_failed',
+                errorCode: error?.code || 'REPORT_WARM_FAILED',
+                message: error?.message || String(error),
+                meta: { bank },
+              });
+            }
+          }
+        } catch (error) {
+          getActionLogger().warn({
+            category: 'system',
+            action: 'system.report.cache.warm_setup_failed',
+            errorCode: error?.code || 'REPORT_WARM_SETUP_FAILED',
+            message: error?.message || String(error),
+          });
+        }
+      })();
+    }
   }
 }
 
