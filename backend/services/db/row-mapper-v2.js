@@ -85,11 +85,27 @@ function toDateIso(day) {
   return `${g.year}-${String(g.month).padStart(2, '0')}-${String(g.day).padStart(2, '0')}`;
 }
 
-/** میلادی `YYYY-MM-DD` → شمسی `YYYY-MM-DD` */
+/** میلادی `YYYY-MM-DD` → شمسی `YYYY-MM-DD`.
+ *
+ * ⚠️ هرگز از getUTC* استفاده نکنیم: pg ستون `date` را به Date meia-night UTC می‌فرستد
+ * و منطقه زمانی تهران (+۳:۳۰) باعث Shift یک روزه می‌شود.
+ * اگر رشته YYYY-MM-DD是谁، trực구나 پارس می‌کنیم؛ اگر Date گرفت، از متدهای محلی (getFullYear/getMonth/getDate) استفاده می‌کنیم.
+ */
 function toJalaliDay(isoDay) {
-  const date = isoDay instanceof Date ? isoDay : new Date(String(isoDay).slice(0, 10) + 'T00:00:00Z');
+  if (isoDay == null) return '';
+  // رشته YYYY-MM-DD → پارس مستقیم بدون تبدیل به Date
+  if (typeof isoDay === 'string') {
+    const m = String(isoDay).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (m) {
+      const j = gregorianToJalali(Number(m[1]), Number(m[2]), Number(m[3]));
+      return `${j.year}-${String(j.month).padStart(2, '0')}-${String(j.day).padStart(2, '0')}`;
+    }
+    return String(isoDay);
+  }
+  // آبجکت Date → متدهای محلی (نه UTC)
+  const date = isoDay instanceof Date ? isoDay : new Date(String(isoDay).slice(0, 10));
   if (Number.isNaN(date.getTime())) return String(isoDay ?? '');
-  const j = gregorianToJalali(date.getUTCFullYear(), date.getUTCMonth() + 1, date.getUTCDate());
+  const j = gregorianToJalali(date.getFullYear(), date.getMonth() + 1, date.getDate());
   return `${j.year}-${String(j.month).padStart(2, '0')}-${String(j.day).padStart(2, '0')}`;
 }
 
