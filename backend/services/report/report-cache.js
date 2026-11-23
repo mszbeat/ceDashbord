@@ -16,25 +16,42 @@
  *   • نبود/کهنه‌تر از stale    → نو/سازی تکی‌پرواز؛ درخواست‌های هم‌زمان همان Promise را می‌بینند
  *
  * ⚠️ اگر خروجی report روزی وابسته به نقش کاربر شد، کلید کش را گسترش دهید یا کش را غیرفعال کنید.
+ *
+ * nouveauté در این نسخه:
+ *   • سیگنال ابort کلاینت **به ساخت gemeinsamen داده نمی‌شود**. ساخت مستقل از اتصال هر
+ *     کلاینت تا پایان می‌رود و نتیجه در reportCache ثبت می‌شود.
+ *   • ساخت فقط بعد از `CE_REPORT_BUILD_MAX_MS` (پیش‌فرض ۱۸۰۰۰۰ms) لغو می‌شود.
+ *   • اگر کلاینت قطع شد، ساخت ادامه یابد و درخواست بعدی از کش (`cache: fresh`) پاسخ گیرد.
  */
 
 const DEFAULT_TTL_MS = Number(process.env.CE_REPORT_CACHE_TTL_MS ?? 600_000); // ۱۰ دقیقه
 const DEFAULT_STALE_MS = Number(process.env.CE_REPORT_CACHE_STALE_MS ?? 3_600_000); // ۱ ساعت
 const DEFAULT_MAX_ENTRIES = Number(process.env.CE_REPORT_CACHE_MAX_ENTRIES ?? 12);
+const DEFAULT_MAX_BUILD_MS = Number(process.env.CE_REPORT_BUILD_MAX_MS ?? 180_000); // ۳ دقیقه
 
 function numeric(name, fallback) {
   const value = Number(process.env[name]);
   return Number.isFinite(value) && value >= 0 ? value : fallback;
 }
 
+/** خطای abortِ internal برای مهلت ساخت */
+class BuildTimeoutError extends Error {
+  constructor() {
+    super('مهلت ساخت گزارش گذشت');
+    this.name = 'BuildTimeoutError';
+    this.code = 'BUILD_TIMEOUT';
+  }
+}
+
 class ReportCache {
   /**
-   * @param {{ttlMs?: number, staleMs?: number, maxEntries?: number, now?: () => number}} options
+   * @param {{ttlMs?: number, staleMs?: number, maxEntries?: number, maxBuildMs?: number, now?: () => number}} options
    */
   constructor(options = {}) {
     this.ttlMs = options.ttlMs ?? numeric('CE_REPORT_CACHE_TTL_MS', DEFAULT_TTL_MS);
     this.staleMs = options.staleMs ?? numeric('CE_REPORT_CACHE_STALE_MS', DEFAULT_STALE_MS);
     this.maxEntries = Math.max(1, options.maxEntries ?? numeric('CE_REPORT_CACHE_MAX_ENTRIES', DEFAULT_MAX_ENTRIES));
+    this.maxBuildMs = options.maxBuildMs ?? numeric('CE_REPORT_BUILD_MAX_MS', DEFAULT_MAX_BUILD_MS);
     this.now = options.now ?? (() => Date.now());
     /** @type {Map<string, {html: string, createdAt: number}>} */
     this.entries = new Map();
@@ -86,7 +103,7 @@ class ReportCache {
     const task = (async () => {
       const startedAt = Date.now();
       try {
-        const html = await buildFn();
+        const html = await this.#runBuild(buildFn, this.maxBuildMs);
         this.#set(key, html);
         try {
           require('../logger/action-logger.service').getActionLogger().info({
@@ -106,8 +123,7 @@ class ReportCache {
             message: error?.message || 'background rebuild failed',
             meta: { key, durationMs: Date.now() - startedAt },
           });
-        } catch { /* لاگر آماده نیست */ }
-        // نسخهٔ کهنه حفظ می‌شود؛ خطا پرتاب نمی‌شود (کسی منتظرش نبود)
+        } catch { /* لاگر در دسترس نیست */ }
         return null;
       } finally {
         this.inflight.delete(key);
@@ -118,16 +134,73 @@ class ReportCache {
   }
 
   /**
+   * اجرای ساخت با محدودیت زمانی داخلی. سیگنال ابort کلاینت به این تابع **دیده نمی‌شود**;
+   * ساخت تا `maxBuildMs` ادامه می‌یابد.
+   * @private
+   */
+  async #runBuild(buildFn, maxBuildMs) {
+    const startedAt = Date.now();
+    try {
+      const html = maxBuildMs > 0
+        ? await Promise.race([
+            buildFn(),
+            new Promise((_, reject) =>
+              setTimeout(() => reject(new BuildTimeoutError()), maxBuildMs)
+            ),
+          ])
+        : await buildFn();
+      return html;
+    } catch (error) {
+      try {
+        require('../logger/action-logger.service').getActionLogger().warn({
+          category: 'summary',
+          action: 'summary.report.build_stopped',
+          errorCode: error?.code || 'BUILD_STOPPED',
+          message: error?.message || 'build stopped',
+          meta: { durationMs: Date.now() - startedAt },
+        });
+      } catch { /* لاگر در دسترس نیست */ }
+      throw error;
+    }
+  }
+
+  /**
    * گزارش را برمی‌گرداند؛ در صورت نیاز می‌سازد.
+   * سیگنال `signal` (abort کلاینت) فقط برای **اتظار llamóرنده** استفاده می‌شود، نه برای لغو ساخت.
+   * اگر کلاینت قطع شد، ساخت در پس‌زمینه ادامه می‌یابد و در reportCache ثبت می‌شود.
+   *
    * @param {string} key خروجی `ReportCache.keyOf`
    * @param {() => Promise<string>} buildFn ساخت HTML گزارش
-   * @returns {Promise<{html: string, fromCache: 'fresh'|'stale'|'miss'|'joined'}>}
+   * @param {{signal?: AbortSignal, maxBuildMs?: number}} options
+   * @returns {Promise<{html: string|null, fromCache: 'fresh'|'stale'|'miss'|'joined'|'detached', detached?: boolean}>}
    */
-  async getOrBuild(key, buildFn) {
+  async getOrBuild(key, buildFn, options = {}) {
+    const { signal, maxBuildMs = this.maxBuildMs } = options;
+
     if (this.ttlMs === 0) {
       // کش غیرفعال: همیشه تازه بساز (تکی‌پرواز همچنان فعال است تا طوفانِ موازی نشود)
-      const html = await this.#singleFlight(key, buildFn);
-      return { html, fromCache: 'miss' };
+      const pending = this.inflight.get(key);
+      if (pending) {
+        try {
+          const html = await pending;
+          return { html, fromCache: 'joined' };
+        } catch {
+          throw new Error('ساخت گزارش ناموفق بود');
+        }
+      }
+      const task = (async () => {
+        const html = await this.#runBuild(buildFn, maxBuildMs);
+        this.#set(key, html);
+        return html;
+      })();
+      task.catch(() => {});
+      this.inflight.set(key, task);
+      try {
+        const html = await task;
+        return { html, fromCache: 'miss' };
+      } finally {
+        this.inflight.delete(key);
+      }
     }
 
     const now = this.now();
@@ -137,7 +210,7 @@ class ReportCache {
       const age = now - hit.createdAt;
       if (age < this.ttlMs) return { html: hit.html, fromCache: 'fresh' };
       if (age < this.ttlMs + this.staleMs) {
-        // پاسخ کهنه فوراً؛ به‌روزرسانی در پس‌زمینه
+        // پاسخ کهنه فوراً؛ به‌روزرسانی در پس‌زمinescence
         void this.#refreshInBackground(key, buildFn);
         return { html: hit.html, fromCache: 'stale' };
       }
@@ -145,26 +218,51 @@ class ReportCache {
       this.entries.delete(key);
     }
 
-    const { html, joined } = await this.#singleFlight(key, buildFn, /* reportJoin */ true);
-    return { html, fromCache: joined ? 'joined' : 'miss' };
-  }
-
-  /**
-   * ساخت تکی‌پرواز: درخواست‌های هم‌زمان روی یک کلید، همان Promise را می‌بینند.
-   * @private
-   */
-  async #singleFlight(key, buildFn, reportJoin = false) {
+    // ساخت تکی‌پرواز — درخواست‌های هم‌زمان همان Promise را می‌بینند.
+    // buildFn سیگنال abort کلاینت را **نمی‌گیرد**; ساخت مستقل ادامه می‌یابد.
     const pending = this.inflight.get(key);
-    if (pending) return { html: await pending, joined: reportJoin };
+    if (pending) {
+      try {
+        const html = await pending;
+        return { html, fromCache: 'joined' };
+      } catch {
+        // ساخت ناموفق بود؛ می‌توانیم دوباره سعی کنیم یا خطا بدهیم
+        throw new Error('ساخت گزارش ناموفق بود');
+      }
+    }
 
     const task = (async () => {
-      const html = await buildFn();
+      const html = await this.#runBuild(buildFn, maxBuildMs);
       this.#set(key, html);
       return html;
     })();
+    // هرگاه کال‌کننده انتظار خود را قطع کرد، reject未_handled نداشته باشیم.
+    task.catch(() => {});
     this.inflight.set(key, task);
+
+    if (signal) {
+      // دواندمایی بین ساخت و قطع شدن اتصال کلاینت
+      const abortPromise = new Promise((_, reject) => {
+        const onAbort = () => reject(new Error('CLIENT_ABORTED'));
+        signal.addEventListener('abort', onAbort, { once: true });
+        if (signal.aborted) onAbort();
+      });
+
+      try {
+        const html = await Promise.race([task, abortPromise]);
+        return { html, fromCache: 'miss' };
+      } catch (err) {
+        if (err.message === 'CLIENT_ABORTED') {
+          // کلاینت قطع شد؛ ساخت در پس‌زمینه ادامه می‌یابد و در کش ثبت می‌شود.
+          return { html: null, fromCache: 'detached', detached: true };
+        }
+        throw err;
+      }
+    }
+
     try {
-      return { html: await task, joined: false };
+      const html = await task;
+      return { html, fromCache: 'miss' };
     } finally {
       this.inflight.delete(key);
     }
@@ -179,4 +277,4 @@ function createReportCache(options) {
 /** نمونهٔ سراسری برای مسیر `/api/report` */
 const reportCache = new ReportCache();
 
-module.exports = { ReportCache, createReportCache, reportCache, DEFAULT_TTL_MS, DEFAULT_STALE_MS, DEFAULT_MAX_ENTRIES };
+module.exports = { ReportCache, createReportCache, reportCache, DEFAULT_TTL_MS, DEFAULT_STALE_MS, DEFAULT_MAX_ENTRIES, DEFAULT_MAX_BUILD_MS };

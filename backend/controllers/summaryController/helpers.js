@@ -61,6 +61,30 @@ exports.specs = async function (queryString, session) {
   return getSummaryService().specs(query.bank || 'tavan_mellat');
 };
 
+/** صفحهٔ «گزارش در حال آماده‌سازی» برای پاسخ ۲۰۲ */
+function buildInProgressHtml(bank, from, to) {
+  const retryAfter = Number(process.env.CE_REPORT_RETRY_AFTER_SECONDS || 5);
+  return `<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>گزارش در حال آماده‌سازی</title><style>
+  body{margin:0;background:#eef4fb;color:#0c1e3e;font:14px/1.9 'Vazirmatn',Tahoma,"Segoe UI",sans-serif;padding:40px}
+  main{max-width:640px;margin:auto;background:#fff;border:1px solid #d4e2f4;border-radius:16px;padding:28px 32px;box-shadow:0 14px 36px rgba(0,28,88,.08)}
+  h1{color:#002878;font-size:20px;margin:0 0 12px}p{color:#4e6788}
+  .spinner{display:inline-block;width:32px;height:32px;border:4px solid #e3e3e3;border-top-color:#002878;border-radius:50%;animation:spin 1s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}} a{color:#0b5ed7;font-weight:700}
+  form{margin-top:16px}
+  button{border:1px solid #002878;border-radius:8px;background:#002878;color:#fff;padding:6px 12px;font:inherit;font-weight:700;cursor:pointer}
+</style></head><body><main><div class="spinner" style="margin-bottom:12px"></div><h1>گزارش در حال آماده‌سازی است</h1><p>ساخت گزارش برای <bdi>${bank}</bdi> از <bdi>${from || '—'}</bdi> تا <bdi>${to || '—'}</bdi> در حال اجرا است. لطفاً کمی صبر کنید.</p><p>صفحه به‌صورت خودکار بعد از <span id="sec">${retryAfter}</span> ثانیه دوباره تلاش می‌کند.</p><form><button type="submit">تلاش دوباره</button></form><script>
+  (function(){
+    var sec = ${retryAfter};
+    var el = document.getElementById('sec');
+    var timer = setInterval(function(){
+      sec--;
+      if(el) el.textContent = sec;
+      if(sec <= 0){ clearInterval(timer); window.location.reload(); }
+    }, 1000);
+  })();
+</script></body></html>`;
+}
+
 exports.report = async function (queryString, response, session) {
   const actor = await requireAuthenticatedSession(session, () => summaryError.sessionRequired);
   const query = readQuery(queryString);
@@ -88,16 +112,59 @@ exports.report = async function (queryString, response, session) {
       err.data = { code: 'rangeTooLarge', message: { fa: err.message, en: 'range too large' } };
       throw err;
     }
-    // P6: سیگنال ابort — وقتی کلاینت قطع می‌شود (499)، اسکن در بک‌اند متوقف می‌شود
+    const cacheKey = require('../../services/report/report-cache').ReportCache.keyOf(bank, from, to, rowsCap);
+    const frontendTimeoutMs = Number(process.env.CE_REPORT_HEADERS_TIMEOUT_MS || 30000);
+
+    /**
+     * سیگنال ابort فقط برای قطع انتظار فرانت استفاده می‌شود، نه برای لغو ساخت.
+     * ساخت از طریق reportCache مستقل از اتصال کلاینت تا پایان می‌رود و در کش ثبت می‌گردد.
+     */
     const controller = new AbortController();
     const { signal } = controller;
     if (typeof response.on === 'function') {
       response.on('close', () => controller.abort());
     }
-    const cacheKey = require('../../services/report/report-cache').ReportCache.keyOf(bank, from, to, rowsCap);
-    const { html, fromCache } = await reportCache.getOrBuild(cacheKey, () =>
-      heavyReads.run(() => summaryService.report(bank, from, to, rowsCap, { signal }), { route: 'report', bank }),
+
+    // دواندمایی بین ساخت گزارش و مهلت پاسخ فرانت
+    const buildPromise = reportCache.getOrBuild(cacheKey, () =>
+      heavyReads.run(() => summaryService.report(bank, from, to, rowsCap), { route: 'report', bank }),
+      { signal },
     );
+
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('FRONTEND_TIMEOUT')), frontendTimeoutMs);
+    });
+
+    let result;
+    try {
+      result = await Promise.race([buildPromise, timeoutPromise]);
+    } catch (err) {
+      if (err.message === 'FRONTEND_TIMEOUT') {
+        // ساخت در پس‌زمینه ادامه می‌یابد؛ ۲۰۲ + Retry-After برای فرانت
+        response.statusCode = 202;
+        response.setHeader('Retry-After', String(process.env.CE_REPORT_RETRY_AFTER_SECONDS || 5));
+        return sendHtml(buildInProgressHtml(bank, from, to), 202, response);
+      }
+      throw err;
+    }
+
+    // اگر کلاینت قطع شده است (detached)، چیزی ارسال نمی‌کنیم
+    if (result.detached || !result.html) {
+      try {
+        getActionLogger().warn({
+          category: 'summary',
+          action: 'summary.report.client_detached',
+          actor: actor.username,
+          roles: actor.roles,
+          statusCode: 0,
+          errorCode: 'REPORT_CLIENT_DETACHED',
+          meta: { bank, from: query.from || null, to: query.to || null },
+        });
+      } catch { /* لاگر در دسترس نیست */ }
+      return;
+    }
+
+    const { html, fromCache } = result;
     const durationMs = Date.now() - startedAt;
     getActionLogger().info({
       category: 'summary',
@@ -109,8 +176,8 @@ exports.report = async function (queryString, response, session) {
     });
     return sendHtml(html, 200, response);
   } catch (err) {
-    // اگر کلاینت قطع شده است، پاسخ ارسال نمی‌شود (わざ和 503 ارسال نکنیم — کلاینت دیگر گ 숨어있다)
-    if (err?.name === 'AbortError' || err?.code === 'ABORTED') {
+    // اگر کلاینت قطع شده است، پاسخ ۵۰۳ ارسال نمی‌کنیم (کلاینت دیگر منتظر نیست)
+    if (err?.name === 'AbortError' || err?.code === 'ABORTED' || err?.message === 'CLIENT_ABORTED') {
       try {
         getActionLogger().warn({
           category: 'summary',
