@@ -89,7 +89,7 @@ exports.report = async function (queryString, response, session) {
   const actor = await requireAuthenticatedSession(session, () => summaryError.sessionRequired);
   const query = readQuery(queryString);
   const bank = query.bank || 'tavan_mellat';
-  const rowsCap = query.rowsCap ? Number(query.rowsCap) : 100;
+  const rowsCap = Math.min(Math.max(Number(query.rowsCap) || 50, 1), 50);
   try {
     /**
      * اندازه‌گیری زمان ساخت گزارش.

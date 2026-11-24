@@ -1,0 +1,50 @@
+/* Performance corrections: keep the report glass-like without blur-on-scroll painting. */
+body { background-attachment:scroll !important; background: #edf3fb !important; }
+:root[data-theme="dark"] body { background:#08121f !important; }
+.topbar:before { -webkit-backdrop-filter:none !important; backdrop-filter:none !important; background:var(--surface) !important; }
+.hero-footer,.headline-card,.sidebar,.scopebar,.panel,.table-tools,.table-wrap,.insight-chart,.insight-card,.chart-card,
+.data-card,.ce-live-bar,.sample-details,.paged-records,.icon-button,.nav-button,.scope-buttons,.scope-buttons button,
+button,input,select {
+  -webkit-backdrop-filter:none !important;
+  backdrop-filter:none !important;
+}
+.hero-footer,.headline-card,.sidebar,.scopebar,.panel,.table-tools,.table-wrap,.insight-chart,.insight-card,.chart-card,
+.data-card,.ce-live-bar,.paged-records {
+  box-shadow:0 3px 12px rgba(26,48,83,.055), inset 0 1px 0 rgba(255,255,255,.58) !important;
+}
+:root[data-theme="dark"] .hero-footer,:root[data-theme="dark"] .headline-card,:root[data-theme="dark"] .sidebar,
+:root[data-theme="dark"] .scopebar,:root[data-theme="dark"] .panel,:root[data-theme="dark"] .table-tools,
+:root[data-theme="dark"] .table-wrap,:root[data-theme="dark"] .data-card,:root[data-theme="dark"] .ce-live-bar,
+:root[data-theme="dark"] .paged-records { box-shadow:0 3px 12px rgba(0,0,0,.12), inset 0 1px 0 rgba(255,255,255,.035) !important; }
+.scopebar { position:static !important; inset:auto !important; z-index:auto !important; margin-bottom:16px; background:var(--surface) !important; }
+.scope-slot { scroll-margin-top:90px; }
+.panel { animation:none !important; }
+table th { position:static !important; }
+.headline-card:hover,.data-card:hover,.icon-button:hover,.copy-button:hover,.ce-live-bar button:hover { transform:none !important; }
+.nav-button:hover { transform:none !important; }
+.paged-records { margin:18px 0 22px; padding:14px 17px; border:1px solid var(--line); border-radius:17px; background:var(--surface); }
+.paged-records > summary { display:flex; align-items:center; justify-content:space-between; gap:12px; cursor:pointer; list-style:none; font-weight:800; }
+.paged-records > summary::-webkit-details-marker { display:none; }
+.paged-records > summary::after { content:'＋'; color:var(--accent-strong); font-size:18px; }
+.paged-records[open] > summary::after { content:'−'; }
+.paged-records > summary b { margin-inline-start:auto; color:var(--muted); font-size:12px; }
+.paged-records > p { margin:8px 0 12px; color:var(--muted); font-size:12px; }
+.paged-records-status { padding:10px 12px; color:var(--muted); background:var(--surface-2); border-radius:11px; font-size:12px; }
+.paged-records-status[data-error="true"] { color:var(--amber); }
+.paged-records-table { margin-top:10px; max-width:100%; overflow:auto; }
+.paged-records-table table { min-width:760px; }
+.paged-records-table td code { direction:ltr; unicode-bidi:isolate; }
+.paged-records-controls { display:flex; align-items:center; justify-content:center; gap:12px; padding:12px 0 2px; }
+.paged-records-controls[hidden] { display:none; }
+.paged-records-controls button { border:1px solid var(--line); border-radius:10px; padding:8px 14px; color:var(--ink); background:var(--surface-2); }
+.paged-records-controls button:not(:disabled) { border-color:var(--accent); color:var(--accent-strong); cursor:pointer; }
+.paged-records-controls button:disabled { opacity:.5; cursor:not-allowed; }
+.paged-records-controls [data-page-label] { min-width:130px; text-align:center; color:var(--muted); font-size:12px; }
+@media(max-width:720px) {
+  .scopebar { margin-bottom:12px; }
+  .paged-records { padding:12px; }
+  .paged-records-controls { gap:7px; }
+  .paged-records-controls button { padding:7px 10px; }
+  .paged-records-controls [data-page-label] { min-width:100px; }
+}
+@media(prefers-reduced-motion:reduce) { .paged-records * { scroll-behavior:auto !important; } }

@@ -32,21 +32,43 @@ function createV1Session(db) {
       ]);
     },
 
-    /** `/api/list` — SQL همان v1، خروجی همان شکل */
+    /** `/api/list` — SQL همان v1، با keyset cursor برای فهرست اصلی */
     async list({ table, params }) {
       const sqlParams = [params.from, params.to];
-      const limit = Math.min(Math.max(Number(params.limit ?? 100) || 100, 1), 100);
+      const limit = Math.min(Math.max(Number(params.limit ?? 50) || 50, 1), 50);
       const offset = Math.max(Number(params.offset ?? 0) || 0, 0);
       const built = v1.buildList({ table, params, sqlParams });
+      const baseWhere = built.where;
+      let cursorState = null;
+      const canCursor = built.order === 'day, COALESCE(stamp_key, \'\'), request_id';
+      if (params.cursor && canCursor) {
+        try {
+          const parsed = JSON.parse(Buffer.from(String(params.cursor), 'base64url').toString('utf8'));
+          if (parsed && typeof parsed.d === 'string' && typeof parsed.s === 'string' && typeof parsed.id === 'string') cursorState = parsed;
+        } catch { /* cursor نامعتبر ⇒ صفحهٔ اول/offset امن */ }
+      }
+      if (cursorState) {
+        const dayParam = `$${sqlParams.push(cursorState.d)}`;
+        const stampParam = `$${sqlParams.push(cursorState.s)}`;
+        const idParam = `$${sqlParams.push(cursorState.id)}`;
+        built.where += ` AND (day, COALESCE(stamp_key, ''), request_id) > (${dayParam}::text, ${stampParam}::text, ${idParam}::text)`;
+      }
       sqlParams.push(limit);
       const limitParam = `$${sqlParams.length}`;
-      sqlParams.push(offset);
-      const offsetParam = `$${sqlParams.length}`;
+      const offsetParam = cursorState ? null : `$${sqlParams.push(offset)}`;
       const result = await db.query(
         `${v1.listSql({ table, where: built.where, order: built.order })}
-         LIMIT ${limitParam} OFFSET ${offsetParam}`,
+         LIMIT ${limitParam}${offsetParam ? ` OFFSET ${offsetParam}` : ''}`,
         sqlParams,
       );
+      let total = Number(result.rows[0]?.total_count ?? 0);
+      if (cursorState) {
+        const count = await db.query(
+          `SELECT COUNT(*)::int AS total FROM ${table} WHERE day BETWEEN $1 AND $2 ${baseWhere}`,
+          sqlParams.slice(0, 2 + (sqlParams.length - 2 - 4)),
+        );
+        total = Number(count.rows[0]?.total ?? 0);
+      }
       const rows = result.rows.map((row) => ({
         ...row,
         sid: row.request_id,
@@ -55,7 +77,11 @@ function createV1Session(db) {
           .filter(([, v]) => v === true)
           .map(([k]) => k),
       }));
-      return { type: built.type, id: built.id, rows, total: rows[0]?.total_count ?? 0 };
+      const last = result.rows.at(-1);
+      const nextCursor = canCursor && rows.length === limit && last
+        ? Buffer.from(JSON.stringify({ d: String(last.day), s: String(last.stamp_key ?? ''), id: String(last.request_id) }), 'utf8').toString('base64url')
+        : null;
+      return { type: built.type, id: built.id, rows, total, nextCursor };
     },
 
     async byRequestId(table, requestId) {

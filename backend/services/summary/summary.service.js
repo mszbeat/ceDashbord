@@ -418,10 +418,10 @@ class SummaryService {
    * `/api/summary` لازم دارند. یک‌بار ساخته می‌شود و هر دو مسیر از آن استفاده می‌کنند
    * (فاز ۳ — حذف کار تکراری).
    */
-  async dashboardContext(bankInput, from, to, rowsCap = 100) {
+  async dashboardContext(bankInput, from, to, rowsCap = 50) {
     const { key, table } = bankTable(bankInput);
     const { from: f, to: t } = rangeOf(from, to);
-    const cap = Math.min(Math.max(Number(rowsCap) || 100, 1), 100);
+    const cap = Math.min(Math.max(Number(rowsCap) || 50, 1), 50);
     // SKIP LOCKED ندارد ولی یک صف سریال دارد: روی **هر** اتصال (pool یا client) یک کوئری
     // در لحظه. با pool، درخواست‌های موازی از اتصال‌های مختلف می‌آیند و بی‌خطرند؛ با client
     // تکی از بازگشت خالی ردیف‌ها جلوگیری می‌کند.
@@ -517,12 +517,12 @@ class SummaryService {
     }
   }
 
-  async buildDashboard(bankInput, from, to, rowsCap = 100, options = {}) {
+  async buildDashboard(bankInput, from, to, rowsCap = 50, options = {}) {
     const __t0 = process.hrtime.bigint();
     const { signal } = options;
     const { key, table } = bankTable(bankInput);
     const { from: f, to: t } = rangeOf(from, to);
-    const cap = Math.min(Math.max(Number(rowsCap) || 100, 1), 100);
+    const cap = Math.min(Math.max(Number(rowsCap) || 50, 1), 50);
     // هیچ کوئری‌ای روی این اتصال موازی اجرا نمی‌شود (نه اینجا، نه داخل cursorPage)
     const db = { query: this.serialQuery(), exec: this.db.exec };
     const dialect = this.dialect.onSerial ? this.dialect.onSerial(db) : this.dialect;
@@ -675,7 +675,7 @@ class SummaryService {
     return { scan, data, options: { rowsCap: cap, controls } };
   }
 
-  async report(bankInput, from, to, rowsCap = 100, options = {}) {
+  async report(bankInput, from, to, rowsCap = 50, options = {}) {
     const built = await this.buildDashboard(bankInput, from, to, rowsCap, options);
     delete built.data.__cap;
     return buildReport(built.scan, built.data, built.options);
@@ -830,7 +830,7 @@ class SummaryService {
   async legacySummary(bankInput, from, to, options = {}) {
     const { key, label } = bankTable(bankInput);
     const { from: f, to: t } = rangeOf(from, to);
-    const built = await this.buildDashboard(bankInput, f, t, options.rowsCap ?? 100);
+    const built = await this.buildDashboard(bankInput, f, t, options.rowsCap ?? 50);
     delete built.data.__cap;
     const all = built.data.groups.ALL;
     const specs = this.evaluator.specs(key);
@@ -896,10 +896,10 @@ class SummaryService {
   async list(params) {
     const { table } = bankTable(params.bank);
     const { from, to } = rangeOf(params.from, params.to);
-    // اندازهٔ صفحه: پیش‌فرض ۱۰۰، سقف ۲۰۰ — هیچ سقف پنهانی روی «تعداد رکورد قابل مشاهده» نیست؛
-    // برای دیدن بقیه، `cursor` صفحهٔ بعد را می‌دهد (`nextCursor`).
-    const maxLimit = Number(process.env.CE_LIST_MAX_LIMIT || 200);
-    const limit = Math.min(Math.max(Number(params.limit ?? 100) || 100, 1), maxLimit);
+    // صفحه‌بندی سبک: حداکثر ۵۰ ردیف در هر درخواست؛ ادامه فقط با cursor صفحهٔ بعد.
+    const configuredMax = Number(process.env.CE_LIST_MAX_LIMIT || 50);
+    const maxLimit = Math.min(Math.max(configuredMax || 50, 1), 50);
+    const limit = Math.min(Math.max(Number(params.limit ?? 50) || 50, 1), maxLimit);
     const offset = Math.max(Number(params.offset ?? 0) || 0, 0);
     const cursor = typeof params.cursor === 'string' && params.cursor ? params.cursor : null;
 

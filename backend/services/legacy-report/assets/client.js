@@ -337,6 +337,129 @@
     for (const item of scopes) item.setAttribute('aria-pressed', String(item === button));
   }));
 
+  // فهرست اصلی به‌صورت lazy و cursor-based بارگذاری می‌شود؛ هیچ صفحه‌ای بیش از ۵۰ ردیف ندارد.
+  const pagerState = new WeakMap();
+  const formatDigits = (value) => String(value ?? '').replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)))
+    .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)));
+  const faNumber = new Intl.NumberFormat('fa-IR');
+  function appendCell(row, value, { ltr = false } = {}) {
+    const cell = document.createElement('td');
+    if (ltr) cell.dir = 'ltr';
+    cell.textContent = value == null || value === '' ? '—' : String(value);
+    row.appendChild(cell);
+  }
+  function displayStamp(item) {
+    const raw = formatDigits(item.inserted_at || '');
+    if (/^\d{14,17}$/.test(raw)) return `${raw.slice(0,4)}/${raw.slice(4,6)}/${raw.slice(6,8)} ${raw.slice(8,10)}:${raw.slice(10,12)}`;
+    return formatDigits(item.day || '—');
+  }
+  function renderRecordPage(pager, page, pageNo) {
+    const host = pager.querySelector('.paged-records-table');
+    const table = document.createElement('table');
+    table.className = 'report-page-table';
+    const headings = ['#','شناسهٔ یکتا','شناسهٔ درخواست','تاریخ و ساعت','وضعیت','مدل','زمان اجرا (ثانیه)','PD','توان بازپرداخت'];
+    const thead = document.createElement('thead');
+    const headRow = document.createElement('tr');
+    headings.forEach((heading) => { const th = document.createElement('th'); th.textContent = heading; headRow.appendChild(th); });
+    thead.appendChild(headRow); table.appendChild(thead);
+    const tbody = document.createElement('tbody');
+    page.items.forEach((item, index) => {
+      const tr = document.createElement('tr');
+      if (item.request_id) {
+        tr.className = 'clickable'; tr.dataset.sid = String(item.request_id); tr.tabIndex = 0;
+        tr.setAttribute('role','button'); tr.setAttribute('aria-label','نمایش جزئیات گزارش در پنجرهٔ جدید');
+      }
+      const successText = item.is_success === true ? 'موفق' : item.is_success === false ? 'ناموفق' : '—';
+      const formatted = (value) => value == null || value === '' || !Number.isFinite(Number(value)) ? '—' : faNumber.format(Number(value));
+      const amount = formatted(item.suggested_amount);
+      const duration = formatted(item.total_time_s);
+      const pd = formatted(item.pd);
+      [faNumber.format((pageNo - 1) * (Number(page.limit) || 50) + index + 1), item.unique_key || '—', item.request_id,
+        displayStamp(item), successText, item.model_name, duration, pd, amount]
+        .forEach((value, col) => appendCell(tr, value, { ltr: col === 1 || col === 2 }));
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody); host.replaceChildren(table);
+    const state = pagerState.get(pager);
+    const pageSize = Number(page.limit) || 50;
+    state.page = page; state.pageNo = pageNo; state.loading = false;
+    const controls = pager.querySelector('.paged-records-controls');
+    controls.hidden = false;
+    controls.querySelector('[data-page-retry]').hidden = true;
+    controls.querySelector('[data-page-prev]').disabled = pageNo <= 1;
+    controls.querySelector('[data-page-next]').disabled = !page.nextCursor || pageNo * pageSize >= page.total;
+    controls.querySelector('[data-page-label]').textContent = `صفحهٔ ${faNumber.format(pageNo)} · ${faNumber.format(page.items.length)} از ${faNumber.format(page.total)}`;
+    const status = pager.querySelector('.paged-records-status');
+    status.textContent = page.total ? `نمایش ${faNumber.format((pageNo - 1) * pageSize + 1)} تا ${faNumber.format(Math.min(pageNo * pageSize, page.total))} از ${faNumber.format(page.total)} رکورد` : 'رکوردی برای این فیلتر پیدا نشد.';
+    status.removeAttribute('data-error');
+  }
+  async function loadRecordPage(pager, pageNo = 1, cursor = null) {
+    let state = pagerState.get(pager);
+    if (!state) { state = { cursors: [null], pageNo: 1, loading: false }; pagerState.set(pager, state); }
+    if (state.loading) return;
+    state.loading = true;
+    state.requestPageNo = pageNo;
+    state.requestCursor = cursor;
+    const status = pager.querySelector('.paged-records-status');
+    const controls = pager.querySelector('.paged-records-controls');
+    status.textContent = 'در حال دریافت حداکثر ۵۰ رکورد…';
+    status.removeAttribute('data-error');
+    pager.setAttribute('aria-busy','true');
+    controls.hidden = true;
+    try {
+      const form = document.querySelector('#ce-live-controls form');
+      const params = new URLSearchParams({ type:'all', limit:'50' });
+      const bank = form?.elements.namedItem('bank')?.value || document.body.dataset.bank;
+      const from = form?.elements.namedItem('from')?.value || '';
+      const to = form?.elements.namedItem('to')?.value || '';
+      if (bank) params.set('bank',bank);
+      if (from) params.set('from',from);
+      if (to) params.set('to',to);
+      const listStatus = pager.dataset.status;
+      if (listStatus === 'success' || listStatus === 'fail') params.set('status',listStatus);
+      if (cursor) params.set('cursor',cursor);
+      const response = await fetch(`/api/list?${params.toString()}`, {
+        credentials:'include', cache:'no-store', headers:{ accept:'application/json' },
+      });
+      if (!response.ok) throw new Error('list request failed');
+      const raw = await response.json();
+      let body = raw;
+      for (let depth = 0; depth < 3 && body?.data && typeof body.data === 'object'
+        && !Array.isArray(body.items) && !Array.isArray(body.rows); depth += 1) body = body.data;
+      const items = Array.isArray(body?.items) ? body.items : Array.isArray(body?.rows) ? body.rows : [];
+      const page = { items, total:Number(body?.total ?? items.length), limit:Number(body?.limit) || 50, nextCursor:body?.nextCursor || null };
+      if (cursor && !items.length) page.nextCursor = null;
+      if (page.nextCursor) state.cursors[pageNo] = page.nextCursor;
+      renderRecordPage(pager,page,pageNo);
+    } catch {
+      state.loading = false;
+      status.textContent = 'دریافت فهرست انجام نشد. اتصال را بررسی کنید و دوباره تلاش کنید.';
+      status.dataset.error = 'true';
+      controls.hidden = false;
+      controls.querySelector('[data-page-prev]').disabled = state.pageNo <= 1;
+      controls.querySelector('[data-page-next]').disabled = true;
+      controls.querySelector('[data-page-label]').textContent = '';
+      controls.querySelector('[data-page-retry]').hidden = false;
+    } finally { pager.removeAttribute('aria-busy'); }
+  }
+  document.querySelectorAll('[data-record-pager]').forEach((pager) => {
+    pager.addEventListener('toggle', () => {
+      if (pager.open && !pagerState.get(pager)?.page) void loadRecordPage(pager);
+    });
+    pager.querySelector('[data-page-prev]').addEventListener('click', () => {
+      const state = pagerState.get(pager); if (!state || state.pageNo <= 1) return;
+      const pageNo = state.pageNo - 1; void loadRecordPage(pager,pageNo,state.cursors[pageNo - 1] || null);
+    });
+    pager.querySelector('[data-page-next]').addEventListener('click', () => {
+      const state = pagerState.get(pager); if (!state?.page?.nextCursor) return;
+      const pageNo = state.pageNo + 1; void loadRecordPage(pager,pageNo,state.page.nextCursor);
+    });
+    pager.querySelector('[data-page-retry]').addEventListener('click', () => {
+      const state = pagerState.get(pager); if (!state) return;
+      void loadRecordPage(pager,state.requestPageNo || 1,state.requestCursor || null);
+    });
+  });
+
   // نوار «محدودهٔ نمایش» در جریان عادی صفحه می‌ماند (بدون چسبیدن/تمام‌عرض شدن)؛
   // فقط سایهٔ ملایم هدر هنگام اسکرول اضافه می‌شود.
   let scheduled = false;

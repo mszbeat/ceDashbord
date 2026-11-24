@@ -6,12 +6,12 @@ import {
   nextPageState, prevPageState, progressLabel, createPageLoader,
 } from '../lib/pager.mjs';
 
-test('۳-الف: اندازهٔ صفحه ۱۰۰ و حفظ فیلترها در URL', () => {
-  assert.equal(PAGE_SIZE, 100);
+test('۳-الف: اندازهٔ صفحه ۵۰ و حفظ فیلترها در URL', () => {
+  assert.equal(PAGE_SIZE, 50);
   const url = buildListUrl('/api/list', { bank: 'tavan_mellat', from: '1405-08-01', type: 'all' }, {});
   assert.match(url, /bank=tavan_mellat/);
-  assert.match(url, /limit=100/);
-  const withCursor = buildListUrl('/api/list', { bank: 'b' }, { cursor: 'abc', limit: 100 });
+  assert.match(url, /limit=50/);
+  const withCursor = buildListUrl('/api/list', { bank: 'b' }, { cursor: 'abc', limit: 50 });
   assert.match(withCursor, /cursor=abc/);
   assert.doesNotMatch(withCursor, /offset=/);
 });
@@ -39,26 +39,26 @@ test('۳-الف: وضعیت صفحه در URL رفت‌وبرگشت می‌کن�
 });
 
 test('۳-الف: ناوبری بعدی/قبلی بدون تکرار و با احترام به انتها', () => {
-  const first = { page: 1, limit: 100, cursor: null, offset: 0 };
-  const page = { items: Array(100).fill(0), total: 250, nextCursor: 'n1' };
+  const first = { page: 1, limit: 50, cursor: null, offset: 0 };
+  const page = { items: Array(50).fill(0), total: 125, nextCursor: 'n1' };
   const second = nextPageState(first, page);
   assert.equal(second.page, 2);
   assert.equal(second.cursor, 'n1');
   // صفحهٔ آخر: nextCursor تهی ⇒ دکمهٔ بعدی غیرفعال
-  assert.equal(nextPageState(second, { items: [], total: 250, nextCursor: null }), null);
-  const back = prevPageState({ page: 3, limit: 100, cursor: 'n2', offset: 0 });
+  assert.equal(nextPageState(second, { items: [], total: 125, nextCursor: null }), null);
+  const back = prevPageState({ page: 3, limit: 50, cursor: 'n2', offset: 0 });
   assert.equal(back.page, 2);
-  assert.equal(back.offset, 100);
+  assert.equal(back.offset, 50);
   assert.equal(back.cursor, null);
   assert.equal(prevPageState(first), null);
 });
 
 test('۳-الف: متن پیشرفت با total سرور هم‌خوان است', () => {
-  const page = { items: Array(100).fill(0), total: 12430 };
-  assert.match(progressLabel(page, 1), /۱۰۰ از ۱۲٬۴۳۰/);
-  assert.match(progressLabel(page, 3), /۳۰۰ از ۱۲٬۴۳۰/);
+  const page = { items: Array(50).fill(0), total: 12430 };
+  assert.match(progressLabel(page, 1), /۵۰ از ۱۲٬۴۳۰/);
+  assert.match(progressLabel(page, 3), /۱۵۰ از ۱۲٬۴۳۰/);
   // صفحهٔ آخر بیشتر از total نشان نمی‌دهد
-  assert.match(progressLabel({ items: Array(30).fill(0), total: 230 }, 3), /۲۳۰ از ۲۳۰/);
+  assert.match(progressLabel({ items: Array(30).fill(0), total: 130 }, 3), /۱۳۰ از ۱۳۰/);
 });
 
 test('۳-الف: درخواست قبلی با AbortController لغو می‌شود (آخرین برنده است)', async () => {

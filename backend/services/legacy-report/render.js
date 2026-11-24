@@ -204,6 +204,7 @@ function scopedContent(topicId, scope, ctx) {
   if (topicId === 'overview') {
     html += `<div class="cards">${card(nf(stats.total), 'کل گزارش‌ها')}${card(nf(stats.byStatus.success), 'گزارش‌های موفق', 'good')}${card(nf(stats.byStatus.fail), 'گزارش‌های ناموفق', 'warn')}</div>`;
     html += '<p class="explain">وضعیت گزارش، کد خروجی و وضعیت سرویس‌های ورودی به‌صورت جداگانه محاسبه و نمایش داده می‌شوند.</p>';
+    if (stats.total > 0) html += `<details class="paged-records" data-record-pager data-status="${scope === 'ALL' ? '' : scope}"><summary><span>فهرست گزارش‌ها</span><b>${nf(stats.total)} رکورد</b></summary><p>رکوردها هنگام باز کردن فهرست از سرور دریافت می‌شوند؛ هر صفحه حداکثر ۵۰ رکورد دارد.</p><div class="paged-records-status" role="status" aria-live="polite">برای دریافت نخستین صفحه، فهرست را باز کنید.</div><div class="paged-records-table"></div><div class="paged-records-controls" hidden><button type="button" data-page-prev disabled>صفحهٔ قبل</button><span data-page-label></span><button type="button" data-page-next disabled>صفحهٔ بعد</button><button type="button" data-page-retry hidden>تلاش دوباره</button></div></details>`;
     if (bank.overviewNote) html += `<p class="explain">${h(bank.overviewNote)}</p>`;
   }
   if (topicId === 'facilities' && bank.facilityNote) html += `<p class="explain">${h(bank.facilityNote)}</p>`;

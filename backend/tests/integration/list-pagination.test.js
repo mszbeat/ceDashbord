@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * ۳-الف — صفحه‌بندی رکوردها: هر صفحه ۱۰۰تایی، دسترسی به **همهٔ** رکوردها،
+ * ۳-الف — صفحه‌بندی رکوردها: هر صفحه ۵۰تایی، دسترسی به **همهٔ** رکوردها،
  * بدون تکرار/جاافتادگی (حتی با `ts` یکسان) و پاسخ سریع حتی برای صفحهٔ آخر.
  */
 
@@ -60,12 +60,12 @@ pgTest('۳-الف: مجموع صفحه‌ها = total، بدون تکرار و �
         from: '1405-08-01',
         to: '1405-09-30',
         type: 'all',
-        limit: 100,
+        limit: 50,
         cursor,
       });
       pages += 1;
       total = page.total;
-      assert.ok(page.rows.length <= 100, 'اندازهٔ صفحه');
+      assert.ok(page.rows.length <= 50, 'اندازهٔ صفحه');
       for (const row of page.rows) {
         assert.ok(!seen.has(row.request_id), `تکرار رکورد ${row.request_id}`);
         seen.add(row.request_id);
@@ -76,7 +76,7 @@ pgTest('۳-الف: مجموع صفحه‌ها = total، بدون تکرار و �
     }
     assert.equal(total, 260, 'total از شمارش فیلتر');
     assert.equal(seen.size, 260, 'همهٔ رکوردها دیده شدند');
-    assert.equal(pages, 3, 'تعداد صفحه‌ها');
+    assert.equal(pages, 6, 'تعداد صفحه‌ها');
   } finally {
     await db.close();
   }
@@ -86,9 +86,9 @@ pgTest('۳-الف: صفحه‌بندی رکوردهای یک شاخص (flag) ه�
   const db = await createTestDatabase('pageflag');
   try {
     const { service } = await setup(db, 150);
-    const all = await service.list({ bank: 'tavan_mellat', from: '1405-08-01', to: '1405-09-30', type: 'all', limit: 100 });
+    const all = await service.list({ bank: 'tavan_mellat', from: '1405-08-01', to: '1405-09-30', type: 'all', limit: 50 });
     const flagPage = await service.list({
-      bank: 'tavan_mellat', from: '1405-08-01', to: '1405-09-30', type: 'flag', id: 'hasLoan', limit: 100,
+      bank: 'tavan_mellat', from: '1405-08-01', to: '1405-09-30', type: 'flag', id: 'hasLoan', limit: 50,
     });
     assert.ok(flagPage.total <= all.total, 'total فیلترشده از کل بیشتر نیست');
     assert.ok(flagPage.rows.every((row) => row.flags.hasLoan === true), 'همهٔ ردیف‌ها دارای پرچم');

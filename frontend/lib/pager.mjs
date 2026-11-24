@@ -1,7 +1,7 @@
 /**
  * ۳-الف — منطق صفحه‌بندی سمت کلاینت.
  *
- * قرارداد API: `GET /api/list?...&limit=100&cursor=<token>` →
+ * قرارداد API: `GET /api/list?...&limit=50&cursor=<token>` →
  *   `{ items, total, nextCursor, cursor, limit }`
  * (سرور `rows` هم برای سازگاری برمی‌گرداند؛ این‌جا هر دو پذیرفته می‌شوند.)
  *
@@ -13,7 +13,7 @@
  *    صفحه را نشان دهد.
  */
 
-export const PAGE_SIZE = 100;
+export const PAGE_SIZE = 50;
 
 /** ساخت آدرس با حفظ فیلترها و حذف کلیدهای خالی */
 export function buildListUrl(base, params, state = {}) {

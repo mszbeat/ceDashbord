@@ -8,7 +8,7 @@ const { h } = require('./common');
 const assetsDir = path.join(__dirname, 'assets');
 const readAsset = (name) => fs.readFileSync(path.join(assetsDir, name), 'utf8');
 const ASSETS = {
-  css: `${readAsset('style.css')}\n${readAsset('glass-redesign.css')}`,
+  css: `${readAsset('style.css')}\n${readAsset('glass-redesign.css')}\n${readAsset('performance.css')}`,
   client: readAsset('client.js'),
   viewerJs: readAsset('viewer.js'),
   viewerCss: readAsset('viewer.css'),
@@ -42,7 +42,7 @@ function controlsHtml(controls = {}) {
   const bank = String(controls.bank || banks[0].id);
   const from = String(controls.from || '');
   const to = String(controls.to || '');
-  const rowsCap = Number(controls.rowsCap || 100);
+  const rowsCap = Number(controls.rowsCap || 50);
   const status = String(controls.status || '');
   const updatedAt = String(controls.updatedAt || '');
   const options = banks.map((item) => `<option value="${h(item.id)}"${item.id === bank ? ' selected' : ''}>${h(item.label)}</option>`).join('');
@@ -69,7 +69,7 @@ function inject(html, controls) {
 
 function buildReport(scan, data, options = {}) {
   const html = buildHtml(scan, data, {
-    rowsCap: Number(options.rowsCap || 100),
+    rowsCap: Number(options.rowsCap || 50),
     api: { mode: 'api', endpoint: '/api/sample' },
   }, ASSETS);
   return inject(html, options.controls || {});
