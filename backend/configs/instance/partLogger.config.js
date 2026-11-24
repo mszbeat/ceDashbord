@@ -12,7 +12,7 @@ exports.introduceToLoader = {
         singleLine: false
       },
       file: {
-        enabled: true,
+        enabled: false,
         json: envMode === 'prod'
       },
       http: {

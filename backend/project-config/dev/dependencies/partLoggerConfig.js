@@ -22,7 +22,7 @@ module.exports={
         storageName: 'Logger@6-test'
       },
       fileSystem: {
-        enabled: true,
+        enabled: false,
         storageName: 'logfile'
       },
       http: {

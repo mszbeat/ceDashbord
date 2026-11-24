@@ -107,7 +107,7 @@ class ActionLoggerService {
     this.enableFiles =
       options.enableFiles !== undefined
         ? Boolean(options.enableFiles)
-        : process.env.DISABLE_FILE_LOGS !== '1';
+        : process.env.ENABLE_FILE_LOGS === '1' && process.env.DISABLE_FILE_LOGS !== '1';
     this.enableDb =
       options.enableDb !== undefined
         ? Boolean(options.enableDb)

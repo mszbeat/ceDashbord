@@ -108,6 +108,36 @@ test('ActionLoggerService redacts secrets, writes NDJSON actions + errors files,
   }
 });
 
+test('ActionLoggerService does not create log files by default', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ce-no-file-logs-'));
+  const previousEnable = process.env.ENABLE_FILE_LOGS;
+  const previousDisable = process.env.DISABLE_FILE_LOGS;
+  delete process.env.ENABLE_FILE_LOGS;
+  delete process.env.DISABLE_FILE_LOGS;
+  try {
+    const logger = new ActionLoggerService({ logDir: tmpDir, consoleEnabled: false, enableDb: false });
+    logger.info({ category: 'test', action: 'test.no_file' });
+    await logger.flush();
+    assert.deepEqual(fs.readdirSync(tmpDir), []);
+  } finally {
+    if (previousEnable === undefined) delete process.env.ENABLE_FILE_LOGS;
+    else process.env.ENABLE_FILE_LOGS = previousEnable;
+    if (previousDisable === undefined) delete process.env.DISABLE_FILE_LOGS;
+    else process.env.DISABLE_FILE_LOGS = previousDisable;
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('PartLogger filesystem transports are disabled in runtime configs', () => {
+  const frameworkConfig = require(path.join(ROOT, 'project-config', 'dev')).partFrameworkConfig.partLoggerConfig;
+  const instanceConfig = require(path.join(ROOT, 'configs', 'instance', 'partLogger.config'))
+    .introduceToLoader.config.instance;
+  const legacyConfig = require(path.join(ROOT, 'project-config', 'dev', 'dependencies', 'partLoggerConfig')).instance;
+  assert.equal(frameworkConfig.instance.file.enabled, false);
+  assert.equal(instanceConfig.file.enabled, false);
+  assert.equal(legacyConfig.storageConfig.fileSystem.enabled, false);
+});
+
 test('ActionLoggerService forwards redacted action events to the injected PartLogger', () => {
   const captured = [];
   const partLogger = {
