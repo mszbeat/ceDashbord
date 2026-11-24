@@ -1051,66 +1051,6 @@ export async function performLoginWithRecovery(
   };
 }
 
-export async function performRegisterWithRecovery(
-  backendUrl: string,
-  incomingHeaders: Headers,
-  incomingCookieHeader: string,
-  bodyText: string,
-): Promise<RefreshOutcome> {
-  const isHttps = isRequestHttps(incomingHeaders);
-  let sanitizedBody = bodyText;
-  let shouldAutoLogin = true;
-  try {
-    const parsed = JSON.parse(bodyText);
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      delete parsed.role;
-      shouldAutoLogin = parsed.autoLogin !== false;
-      sanitizedBody = JSON.stringify(parsed);
-    }
-  } catch {
-    // pass through
-  }
-
-  const probe = await probeSessionWithCleanRecovery(backendUrl, incomingHeaders, incomingCookieHeader, {
-    forceCleanTokenIfUnauthed: shouldAutoLogin,
-  });
-  const res = await fetchWithHeadersTimeout(
-    fetch,
-    new URL('/api/auth/register', backendUrl).toString(),
-    {
-    method: 'POST',
-    cache: 'no-store',
-    headers: {
-      ...await buildForwardClientHeaders(incomingHeaders, probe.cookieHeader, { method: 'POST', path: '/api/auth/register' }),
-      'content-type': 'application/json',
-    },
-    body: sanitizedBody,},
-    { timeoutMs: DEFAULT_SESSION_TIMEOUT_MS },
-  );
-  const rawText = await res.text().catch(() => '');
-  const rawJson = safeParseJson(rawText);
-  const { setCookies, cleanText, cleanJson } = collectResponseCookies(res, rawText, rawJson);
-  const data = unwrapAuthPayload(cleanJson);
-  const allSetCookies = dedupeSetCookies([...probe.setCookies, ...setCookies]);
-  const liveCookies = mergeCookieHeader(probe.cookieHeader, setCookies);
-
-  const allowIssuedToken = res.ok && shouldAutoLogin;
-  const finalCookies = normalizeBrowserSetCookies(
-    allowIssuedToken ? ensureActiveTokenSetCookie(allSetCookies, liveCookies, isHttps) : allSetCookies,
-    { allowToken: allowIssuedToken, scrubApiAuthPath: true, isHttps },
-  );
-
-  return {
-    ok: res.ok,
-    status: res.status,
-    rawText: cleanText,
-    rawJson: cleanJson,
-    data,
-    cookieHeader: liveCookies,
-    setCookies: finalCookies,
-  };
-}
-
 export async function performLogoutWithRecovery(
   backendUrl: string,
   incomingHeaders: Headers,

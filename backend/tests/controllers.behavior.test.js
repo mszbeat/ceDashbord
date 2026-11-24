@@ -141,32 +141,20 @@ test('auth-controller: register/login/refresh/logout/me/role/removeUser با ت�
   const sessionManager = new SessionManager({ useMemoryOnly: true });
   const controller = new AuthController({}, {}, authConfig, authService, sessionManager, samadService);
 
-  // register (بدون دستکاری سشن در حالت autoLogin: false + ورود خودکار و صدور رفرش‌توکن در حالت پیش‌فرض)
-  const regNoAutoSession = { samadUsername: 'visitor', roles: ['visitor'] };
-  const regNoAutoObj = {
-    set(values, cb) { Object.assign(regNoAutoSession, values); cb(null, regNoAutoSession); },
-    get(keys, cb) { const out = {}; for (const k of keys) out[k] = regNoAutoSession[k]; cb(null, out); },
-    remove(cb) { cb(null, ['OK']); },
-  };
-  const regNoAutoOut = await invoke(controller, authConfig, 'register', {
-    data: { username: 'sara', password: 'p2', role: 'visitor', autoLogin: false },
-    session: regNoAutoObj,
-  }).promise;
-  assert.deepEqual(regNoAutoOut, { status: 'ok', username: 'sara', roles: ['visitor'] });
-  assert.equal(regNoAutoSession.samadUsername, 'visitor');
+  // ثبت‌نام عمومی باید پیش از هرگونه ایجاد کاربر یا تغییر سشن رد شود.
+  await assert.rejects(
+    () => invoke(controller, authConfig, 'register', {
+      data: { username: 'sara', password: 'p2', role: 'visitor', autoLogin: false },
+      session,
+    }).promise,
+    (err) => err.statusCode === 403,
+  );
+  assert.equal(authCalls.some(([kind, payload]) => kind === 'add' && payload.username === 'sara'), false);
+  assert.equal(samadUsers.has('sara'), false);
 
-  // register با ورود خودکار + صدور رفرش‌توکن (نقش همواره visitor است حتی اگر ورودی دیگری بفرستند)
-  const regCall = invoke(controller, authConfig, 'register', {
-    data: { username: 'ali', password: 'p1', role: 'admin', rememberMe: true },
-    session,
-  });
-  const registerOut = await regCall.promise;
-  assert.deepEqual(registerOut, { status: 'ok', username: 'ali', roles: ['visitor'] });
-  assert.equal(sessionStore.samadUsername, 'ali');
-  assert.deepEqual(sessionStore.roles, ['visitor']);
-  assert.deepEqual(samadUsers.get('ali'), 'visitor');
-  assert.equal(authCalls.some(([kind, payload]) => kind === 'add' && payload.username === 'ali'), true);
-  assert.ok(extractRefreshCookieValue(regCall.response), 'register auto-login must issue refresh cookie');
+  // حساب‌های این تست مانند حساب‌های provision شدهٔ داخلی موجود هستند.
+  samadUsers.set('ali', 'visitor');
+  await sessionManager.setSession(session, { username: 'ali' }, ['visitor']);
 
   // me
   const meOut = await invoke(controller, authConfig, 'me', { session }).promise;
@@ -285,19 +273,16 @@ test('auth-controller BFF bridge: فقط درخواست امضاشده (یا loo
   }).promise;
   assert.equal('_ceSetCookies' in normalOut, false);
 
-  // با x-ce-bff: 1 روی register/login/refresh/logout کوکی‌های Path=/ در _ceSetCookies پل می‌شوند
-  const regBff = await invoke(controller, authConfig, 'register', {
-    data: { username: 'u2', password: 'p2', rememberMe: true },
-    session: {
-      set(v, cb) { cb(null, v); },
-      get(k, cb) { cb(null, { samadUsername: 'visitor', roles: ['visitor'] }); },
-      remove(cb) { cb(null, ['OK']); },
-    },
-    headers: { 'x-ce-bff': '1' },
-    remoteAddress: '127.0.0.1',
-  }).promise;
-  assert.equal(Array.isArray(regBff._ceSetCookies), true);
-  assert.equal(regBff._ceSetCookies.some((c) => c.startsWith('ce_refresh=') && c.includes('Path=/')), true);
+  // حتی درخواست BFF معتبر نیز نباید از مسیر عمومی حساب بسازد.
+  await assert.rejects(
+    () => invoke(controller, authConfig, 'register', {
+      data: { username: 'u2', password: 'p2', rememberMe: true },
+      session,
+      headers: { 'x-ce-bff': '1' },
+      remoteAddress: '127.0.0.1',
+    }).promise,
+    (err) => err.statusCode === 403,
+  );
 
   const loginBff = await invoke(controller, authConfig, 'login', {
     data: { username: 'u1', password: 'p1', rememberMe: true },

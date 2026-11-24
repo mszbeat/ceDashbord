@@ -116,3 +116,4 @@
   .lgn-pane-body { padding:18px 15px; }
 }
 @media(prefers-reduced-motion:reduce) { .lgn-root *, .lgn-root *::before,.lgn-root *::after { transition-duration:.01ms!important; animation-duration:.01ms!important; } }
+.lgn-registration-note { margin:18px 0 0; color:var(--login-muted); font-size:12px; line-height:1.8; text-align:center; }

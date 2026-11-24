@@ -99,74 +99,9 @@ exports.controller = class AuthController extends BaseController {
     this.samadService = samadService;
   }
 
-  async register(body, trackingHeaders, session, request, response) {
-    if (this.sessionManager && typeof this.sessionManager.ensureResponseCookieNormalization === 'function') {
-      this.sessionManager.ensureResponseCookieNormalization(response, request);
-    }
-    const payload = readBody(body);
-    if (!payload.username || !payload.password) throw authError.invalidAuthInput;
-
-    const role = 'visitor';
-    const shouldAutoLogin = payload.autoLogin !== false;
-    let rollback = null;
-
-    try {
-      if (this.samadService) {
-        rollback = await this.samadService.addUser(payload.username, role);
-      }
-      await this.authService.addUser({ username: payload.username, password: payload.password }, trackingHeaders);
-
-      if (shouldAutoLogin && session && this.sessionManager) {
-        const current = await this.sessionManager.getSession(session).catch(() => null);
-        if (!current?.samadUsername || current.samadUsername === 'visitor') {
-          await this.sessionManager.setSession(session, { username: payload.username }, [role]);
-          if (typeof this.sessionManager.issueRefreshToken === 'function' && (response || isBffBridgeRequest(request))) {
-            const meta = readClientMeta(request);
-            await this.sessionManager.issueRefreshToken(
-              {
-                username: payload.username,
-                roles: [role],
-                rememberMe: payload.rememberMe === true,
-                ip: meta.ip,
-                userAgent: meta.headers?.['user-agent'],
-              },
-              response,
-              request,
-            );
-          }
-        }
-      }
-      updateAuditContext({ actor: payload.username, roles: [role] });
-      getActionLogger().info({
-        category: 'auth',
-        action: 'auth.register.success',
-        actor: payload.username,
-        roles: [role],
-        statusCode: 200,
-        meta: { autoLogin: shouldAutoLogin, rememberMe: payload.rememberMe === true },
-      });
-      return withBffBridgedCookies({ status: 'ok', username: payload.username, roles: [role] }, request, response);
-    } catch (err) {
-      let rolledBack = false;
-      if (typeof rollback === 'function') {
-        try {
-          await rollback();
-          rolledBack = true;
-        } catch {
-          // rollback بهترین‌تلاش
-        }
-      }
-      getActionLogger().warn({
-        category: 'auth',
-        action: 'auth.register.failed',
-        actor: payload.username || null,
-        errorCode: err?.meta?.code || err?.code || 'REGISTER_FAILED',
-        statusCode: Number(err?.statusCode) || 500,
-        message: err?.data?.message?.en || err?.message || 'Registration failed',
-        meta: { rolledBack },
-      });
-      throw err;
-    }
+  async register() {
+    // Public self-service registration is disabled; accounts are provisioned by service staff.
+    throw authError.registrationDisabled;
   }
 
   async login(body, trackingHeaders, session, request, response) {

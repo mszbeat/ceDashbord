@@ -54,6 +54,16 @@ module.exports = {
     },
   },
   error: {
+    registrationDisabled: {
+      meta: errorInfo('registrationDisabled'),
+      data: {
+        message: {
+          fa: 'ثبت‌نام عمومی غیرفعال است؛ برای دریافت حساب کاربری با مدیر سامانه تماس بگیرید.',
+          en: 'Public registration is disabled; contact the system administrator for an account.',
+        },
+      },
+      statusCode: 403,
+    },
     invalidAuthInput: {
       meta: errorInfo('invalidAuthInput'),
       data: {
