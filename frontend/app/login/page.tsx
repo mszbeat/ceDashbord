@@ -13,6 +13,7 @@ import {
   sanitizeNextPath,
 } from '@/lib/auth-client';
 import './login.css';
+import './glass-redesign.css';
 
 type AuthMode = 'login' | 'register';
 
@@ -274,6 +275,11 @@ export default function LoginPage() {
             loading="eager"
             decoding="async"
           />
+          <div className="lgn-visual-note" aria-hidden="true">
+            <span className="lgn-visual-kicker"><i /> فضای امن تحلیل</span>
+            <strong>دادهٔ دقیق، تصمیم مطمئن.</strong>
+            <span>پایش یکپارچهٔ کیفیت گزارش‌های اعتبارسنجی</span>
+          </div>
         </aside>
 
         <section className="lgn-form-pane" aria-labelledby="login-heading">

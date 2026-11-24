@@ -18,6 +18,7 @@ import JobsMonitor from './JobsMonitor';
 import { createPoller } from '../../lib/polling.mjs';
 import { safeText, toastA11y } from '../../lib/a11y.mjs';
 import './admin.css';
+import './glass-redesign.css';
 
 export type BankKey = 'tavan_mellat' | 'tavan_resalat' | 'tavan_postbank';
 type DateScope = 'single' | 'range' | 'filter_only';

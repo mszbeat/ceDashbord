@@ -8,7 +8,7 @@ const { h } = require('./common');
 const assetsDir = path.join(__dirname, 'assets');
 const readAsset = (name) => fs.readFileSync(path.join(assetsDir, name), 'utf8');
 const ASSETS = {
-  css: readAsset('style.css'),
+  css: `${readAsset('style.css')}\n${readAsset('glass-redesign.css')}`,
   client: readAsset('client.js'),
   viewerJs: readAsset('viewer.js'),
   viewerCss: readAsset('viewer.css'),
