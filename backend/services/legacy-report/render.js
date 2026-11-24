@@ -46,7 +46,7 @@ function table(rows, { id = '', code = [], ltr = [], multiline = [], scroll = fa
     return `<td${ltr.includes(key) ? ' class="ltr"' : ''}>${ltr.includes(key) ? `<bdi dir="ltr">${h(text)}</bdi>` : h(text)}</td>`;
   }
   const head = (hasDetails ? '<th class="open-cell" scope="col"><span class="sr-only">جزئیات</span></th>' : '')
-    + columns.map((key) => `<th scope="col">${h(key)}</th>`).join('');
+    + columns.map((key) => `<th scope="col" data-key="${h(key)}">${h(key)}</th>`).join('');
   const body = rows.map((row) => {
     const classes = [row.__sid ? 'clickable' : '', row.__st ? `status-${row.__st}` : ''].filter(Boolean).join(' ');
     const attrs = row.__sid ? ` data-sid="${h(row.__sid)}" tabindex="0" role="button" aria-label="نمایش جزئیات گزارش در پنجرهٔ جدید" title="نمایش دادهٔ گزارش"` : '';

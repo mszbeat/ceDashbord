@@ -157,6 +157,17 @@ body {
 .copy-button,.ce-live-bar button { min-height:42px; border:1px solid transparent; border-radius:12px; padding:8px 15px; background:linear-gradient(115deg,#536dfe,#5367e6 58%,#26bfb5); color:#fff; box-shadow:0 8px 18px rgba(83,109,254,.18); transition:transform .18s ease,box-shadow .18s ease; }
 .copy-button:hover,.ce-live-bar button:hover { transform:translateY(-2px); box-shadow:0 12px 22px rgba(83,109,254,.25); }
 .table-wrap { border-radius:18px; overflow:auto; }
+.table-pagination,.paged-records-controls { display:flex; align-items:center; justify-content:flex-start; gap:8px; flex-wrap:wrap; margin:10px 0 20px; padding:9px 11px; border:1px solid var(--line); border-radius:14px; background:linear-gradient(120deg,var(--surface),var(--surface-2)); box-shadow:0 5px 16px rgba(34,57,99,.055); }
+.table-pagination button,.paged-records-controls button { min-height:36px; border:1px solid rgba(83,109,254,.22); border-radius:10px; padding:6px 13px; background:linear-gradient(115deg,#536dfe,#5367e6 58%,#26bfb5); color:#fff; font:inherit; font-size:11px; font-weight:700; box-shadow:0 5px 12px rgba(83,109,254,.17); cursor:pointer; transition:transform .16s ease,box-shadow .16s ease,opacity .16s ease; }
+.table-pagination button:hover:not(:disabled),.paged-records-controls button:hover:not(:disabled) { transform:translateY(-1px); box-shadow:0 8px 17px rgba(83,109,254,.25); }
+.table-pagination button:focus-visible,.paged-records-controls button:focus-visible { outline:3px solid rgba(83,109,254,.24); outline-offset:2px; }
+.table-pagination button:disabled,.paged-records-controls button:disabled { border-color:var(--line); background:var(--surface-2); color:var(--subtle); box-shadow:none; cursor:not-allowed; opacity:.72; }
+.table-pagination [data-page-label],.paged-records-controls [data-page-label] { padding:5px 10px; border:1px solid var(--line); border-radius:9px; background:var(--surface); color:var(--ink); font-size:11px; font-weight:700; }
+.table-page-status { flex:1 1 100%; color:var(--muted); font-size:10px; }
+.table-page-status[data-error="true"] { color:#c2414b; }
+.table-pagination [hidden],.paged-records-controls[hidden],.paged-records-controls [hidden] { display:none!important; }
+:root[data-theme="dark"] .table-pagination,:root[data-theme="dark"] .paged-records-controls { background:linear-gradient(120deg,var(--surface),var(--surface-2)); box-shadow:0 5px 16px rgba(0,0,0,.2); }
+@media(max-width:640px) { .table-pagination,.paged-records-controls { gap:6px; padding:8px; } .table-pagination button,.paged-records-controls button { flex:1 1 auto; } .table-pagination [data-page-label],.paged-records-controls [data-page-label] { flex:1 1 100%; text-align:center; } }
 table { border-collapse:separate; border-spacing:0; }
 table th { position:sticky; top:0; z-index:1; background:rgba(242,246,253,.92); color:var(--muted); font-size:11px; letter-spacing:.01em; }
 :root[data-theme="dark"] table th { background:rgba(18,36,57,.96); }

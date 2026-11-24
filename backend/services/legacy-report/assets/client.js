@@ -353,7 +353,97 @@
     if (/^\d{14,17}$/.test(raw)) return `${raw.slice(0,4)}/${raw.slice(4,6)}/${raw.slice(6,8)} ${raw.slice(8,10)}:${raw.slice(10,12)}`;
     return formatDigits(item.day || '—');
   }
-  function buildRecordTable(page, pageNo) {
+  function valueForReportColumn(item, key, index, pageNo, page) {
+    const successText = item.is_success === true ? 'موفق' : item.is_success === false ? 'ناموفق' : '—';
+    const direct = {
+      '#': faNumber.format((pageNo - 1) * (Number(page.limit) || 50) + index + 1),
+      uniqueKey: item.unique_key,
+      requestId: item.request_id,
+      'تاریخ و ساعت': displayStamp(item),
+      model_name: item.model_name,
+      is_success: successText,
+      'وضعیت': successText,
+      status: successText,
+      total_time_s: item.total_time_s,
+      pd: item.pd,
+      PD: item.pd,
+      suggested_amount: item.suggested_amount,
+      'توان بازپرداخت (ریال)': item.suggested_amount,
+      'توان بازپرداخت': item.suggested_amount,
+      'توان بازپرداخت (تومان)': item.suggested_amount,
+    };
+    if (Object.prototype.hasOwnProperty.call(direct,key)) return direct[key];
+    if (Object.prototype.hasOwnProperty.call(item,key)) return item[key];
+    if (Object.prototype.hasOwnProperty.call(item.flags || {},key)) return item.flags[key] ? 'بله' : 'خیر';
+    if (Object.prototype.hasOwnProperty.call(item.cats || {},key)) return item.cats[key];
+    if (Object.prototype.hasOwnProperty.call(item.credit_alerts || {},key)) return item.credit_alerts[key] ? 'بله' : '—';
+    return null;
+  }
+  function buildRecordTable(page, pageNo, template = null) {
+    if (template) {
+      const table = template.cloneNode(false);
+      table.replaceChildren(template.tHead.cloneNode(true));
+      const tbody = document.createElement('tbody');
+      const templateRow = template.tBodies[0]?.rows[0];
+      const headers = [...table.querySelectorAll('thead th')];
+      page.items.forEach((item,index) => {
+        const tr = templateRow ? templateRow.cloneNode(true) : document.createElement('tr');
+        tr.removeAttribute('data-sid');
+        tr.removeAttribute('tabindex');
+        tr.removeAttribute('role');
+        tr.removeAttribute('aria-label');
+        tr.classList.remove('clickable');
+        [...tr.classList].filter((name) => name.startsWith('status-')).forEach((name) => tr.classList.remove(name));
+        if (item.is_success === true) tr.classList.add('status-success');
+        else if (item.is_success === false) tr.classList.add('status-fail');
+        if (item.request_id) {
+          tr.dataset.sid = String(item.request_id);
+          tr.tabIndex = 0;
+          tr.setAttribute('role','button');
+          tr.setAttribute('aria-label','نمایش جزئیات گزارش در پنجرهٔ جدید');
+          tr.classList.add('clickable');
+        }
+        [...tr.cells].forEach((cell,col) => {
+          const key = headers[col]?.dataset.key || '';
+          if (!key) {
+            cell.replaceChildren();
+            if (item.request_id && cell.classList.contains('open-cell')) {
+              const icon = document.createElement('span'); icon.setAttribute('aria-hidden','true'); icon.textContent = '↗'; cell.appendChild(icon);
+            }
+            return;
+          }
+          const value = valueForReportColumn(item,key,index,pageNo,page);
+          const numericColumn = ['total_time_s','pd','PD','suggested_amount','توان بازپرداخت (ریال)','توان بازپرداخت','توان بازپرداخت (تومان)'].includes(key);
+          const numericValue = numericColumn && value !== null && value !== '' && Number.isFinite(Number(value)) ? Number(value) : null;
+          const text = value == null || value === '' ? '—' : typeof value === 'number' && Number.isFinite(value)
+            ? faNumber.format(value) : numericValue !== null ? faNumber.format(numericValue) : String(value);
+          const copyButton = cell.querySelector('button.copy-id');
+          if (key === 'uniqueKey' || key === 'requestId') {
+            const kind = key;
+            const title = kind === 'uniqueKey' ? 'شناسهٔ یکتا' : 'شناسهٔ درخواست';
+            if (text === '—') { cell.replaceChildren(); const code=document.createElement('code'); code.dir='ltr'; code.textContent='—'; cell.appendChild(code); }
+            else {
+              const button = copyButton || document.createElement('button');
+              button.type='button'; button.className='copy-id'; button.dataset.idKind=kind; button.dataset.identifier=text;
+              button.title=`کپی ${title}: ${text}`; button.setAttribute('aria-label',button.title);
+              button.replaceChildren();
+              const code=document.createElement('code'); code.dir='ltr'; code.textContent=Array.from(text).slice(0,8).join('');
+              const icon=document.createElement('span'); icon.setAttribute('aria-hidden','true'); icon.textContent='⧉';
+              button.append(code,icon); cell.replaceChildren(button);
+            }
+            return;
+          }
+          cell.replaceChildren();
+          if (cell.classList.contains('cell-code')) { const code=document.createElement('code'); code.dir='ltr'; code.textContent=text; cell.appendChild(code); }
+          else if (cell.classList.contains('ltr')) { const bdi=document.createElement('bdi'); bdi.dir='ltr'; bdi.textContent=text; cell.appendChild(bdi); }
+          else if (cell.classList.contains('message-cell')) { const stack=document.createElement('div'); stack.className='message-stack'; const line=document.createElement('span'); line.className='message-line'; line.dir='auto'; line.textContent=text; stack.appendChild(line); cell.appendChild(stack); }
+          else cell.textContent=text;
+        });
+        tbody.appendChild(tr);
+      });
+      table.appendChild(tbody);
+      return table;
+    }
     const table = document.createElement('table');
     table.className = 'report-page-table';
     const headings = [['#','#'],['uniqueKey','شناسهٔ یکتا'],['requestId','شناسهٔ درخواست'],['insertedAt','تاریخ و ساعت'],['status','وضعیت'],['model','مدل'],['duration','زمان اجرا (ثانیه)'],['pd','PD'],['amount','توان بازپرداخت'],['flags','پرچم‌ها'],['cats','دسته‌بندی‌ها'],['creditAlerts','هشدارهای اعتباری']];
@@ -497,7 +587,7 @@
     if (!state || state.loading || pageNo < 2) return;
     if (state.pages.has(pageNo)) {
       const page = state.pages.get(pageNo);
-      const table = buildRecordTable(page,pageNo); table.id = pager.dataset.tablePagination;
+      const table = buildRecordTable(page,pageNo,state.template); table.id = pager.dataset.tablePagination;
       state.host.replaceChildren(table); state.pageNo = pageNo;
       state.tools?._refresh?.();
       updateTablePager(pager,pageNo,state.total);
@@ -532,7 +622,7 @@
       else if (useOffset) state.cursors.delete(pageNo);
       if (page.nextCursor && pageNo * 50 < page.total) state.cursors.set(pageNo + 1,page.nextCursor);
       else state.cursors.delete(pageNo + 1);
-      const table = buildRecordTable(page,pageNo); table.id = pager.dataset.tablePagination;
+      const table = buildRecordTable(page,pageNo,state.template); table.id = pager.dataset.tablePagination;
       state.host.replaceChildren(table);
       state.tools?._refresh?.();
       updateTablePager(pager,pageNo,page.total);
@@ -546,7 +636,12 @@
     const host = table?.closest('.table-wrap');
     if (!table || !host) return;
     const tools = [...document.querySelectorAll('.table-tools')].find((item) => item.dataset.table === tableId) || null;
-    const state = { host, tools, initialMarkup:host.innerHTML, pageNo:1, total:Number(pager.dataset.total)||0,
+    const template = table.cloneNode(false);
+    if (table.tHead) template.appendChild(table.tHead.cloneNode(true));
+    const templateBody = document.createElement('tbody');
+    if (table.tBodies[0]?.rows[0]) templateBody.appendChild(table.tBodies[0].rows[0].cloneNode(true));
+    template.appendChild(templateBody);
+    const state = { host, tools, template, initialMarkup:host.innerHTML, pageNo:1, total:Number(pager.dataset.total)||0,
       loading:false, pages:new Map(), cursors:new Map() };
     tablePagerStates.set(pager,state);
     pager.querySelector('[data-page-prev]').addEventListener('click', () => {
