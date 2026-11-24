@@ -113,6 +113,8 @@ class ActionLoggerService {
         ? Boolean(options.enableDb)
         : process.env.DISABLE_DB_ACTION_LOGS !== '1';
     this.db = options.db || null;
+    // PartLogger نمونهٔ singleton نیست؛ از DI در Program تزریق و بعد اینجا متصل می‌شود.
+    this.partLogger = options.partLogger || null;
     this._tableReadyForDb = null;
     this._tablePromise = null;
     this._pending = new Set();
@@ -125,6 +127,47 @@ class ActionLoggerService {
       this.db = db;
       this._tableReadyForDb = null;
       this._tablePromise = null;
+    }
+  }
+
+  setPartLogger(partLogger) {
+    this.partLogger = partLogger || null;
+    return this;
+  }
+
+  #writePartLogger(entry) {
+    const logger = this.partLogger;
+    if (!logger) return;
+    const methodName = entry.level === 'error' ? 'error' : entry.level === 'warn' ? 'warn' : 'info';
+    const method = logger[methodName] || (methodName === 'warn' ? logger.warning : null);
+    if (typeof method !== 'function') return;
+    const additionalInfo = {
+      occurredAt: entry.occurredAt,
+      level: entry.level,
+      category: entry.category,
+      action: entry.action,
+      actor: entry.actor,
+      roles: entry.roles,
+      method: entry.method,
+      path: entry.path,
+      statusCode: entry.statusCode,
+      durationMs: entry.durationMs,
+      requestId: entry.requestId,
+      ip: entry.ip,
+      userAgent: entry.userAgent,
+      errorCode: entry.errorCode,
+      meta: entry.meta,
+      ...(entry.stack ? { stack: entry.stack } : {}),
+    };
+    try {
+      // شکل event/msg/additionalInfo مطابق middleware قابل‌تنظیم PartLogger است.
+      method.call(logger, {
+        event: entry.action,
+        msg: entry.message || entry.action,
+        additionalInfo,
+      });
+    } catch {
+      // خرابی transport لاگ نباید عملیات اصلی backend را مختل کند.
     }
   }
 
@@ -293,6 +336,7 @@ class ActionLoggerService {
       ...(rawStack ? { stack: sanitizeLogData(rawStack) } : {}),
     };
 
+    this.#writePartLogger(entry);
     this.#writeConsole(entry);
     this.#writeFiles(entry);
     this.#writeDb(entry);

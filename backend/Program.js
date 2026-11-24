@@ -43,6 +43,15 @@ class Program {
   async #loadDependencies() {
     this.#core.loader.load('sessionManager', SessionManager);
 
+    // PartLogger از container خود partFramework تزریق می‌شود؛ لاگ‌های فعلی
+    // ActionLoggerService از این به بعد علاوه بر sinkهای موجود به PartLogger هم می‌روند.
+    this.#core.loader.loadResolver(
+      'partLoggerActionSink',
+      './services/logger/part-logger-action-sink',
+      undefined,
+      { resolveConfig: true },
+    );
+
     const samadBaseUrl = cleanEnv(process.env.SAMAD_SERVICE_URL) || 'http://samad-v8-dev.partdp.ir';
     const samadProtocol = samadBaseUrl.startsWith('https://') ? 'https' : 'http';
     const samadUser = requiredEnv('SAMAD_USER');

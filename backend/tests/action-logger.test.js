@@ -108,6 +108,54 @@ test('ActionLoggerService redacts secrets, writes NDJSON actions + errors files,
   }
 });
 
+test('ActionLoggerService forwards redacted action events to the injected PartLogger', () => {
+  const captured = [];
+  const partLogger = {
+    info(payload) { captured.push({ level: 'info', payload }); },
+    warn(payload) { captured.push({ level: 'warn', payload }); },
+    error(payload) { captured.push({ level: 'error', payload }); },
+  };
+  const logger = new ActionLoggerService({
+    consoleEnabled: false,
+    enableFiles: false,
+    enableDb: false,
+    partLogger,
+  });
+
+  logger.info({
+    category: 'auth',
+    action: 'auth.login.success',
+    message: 'Signed in',
+    meta: { username: 'ali', password: 'must-not-leak' },
+  });
+  logger.warn({ category: 'admin', action: 'admin.run.denied' });
+  logger.error({ category: 'ingestion', action: 'ingestion.day.failed', errorCode: 'TEST' });
+
+  assert.deepEqual(captured.map((item) => item.level), ['info', 'warn', 'error']);
+  assert.equal(captured[0].payload.event, 'auth.login.success');
+  assert.equal(captured[0].payload.msg, 'Signed in');
+  assert.equal(captured[0].payload.additionalInfo.meta.password, '[REDACTED]');
+  assert.equal(captured[1].payload.event, 'admin.run.denied');
+  assert.equal(captured[2].payload.additionalInfo.errorCode, 'TEST');
+});
+
+test('PartLogger resolver injects the framework logger into the shared ActionLogger', () => {
+  const previous = getActionLogger();
+  const logger = new ActionLoggerService({ consoleEnabled: false, enableFiles: false, enableDb: false });
+  const captured = [];
+  const partLogger = { info(payload) { captured.push(payload); } };
+  const PartLoggerActionSink = require(path.join(ROOT, 'services', 'logger', 'part-logger-action-sink'));
+  try {
+    setActionLogger(logger);
+    new PartLoggerActionSink(partLogger);
+    logger.info({ category: 'summary', action: 'summary.report.rendered' });
+    assert.equal(captured.length, 1);
+    assert.equal(captured[0].event, 'summary.report.rendered');
+  } finally {
+    setActionLogger(previous);
+  }
+});
+
 test('installHttpAuditLogger logs HTTP requests with AsyncLocalStorage actor & exception code', async () => {
   const prevLogger = getActionLogger();
   const captured = [];
