@@ -308,7 +308,9 @@ class V2Dialect {
       where.push('s.total_time_s > 4');
       order = `s.total_time_s DESC NULLS LAST, ${idText}`;
     } else if (type === 'creditAlert') {
-      where.push('(s.has_overdue OR s.has_cheque)');
+      if (id === 'overdue') where.push('s.has_overdue');
+      else if (id === 'cheque') where.push('s.has_cheque');
+      else where.push('(s.has_overdue OR s.has_cheque)');
     } else if (type === 'all') {
       // بدون فیلتر
     } else if (id) {
@@ -496,7 +498,11 @@ class V2Dialect {
       const index = this.registry[bankKey].service.indexOf(id);
       if (index >= 0) base.push(`((s.service_kinds >> ${BigInt(index) * 3n}) & 7) NOT IN (0, 1)`);
     } else if (type === 'slow') base.push('s.total_time_s > 4');
-    else if (type === 'creditAlert') base.push('(s.has_overdue OR s.has_cheque)');
+    else if (type === 'creditAlert') {
+      if (id === 'overdue') base.push('s.has_overdue');
+      else if (id === 'cheque') base.push('s.has_cheque');
+      else base.push('(s.has_overdue OR s.has_cheque)');
+    }
     else if (id && !['all', 'slow', 'creditAlert'].includes(type) && masks[id]) {
       base.push(`(s.flags & ${masks[id].toString()}) <> 0`);
     }

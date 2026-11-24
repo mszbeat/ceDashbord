@@ -157,6 +157,7 @@ module.exports = function createPostbank({ minNull = 3 } = {}) {
         value: (c, s) => { const i = depositInfo(c, s); return i.present ? i.avg36 : null; } },
     ],
     lists: [{ title: 'وام‌های دارای اطلاعات اقساط ناقص', when: (f) => f.installmentsBad,
+      apiFilter: { type: 'flag', id: 'installmentsBad' },
       row: (c) => { const i = loanStats(c); return { 'نوع نقص': STATUS_LABELS[installmentsStatus(c)],
         'تعداد وام‌ها': i.total || 0, 'وام با اقساط غیرخالی': i.full || 0 }; } }],
   };

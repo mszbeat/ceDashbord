@@ -34,7 +34,7 @@ module.exports = function createBank({ minNull = 3 } = {}) {
     metrics: [],
     cross: [],
     lists: [{ title: 'رتبه‌بندی فاقد داده', when: (flags) => flags.rotbeNull,
-      row: () => ({}) }],
+      apiFilter: { type: 'flag', id: 'rotbeNull' }, row: () => ({}) }],
     // summaryCols: (sample) => ({ PD: ..., ... }),
     // viewer: (collected, sample) => ({ cards: [['عنوان', 'مقدار', 'hot']], tables: [] }),
     // sanitizeSample: (sample) => گزارش بدون فیلدهای حساس/غیرضروری,

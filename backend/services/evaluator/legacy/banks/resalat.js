@@ -170,6 +170,7 @@ module.exports = function createResalat({ minNull = 3 } = {}) {
     ],
     lists: [
       { title: 'رتبه‌بندی فاقد داده با وجود سوابق وام', when: (f) => f.rotbeNullLoans,
+        apiFilter: { type: 'flag', id: 'rotbeNullLoans' },
         row: (c) => ({ 'تعداد وام‌ها': asList(get(c, 'historicalLoans')).length, 'تعداد تسهیلات': normalizeFacilities(tashilat(c)).items.length }) },
     ],
   };

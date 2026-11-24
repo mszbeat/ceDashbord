@@ -134,6 +134,7 @@ module.exports = function createMellat({ minNull = 3 } = {}) {
       { id: 'avg36', topic: 'deposit', label: 'میانگین ۳۶ ماههٔ سپردهٔ موجود', value: (c, s) => { const i = depositInfo(c, s); return i.present && i.messageOk ? i.avg36 : null; } },
     ],
     lists: [{ title: 'رتبه‌بندی فاقد داده با وجود اطلاعات تسهیلات', when: (f) => f.rotbeNullTashilat,
+      apiFilter: { type: 'flag', id: 'rotbeNullTashilat' },
       row: (c) => ({ 'تعداد تسهیلات': normalizeFacilities(get(c, 'samatFacilities.TashilatItem')).items.length,
         'تعداد سوابق وام': (get(c, 'historicalLoans') || []).length }) }],
   };

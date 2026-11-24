@@ -78,8 +78,10 @@ module.exports = {
       where += ' AND total_time_s > 4';
       order = 'total_time_s DESC NULLS LAST, request_id';
     } else if (type === 'creditAlert') {
-      where += ` AND (COALESCE(credit_alerts->'overdue'->>'bool','false') = 'true'
-                  OR COALESCE(credit_alerts->'cheque'->>'bool','false') = 'true')`;
+      if (id === 'overdue') where += ` AND COALESCE(credit_alerts->'overdue'->>'bool','false') = 'true'`;
+      else if (id === 'cheque') where += ` AND COALESCE(credit_alerts->'cheque'->>'bool','false') = 'true'`;
+      else where += ` AND (COALESCE(credit_alerts->'overdue'->>'bool','false') = 'true'
+                         OR COALESCE(credit_alerts->'cheque'->>'bool','false') = 'true')`;
     } else if (type === 'all') {
       // بدون فیلتر
     } else if (id) {

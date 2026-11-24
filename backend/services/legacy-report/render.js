@@ -57,6 +57,7 @@ function table(rows, { id = '', code = [], ltr = [], multiline = [], scroll = fa
 }
 const card = (value, label, tone = '', share = null, denominator = null, subtitle = '') => `<div class="data-card ${tone}"><div class="data-card-value" dir="auto">${h(value)}</div><div class="data-card-label">${h(label)}</div>${subtitle ? `<small class="indicator-note">${h(subtitle)}</small>` : ''}${share === null ? '' : `<div class="data-card-share"><bdi dir="ltr">${h(share)}</bdi><span>از ${h(denominator)} گزارش</span></div>`}</div>`;
 const tools = (tableId) => `<div class="table-tools" data-table="${h(tableId)}"><label class="sr-only" for="q-${h(tableId)}">جست‌وجو در گزارش‌ها</label><input id="q-${h(tableId)}" type="search" placeholder="جست‌وجو در شناسه، تاریخ یا سایر ستون‌ها…" autocomplete="off"><button type="button" class="copy-button">کپی شناسه‌های نمایان</button><span class="result-count" aria-live="polite"></span></div>`;
+const recordPager = (tableId, filter, total) => Number(total) > 50 ? `<nav class="table-pagination" data-table-pagination="${h(tableId)}" data-list-type="${h(filter.type)}" data-list-id="${h(filter.id || '')}" data-list-value="${h(filter.value || '')}" data-list-status="${h(filter.status || '')}" data-total="${h(total)}" aria-label="صفحه‌بندی رکوردها"><button type="button" data-page-prev disabled>صفحهٔ قبل</button><span data-page-label>صفحهٔ ۱ · ۱ تا ۵۰ از ${nf(total)}</span><button type="button" data-page-next>صفحهٔ بعد</button><button type="button" data-page-retry hidden>تلاش دوباره</button><span class="table-page-status" role="status" aria-live="polite"></span></nav>` : '';
 
 function quantile(sorted, q) {
   if (!sorted.length) return null;
@@ -184,12 +185,13 @@ function serviceContent(ctx, stats, scope) {
   if (!issues.length) return html + '<p class="success-note">وضعیت تمام سرویس‌های شناسایی‌شده در گزارش‌های این بازه ثبت شده است.</p>';
   html += '<h3>گزارش‌های دارای سرویس یا وضعیت ناقص <small>هر ردیف را انتخاب کنید تا دادهٔ کامل آن از API اصلی در زبانهٔ جدید باز شود.</small></h3>';
   for (const [index, key] of issues.entries()) {
-    const entry = selectedRows(data.serviceRows[key], scope, options.rowsCap);
+    const entry = selectedRows(data.serviceRows[key], scope, Math.min(options.rowsCap, 50));
     const tableId = `svc_${index}_${safeId(key)}_${scope}`;
     html += `<details class="sample-details"><summary><span>${h(serviceLabel(key))} <code dir="ltr">${h(key)}</code></span><span class="detail-badge">${nf(entry.total)} گزارش</span></summary>`;
     if (entry.total > entry.rows.length) html += `<p class="table-caption">نمایش ${nf(entry.rows.length)} گزارش نخست از ${nf(entry.total)} مورد در این بازه (سقف نمایش: ${nf(options.rowsCap)}).</p>`;
     html += entry.rows.length ? tools(tableId) + table(entry.rows.map((row, index) => ({ '#': index + 1, ...row })),
       { id: tableId, code: ['uniqueKey', 'requestId', 'مسیر'], ltr: ['تاریخ و ساعت'], scroll: true })
+      + recordPager(tableId, { type: 'service', id: key, status: scope === 'ALL' ? '' : scope }, entry.total)
       : empty('در سقف محدودهٔ نمایش فعلی ردیفی برای این بازه ثبت نشده است.');
     html += '</details>';
   }
@@ -296,7 +298,7 @@ function scopedContent(topicId, scope, ctx) {
     const inspect = (spec.inspectAll ? categories.map(([key]) => key) : spec.inspectValues || [])
       .filter((key) => !spec.inspectExcept?.includes(key));
     for (const [index, key] of inspect.entries()) {
-      const entry = selectedRows(data.categoryRows[spec.id]?.[key], scope, ctx.options.rowsCap);
+      const entry = selectedRows(data.categoryRows[spec.id]?.[key], scope, Math.min(ctx.options.rowsCap, 50));
       const label = spec.values && own(spec.values, key) ? spec.values[key] : key;
       const id = `cat_${safeId(spec.id)}_${index}_${scope}`;
       html += `<details class="sample-details"><summary><span>${spec.id === 'modelName' ? 'گزارش‌های مدل' : 'مشاهدهٔ گزارش‌های دستهٔ'} «${h(label)}»</span><span class="detail-badge">${nf(entry.total)} گزارش</span></summary>`;
@@ -305,6 +307,7 @@ function scopedContent(topicId, scope, ctx) {
         { id, code: [...(spec.codeColumns || []), 'uniqueKey', 'requestId'],
           ltr: [...(spec.ltrColumns || []), 'model_name', 'تاریخ و ساعت'],
           multiline: multilineCols, scroll: true })
+        + recordPager(id, { type: 'cat', id: spec.id, value: key, status: scope === 'ALL' ? '' : scope }, entry.total)
         : empty('گزارشی در این دسته و محدوده وجود ندارد.');
       html += '</details>';
     }
@@ -334,12 +337,13 @@ function flagSamples(topicId, scope, ctx) {
       ? '<p class="explain">فهرست‌های این بخش شامل گزارش‌های بدون سابقهٔ وام و پایش پوشش تاریخ پرداخت هستند؛ نبود سابقه یا تاریخ پرداخت null به‌تنهایی نقص داده یا وضعیت نامطلوب اعتباری نیست.</p>'
       : '<p class="explain">شمارش وضعیت‌های عادی در جدول‌ها و کارت‌ها باقی می‌ماند؛ گزارش موفق نیز ممکن است دارای تأخیر یا نقص داده باشد.</p>');
   for (const spec of relevant) {
-    const entry = selectedRows(ctx.data.flags[spec.id], scope, ctx.options.rowsCap);
+    const entry = selectedRows(ctx.data.flags[spec.id], scope, Math.min(ctx.options.rowsCap, 50));
     const id = `flag_${safeId(spec.id)}_${scope}`;
     html += `<details class="sample-details"><summary><span>${h(spec.label)}</span><span class="detail-badge">${nf(entry.total)} گزارش</span></summary>`;
     if (entry.total > entry.rows.length) html += `<p class="table-caption">نمایش ${nf(entry.rows.length)} گزارش از ${nf(entry.total)} مورد؛ سقف انتخاب‌شده: ${nf(ctx.options.rowsCap)} گزارش${spec.sortValue ? "؛ مرتب‌شده از بیشترین تأخیر به کمترین، پیش از اعمال سقف نمایش" : ""}.</p>`;
     html += entry.rows.length ? tools(id) + table(entry.rows.map((row, index) => ({ '#': index + 1, ...row })),
       { id, code: ['uniqueKey', 'requestId'], ltr: ['model_name', 'تاریخ و ساعت'], scroll: true })
+      + recordPager(id, { type: 'flag', id: spec.id, status: scope === 'ALL' ? '' : scope }, entry.total)
       : empty('گزارشی با این شاخص ثبت نشده است.');
     html += '</details>';
   }
@@ -353,11 +357,14 @@ function creditAlertsContent(ctx) {
     { name: 'چک برگشتی', total: matched.cheque, rows: matched.chequeRows, id: 'risk_cheque_success' },
   ];
   for (const spec of tables) {
+    const pageRows = spec.rows.slice(0, 50);
     html += `<h3>گزارش‌های دارای ${spec.name} <small>${nf(spec.total)} گزارش</small></h3>`;
-    if (spec.total > spec.rows.length) html += `<p class="table-caption">نمایش ${nf(spec.rows.length)} گزارش نخست از ${nf(spec.total)} مورد؛ سقف نمایش زنده اعمال شده است.</p>`;
-    html += spec.rows.length ? tools(spec.id) + table(spec.rows.map((row, index) => ({ '#': index + 1, ...row })),
+    if (spec.total > pageRows.length) html += `<p class="table-caption">نمایش ${nf(pageRows.length)} گزارش نخست از ${nf(spec.total)} مورد؛ هر صفحه حداکثر ۵۰ ردیف دارد.</p>`;
+    html += pageRows.length ? tools(spec.id) + table(pageRows.map((row, index) => ({ '#': index + 1, ...row })),
       { id: spec.id, code: ['uniqueKey', 'requestId'], ltr: ['تاریخ و ساعت'], scroll: true,
-        className: 'credit-alerts-table' }) : empty(`گزارش تأییدشده‌ای برای ${spec.name} وجود ندارد.`);
+        className: 'credit-alerts-table' })
+      + recordPager(spec.id, { type: 'creditAlert', id: spec.id === 'risk_overdue_success' ? 'overdue' : 'cheque', status: 'success' }, spec.total)
+      : empty(`گزارش تأییدشده‌ای برای ${spec.name} وجود ندارد.`);
   }
   return html;
 }
@@ -366,16 +373,19 @@ function listsContent(ctx) {
   const id = 'review_total_time';
   let html = `<h3>گزارش‌های با زمان اجرای مدل بیش از ۴ ثانیه <small>${nf(review.total)} گزارش</small></h3>
     <p class="explain">مبنای تفکیک، مقدار عددی <code dir="ltr">output.total_time &gt; 4</code> است؛ مقدار دقیقاً ۴ یا نامعتبر وارد این فهرست نمی‌شود. موفق: ${nf(review.byStatus.success)}، ناموفق: ${nf(review.byStatus.fail)}. گزارش‌ها پیش از اعمال سقف نمایش زنده از بیشترین زمان به کمترین مرتب می‌شوند؛ مقدار اعشاری زمان خام حفظ می‌شود.</p>`;
-  if (review.total > review.rows.length) html += `<p class="table-caption">نمایش ${nf(review.rows.length)} مورد نخست از ${nf(review.total)} گزارش؛ سقف نمایش زنده اعمال شده است.</p>`;
-  html += review.rows.length ? tools(id) + table(review.rows.map((row, index) => ({ '#': index + 1, ...row })),
+  const reviewRows = review.rows.slice(0, 50);
+  if (review.total > reviewRows.length) html += `<p class="table-caption">نمایش ${nf(reviewRows.length)} مورد نخست از ${nf(review.total)} گزارش؛ هر صفحه حداکثر ۵۰ ردیف دارد.</p>`;
+  html += reviewRows.length ? tools(id) + table(reviewRows.map((row, index) => ({ '#': index + 1, ...row })),
     { id, code: ['uniqueKey', 'requestId'], ltr: ['model_name', 'تاریخ و ساعت'], scroll: true })
+    + recordPager(id, { type: 'slow' }, review.total)
     : empty('گزارشی با زمان اجرای مدل بیش از ۴ ثانیه ثبت نشده است.');
   return html + bank.lists.map((spec, index) => {
     const entry = ctx.data.lists[index] || { total: 0, rows: [] };
     const id = `list_${index}`;
-    const rows = entry.rows.map((row, idx) => ({ '#': idx + 1, ...row }));
+    const rows = entry.rows.slice(0, 50).map((row, idx) => ({ '#': idx + 1, ...row }));
     return `<h3>${h(spec.title)} <small>${nf(entry.total)} گزارش</small></h3>`
-      + (rows.length ? tools(id) : '') + table(rows, { id, code: ['uniqueKey', 'requestId'], ltr: ['model_name', 'تاریخ و ساعت'], scroll: true });
+      + (rows.length ? tools(id) : '') + table(rows, { id, code: ['uniqueKey', 'requestId'], ltr: ['model_name', 'تاریخ و ساعت'], scroll: true })
+      + (rows.length ? recordPager(id, spec.apiFilter || {}, entry.total) : '');
   }).join('');
 }
 function dailyContent(ctx) {

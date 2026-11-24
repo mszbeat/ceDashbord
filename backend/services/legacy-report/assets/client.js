@@ -353,14 +353,13 @@
     if (/^\d{14,17}$/.test(raw)) return `${raw.slice(0,4)}/${raw.slice(4,6)}/${raw.slice(6,8)} ${raw.slice(8,10)}:${raw.slice(10,12)}`;
     return formatDigits(item.day || '—');
   }
-  function renderRecordPage(pager, page, pageNo) {
-    const host = pager.querySelector('.paged-records-table');
+  function buildRecordTable(page, pageNo) {
     const table = document.createElement('table');
     table.className = 'report-page-table';
-    const headings = ['#','شناسهٔ یکتا','شناسهٔ درخواست','تاریخ و ساعت','وضعیت','مدل','زمان اجرا (ثانیه)','PD','توان بازپرداخت'];
+    const headings = [['#','#'],['uniqueKey','شناسهٔ یکتا'],['requestId','شناسهٔ درخواست'],['insertedAt','تاریخ و ساعت'],['status','وضعیت'],['model','مدل'],['duration','زمان اجرا (ثانیه)'],['pd','PD'],['amount','توان بازپرداخت'],['flags','پرچم‌ها'],['cats','دسته‌بندی‌ها'],['creditAlerts','هشدارهای اعتباری']];
     const thead = document.createElement('thead');
     const headRow = document.createElement('tr');
-    headings.forEach((heading) => { const th = document.createElement('th'); th.textContent = heading; headRow.appendChild(th); });
+    headings.forEach(([key, heading]) => { const th = document.createElement('th'); th.dataset.key = key; th.textContent = heading; headRow.appendChild(th); });
     thead.appendChild(headRow); table.appendChild(thead);
     const tbody = document.createElement('tbody');
     page.items.forEach((item, index) => {
@@ -374,12 +373,21 @@
       const amount = formatted(item.suggested_amount);
       const duration = formatted(item.total_time_s);
       const pd = formatted(item.pd);
+      const flags = Object.entries(item.flags || {}).filter(([, enabled]) => enabled === true).map(([key]) => key).join('، ');
+      const categories = Object.entries(item.cats || {}).map(([key, value]) => `${key}: ${value}`).join(' · ');
+      const alerts = Object.entries(item.credit_alerts || {}).filter(([, value]) => value)
+        .map(([key, value]) => `${key}: ${value.count ?? value.bool ?? 'بله'}${value.totalAmount != null ? ` (${value.totalAmount})` : ''}`).join(' · ');
       [faNumber.format((pageNo - 1) * (Number(page.limit) || 50) + index + 1), item.unique_key || '—', item.request_id,
-        displayStamp(item), successText, item.model_name, duration, pd, amount]
+        displayStamp(item), successText, item.model_name, duration, pd, amount, flags, categories, alerts]
         .forEach((value, col) => appendCell(tr, value, { ltr: col === 1 || col === 2 }));
       tbody.appendChild(tr);
     });
-    table.appendChild(tbody); host.replaceChildren(table);
+    table.appendChild(tbody);
+    return table;
+  }
+  function renderRecordPage(pager, page, pageNo) {
+    const host = pager.querySelector('.paged-records-table');
+    host.replaceChildren(buildRecordTable(page,pageNo));
     const state = pagerState.get(pager);
     const pageSize = Number(page.limit) || 50;
     state.page = page; state.pageNo = pageNo; state.loading = false;
@@ -460,6 +468,107 @@
     });
   });
 
+  // صفحه‌بندی هر جدول جزئیات (پرچم/سرویس/دسته/ریسک): صفحهٔ بعد واقعاً از /api/list خوانده می‌شود.
+  const tablePagerStates = new WeakMap();
+  function updateTablePager(pager, pageNo, total, loading = false, error = false) {
+    const pageSize = 50;
+    const prev = pager.querySelector('[data-page-prev]');
+    const next = pager.querySelector('[data-page-next]');
+    const label = pager.querySelector('[data-page-label]');
+    const status = pager.querySelector('.table-page-status');
+    prev.disabled = loading || pageNo <= 1;
+    next.disabled = loading || pageNo * pageSize >= total;
+    label.textContent = `صفحهٔ ${faNumber.format(pageNo)} · ${faNumber.format(Math.min((pageNo - 1) * pageSize + 1,total))} تا ${faNumber.format(Math.min(pageNo * pageSize,total))} از ${faNumber.format(total)}`;
+    status.textContent = loading ? 'در حال دریافت حداکثر ۵۰ رکورد از پایگاه داده…'
+      : error ? 'دریافت این صفحه ناموفق بود؛ دوباره تلاش کنید.' : '';
+    status.dataset.error = error ? 'true' : 'false';
+    const retry = pager.querySelector('[data-page-retry]');
+    if (retry) retry.hidden = !error;
+  }
+  function normalizeListBody(raw) {
+    let body = raw;
+    for (let depth = 0; depth < 3 && body?.data && typeof body.data === 'object'
+      && !Array.isArray(body.items) && !Array.isArray(body.rows); depth += 1) body = body.data;
+    const items = Array.isArray(body?.items) ? body.items : Array.isArray(body?.rows) ? body.rows : [];
+    return { items, total:Number(body?.total ?? items.length), limit:Number(body?.limit) || 50, nextCursor:body?.nextCursor || null };
+  }
+  async function fetchTablePage(pager, pageNo) {
+    const state = tablePagerStates.get(pager);
+    if (!state || state.loading || pageNo < 2) return;
+    if (state.pages.has(pageNo)) {
+      const page = state.pages.get(pageNo);
+      const table = buildRecordTable(page,pageNo); table.id = pager.dataset.tablePagination;
+      state.host.replaceChildren(table); state.pageNo = pageNo;
+      state.tools?._refresh?.();
+      updateTablePager(pager,pageNo,state.total);
+      return;
+    }
+    state.loading = true; state.requestPage = pageNo;
+    state.requestCursor = state.cursors.get(pageNo) || null;
+    updateTablePager(pager,state.pageNo,state.total,true);
+    try {
+      const form = document.querySelector('#ce-live-controls form');
+      const params = new URLSearchParams({ type:pager.dataset.listType || 'all', limit:'50' });
+      const bank = form?.elements.namedItem('bank')?.value || document.body.dataset.bank;
+      const from = form?.elements.namedItem('from')?.value || '';
+      const to = form?.elements.namedItem('to')?.value || '';
+      if (bank) params.set('bank',bank);
+      if (from) params.set('from',from);
+      if (to) params.set('to',to);
+      if (pager.dataset.listId) params.set('id',pager.dataset.listId);
+      if (pager.dataset.listValue) params.set('value',pager.dataset.listValue);
+      if (pager.dataset.listStatus) params.set('status',pager.dataset.listStatus);
+      const cursor = state.cursors.get(pageNo);
+      const useOffset = pager.dataset.listType === 'slow' || !cursor;
+      if (useOffset) params.set('offset',String((pageNo - 1) * 50));
+      else params.set('cursor',cursor);
+      const response = await fetch(`/api/list?${params.toString()}`, {
+        credentials:'include', cache:'no-store', headers:{ accept:'application/json' },
+      });
+      if (!response.ok) throw new Error('list request failed');
+      const page = normalizeListBody(await response.json());
+      state.pages.set(pageNo,page); state.pageNo = pageNo; state.total = page.total;
+      if (!useOffset && cursor) state.cursors.set(pageNo,cursor);
+      else if (useOffset) state.cursors.delete(pageNo);
+      if (page.nextCursor && pageNo * 50 < page.total) state.cursors.set(pageNo + 1,page.nextCursor);
+      else state.cursors.delete(pageNo + 1);
+      const table = buildRecordTable(page,pageNo); table.id = pager.dataset.tablePagination;
+      state.host.replaceChildren(table);
+      state.tools?._refresh?.();
+      updateTablePager(pager,pageNo,page.total);
+    } catch {
+      updateTablePager(pager,state.pageNo,state.total,false,true);
+    } finally { state.loading = false; }
+  }
+  document.querySelectorAll('[data-table-pagination]').forEach((pager) => {
+    const tableId = pager.dataset.tablePagination;
+    const table = document.getElementById(tableId);
+    const host = table?.closest('.table-wrap');
+    if (!table || !host) return;
+    const tools = [...document.querySelectorAll('.table-tools')].find((item) => item.dataset.table === tableId) || null;
+    const state = { host, tools, initialMarkup:host.innerHTML, pageNo:1, total:Number(pager.dataset.total)||0,
+      loading:false, pages:new Map(), cursors:new Map() };
+    tablePagerStates.set(pager,state);
+    pager.querySelector('[data-page-prev]').addEventListener('click', () => {
+      if (state.loading || state.pageNo <= 1) return;
+      if (state.pageNo === 2) {
+        host.innerHTML = state.initialMarkup; state.pageNo = 1;
+        pager.querySelector('.table-tools')?._refresh?.(); updateTablePager(pager,1,state.total);
+      } else void fetchTablePage(pager,state.pageNo - 1);
+    });
+    pager.querySelector('[data-page-next]').addEventListener('click', () => {
+      if (state.loading || state.pageNo * 50 >= state.total) return;
+      void fetchTablePage(pager,state.pageNo + 1);
+    });
+    pager.querySelector('[data-page-retry]')?.addEventListener('click', () => {
+      if (state.loading || !state.requestPage) return;
+      state.cursors.set(state.requestPage,state.requestCursor);
+      state.pages.delete(state.requestPage);
+      void fetchTablePage(pager,state.requestPage);
+    });
+    updateTablePager(pager,1,state.total);
+  });
+
   // نوار «محدودهٔ نمایش» در جریان عادی صفحه می‌ماند (بدون چسبیدن/تمام‌عرض شدن)؛
   // فقط سایهٔ ملایم هدر هنگام اسکرول اضافه می‌شود.
   let scheduled = false;
@@ -492,20 +601,19 @@
     if (!success) throw new Error('دسترسی به کلیپ‌بورد ممکن نبود.');
   }
   document.querySelectorAll('.table-tools').forEach((tools) => {
-    const table = document.getElementById(tools.dataset.table);
-    if (!table) return;
-    const headers = [...table.querySelectorAll('thead th')].map((cell) => cell.textContent.trim());
-    const indexKey = headers.indexOf('uniqueKey'), indexRequest = headers.indexOf('requestId');
     const search = tools.querySelector('input'), button = tools.querySelector('button');
     const status = tools.querySelector('.result-count');
-    const rows = [...table.querySelectorAll('tbody tr')];
     if (postbankOnly) {
       search.placeholder = 'جست‌وجو فقط با requestId…';
       tools.querySelector('label').textContent = 'جست‌وجو بر اساس requestId';
     }
+    const currentRows = () => [...(document.getElementById(tools.dataset.table)?.querySelectorAll('tbody tr') || [])];
+    const currentHeaders = () => [...(document.getElementById(tools.dataset.table)?.querySelectorAll('thead th') || [])].map((cell) => cell.dataset.key || cell.textContent.trim());
     const cellValue = (row, index) => index < 0 ? ''
       : row.cells[index]?.querySelector('button.copy-id')?.dataset.identifier || row.cells[index]?.textContent.trim() || '';
     const update = () => {
+      const rows = currentRows(), headers = currentHeaders();
+      const indexKey = headers.indexOf('uniqueKey'), indexRequest = headers.indexOf('requestId');
       const query = search.value.trim().toLocaleLowerCase();
       let visible = 0;
       for (const row of rows) {
@@ -516,9 +624,12 @@
       }
       status.textContent = query ? `${visible} نتیجه از ${rows.length} ردیف` : `${rows.length} ردیف`;
     };
+    tools._refresh = update;
     search.addEventListener('input', update);
     update();
     button.addEventListener('click', async () => {
+      const rows = currentRows(), headers = currentHeaders();
+      const indexKey = headers.indexOf('uniqueKey'), indexRequest = headers.indexOf('requestId');
       const keys = rows.filter((row) => !row.hidden).map((row) => {
         const unique = cellValue(row, indexKey);
         return unique && unique !== '—' && unique !== '-' ? unique : cellValue(row, indexRequest);
