@@ -131,8 +131,9 @@ exports.report = async function (queryString, response, session) {
       { signal },
     );
 
+    let timeout;
     const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error('FRONTEND_TIMEOUT')), frontendTimeoutMs);
+      timeout = setTimeout(() => reject(new Error('FRONTEND_TIMEOUT')), frontendTimeoutMs);
     });
 
     let result;
@@ -146,6 +147,9 @@ exports.report = async function (queryString, response, session) {
         return sendHtml(buildInProgressHtml(bank, from, to), 202, response);
       }
       throw err;
+    } finally {
+      // گزارش‌های سریع نباید timer معلقِ ۳۰ثانیه‌ای در هر درخواست باقی بگذارند.
+      clearTimeout(timeout);
     }
 
     // اگر کلاینت قطع شده است (detached)، چیزی ارسال نمی‌کنیم

@@ -81,14 +81,25 @@ class DatabaseService {
     return numeric('CE_DB_POOL_ACQUIRE_TIMEOUT_MS', 10000);
   }
 
-  async #withAcquireTimeout(promise) {
+  async #withAcquireTimeout(promise, onLateResolve) {
     const limit = this.#acquireTimeoutMs();
     let timer;
+    let timedOut = false;
+    // pool.connect() cannot be cancelled. If it resolves after our timeout, release
+    // the newly acquired client rather than leaking a pool slot indefinitely.
+    const observed = Promise.resolve(promise).then((value) => {
+      if (timedOut) {
+        try { onLateResolve?.(value); } catch {}
+        return undefined;
+      }
+      return value;
+    });
     try {
       return await Promise.race([
-        promise,
+        observed,
         new Promise((_resolve, reject) => {
           timer = setTimeout(() => {
+            timedOut = true;
             const error = new Error(
               `هیچ اتصال آزادی از استخر دیتابیس در ${limit}ms آزاد نشد ` +
                 `(role=${this.role}, max=${this.pool.options?.max ?? '?'}, waiting=${this.pool.waitingCount}). ` +
@@ -106,12 +117,22 @@ class DatabaseService {
     }
   }
 
-  query(text, params) {
-    return this.#withAcquireTimeout(this.pool.query(text, params));
+  async query(text, params) {
+    const client = await this.getClient();
+    let queryError;
+    try {
+      return await client.query(text, params);
+    } catch (error) {
+      queryError = error;
+      throw error;
+    } finally {
+      // Passing an error lets pg discard a potentially unhealthy connection.
+      client.release(queryError);
+    }
   }
 
   getClient() {
-    return this.#withAcquireTimeout(this.pool.connect());
+    return this.#withAcquireTimeout(this.pool.connect(), (client) => client?.release?.());
   }
 
   /** اندازهٔ استخر (برای /healthz و متریک) */

@@ -20,12 +20,9 @@
  * بک‌اند دارند. امضای یک درخواست را نمی‌توان روی درخواست دیگر (مسیر/کوکی متفاوت) سوار کرد.
  *
  * ── سازگاری ────────────────────────────────────────────────────────────────
- *  • اگر `CE_BFF_SHARED_SECRET` تنظیم نشده باشد (مثلاً نسخهٔ قدیمی Next):
- *    - روی شبکهٔ **خصوصی/داخلی** (loopback، RFC1918، link-local، CGNAT، ULA/fe80) هدر خام
- *      پذیرفته می‌شود — رایج‌ترین شکل استقرار شما (دو فرایند روی یک ماشین/یک LAN) بدون هیچ
- *      تغییری کار می‌کند.
- *    - از راه دور (IP عمومی اینترنت)، هدر خام **رد** می‌شود (۴۰۳) تا کوکی‌ها به بدنه نمی‌آیند.
- *  • اگر secret تنظیم شده باشد، فقط امضای معتبر پذیرفته می‌شود.
+ *  • اگر `CE_BFF_SHARED_SECRET` تنظیم نشده باشد، سازگاری فقط برای loopback حفظ می‌شود
+ *    (نصب تک‌ماشینی). هر اتصال شبکه‌ای دیگر، حتی از LAN، رد می‌شود.
+ *  • اگر secret تنظیم شده باشد، فقط امضای معتبر پذیرفته می‌شود؛ هدر legacy هرگز fallback نیست.
  */
 
 const crypto = require('node:crypto');
@@ -132,48 +129,6 @@ function stripV4Mapped(value) {
   return value;
 }
 
-function parseV4(value) {
-  const parts = String(value || '').split('.');
-  if (parts.length !== 4) return null;
-  const nums = parts.map((p) => Number(p));
-  if (nums.some((n) => !Number.isFinite(n) || n < 0 || n > 255 || String(n).includes('.'))) {
-    return null;
-  }
-  return nums;
-}
-
-/** آیا IP در محدودهٔ خصوصی/داخلی است (RFC1918 + link-local + CGNAT + ULA/link-local v6)؟ */
-function isPrivateOrInternalAddress(address) {
-  const raw = String(address || '').trim().toLowerCase();
-  if (!raw) return false;
-  if (isLoopbackAddress(raw)) return true;
-
-  const value = stripV4Mapped(raw);
-
-  // IPv6: ULA fc00::/7, link-local fe80::/10
-  if (value.includes(':')) {
-    const first = value.split(':')[0] || '';
-    const firstNum = parseInt(first || '0', 16);
-    if (Number.isFinite(firstNum)) {
-      if ((firstNum & 0xfe00) === 0xfc00) return true; // fc00::/7 (private)
-      if ((firstNum & 0xffc0) === 0xfe80) return true; // fe80::/10 (link-local)
-    }
-    return false;
-  }
-
-  const octets = parseV4(value);
-  if (!octets) return false;
-  const [a, b] = octets;
-
-  if (a === 10) return true; // RFC1918
-  if (a === 172 && b >= 16 && b <= 31) return true; // RFC1918
-  if (a === 192 && b === 168) return true; // RFC1918
-  if (a === 169 && b === 254) return true; // link-local
-  if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT 100.64.0.0/10
-  if (a === 127) return true; // loopback
-  return false;
-}
-
 function remoteAddress(request) {
   return (
     request?.socket?.remoteAddress ||
@@ -189,7 +144,7 @@ function remoteAddress(request) {
  *
  * @param {object} request
  * @param {{cookies?: string}} options کوکی‌های دریافتی، برای صحت امضا
- * @returns {{ok: boolean, mode: 'signed'|'legacy-internal'|'none', reason?: string, statusCode?: number}}
+ * @returns {{ok: boolean, mode: 'signed'|'legacy-loopback'|'none', reason?: string, statusCode?: number}}
  */
 function isBffBridgeRequest(request, options = {}) {
   const secret = sharedSecret();
@@ -201,10 +156,7 @@ function isBffBridgeRequest(request, options = {}) {
   // ── ۱) مسیر ترجیحی: امضای معتبر
   if (secret) {
     if (!ts || !nonce || !signature) {
-      // کلاینت قدیمی با هدر خام؟ فقط از شبکهٔ خصوصی/داخلی؛ وگرنه رد.
-      if (readHeader(request, HEADER_LEGACY) === '1' && isPrivateOrInternalAddress(remoteAddress(request))) {
-        return { ok: true, mode: 'legacy-internal', reason: 'unsigned_internal_network' };
-      }
+      // وجود کلید یعنی هیچ downgrade/fallback مجازی نیست، حتی برای loopback و هدر legacy.
       return { ok: false, mode: 'none', statusCode: 403, reason: 'missing_signature' };
     }
 
@@ -233,12 +185,12 @@ function isBffBridgeRequest(request, options = {}) {
     return { ok: true, mode: 'signed' };
   }
 
-  // ── ۲) بدون secret: فقط شبکهٔ خصوصی/داخلی اجازه دارد
-  if (readHeader(request, HEADER_LEGACY) === '1' || (ts && signature)) {
-    if (isPrivateOrInternalAddress(remoteAddress(request))) {
-      return { ok: true, mode: 'legacy-internal' };
+  // ── ۲) بدون secret: فقط loopback مجاز است (نه کل LAN یا شبکهٔ داخلی)
+  if (readHeader(request, HEADER_LEGACY) === '1' || ts || nonce || signature) {
+    if (readHeader(request, HEADER_LEGACY) === '1' && isLoopbackAddress(remoteAddress(request))) {
+      return { ok: true, mode: 'legacy-loopback' };
     }
-    return { ok: false, mode: 'none', statusCode: 403, reason: 'unsigned_remote_bridge' };
+    return { ok: false, mode: 'none', statusCode: 403, reason: 'unsigned_non_loopback_bridge' };
   }
 
   return { ok: false, mode: 'none' };
@@ -254,5 +206,4 @@ module.exports = {
   isBffBridgeRequest,
   sharedSecret,
   isLoopbackAddress,
-  isPrivateOrInternalAddress,
 };

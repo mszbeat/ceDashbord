@@ -146,7 +146,7 @@ test('BFF: بدون کلید، هدر امضاشده ساخته نمی‌شود 
   assert.deepEqual(await frontSign({ method: 'GET', path: '/x', cookies: '', secret: 'short' }), {});
 });
 
-test('BFF: بک‌اند بدون کلید فقط شبکهٔ خصوصی/داخلی را می‌پذیرد', () => {
+test('BFF: بدون کلید فقط loopback مجاز است؛ شبکهٔ خصوصی هم کلید می‌خواهد', () => {
   const prev = process.env.CE_BFF_SHARED_SECRET;
   delete process.env.CE_BFF_SHARED_SECRET;
   const build = (ip) => ({
@@ -156,25 +156,37 @@ test('BFF: بک‌اند بدون کلید فقط شبکهٔ خصوصی/داخل
     url: '/api/auth/login',
   });
   try {
-    // مجاز: loopback + RFC1918 + link-local + CGNAT + ULA + mapped-v4
-    for (const ip of [
-      '127.0.0.1', '::1', '::ffff:127.0.0.1',
-      '10.0.0.5', '192.168.1.10', '172.16.5.4', '172.31.255.255',
-      '100.64.3.3', '169.254.1.1',
-      '::ffff:192.168.0.1', 'fc00::1', 'fd00::abcd', 'fe80::1',
-    ]) {
-      assert.equal(backend.isBffBridgeRequest(build(ip)).ok, true, `${ip} باید پذیرفته شود`);
+    for (const ip of ['127.0.0.1', '::1', '::ffff:127.0.0.1']) {
+      assert.equal(backend.isBffBridgeRequest(build(ip)).ok, true, `${ip} loopback باید پذیرفته شود`);
     }
-    // رد: IP عمومی اینترنت + مرزهای خارج از بازه‌های خصوصی
     for (const ip of [
-      '203.0.113.9', '8.8.8.8', '1.1.1.1',
-      '172.15.0.1', '172.32.0.1', '11.0.0.1', '192.169.0.1',
+      '10.0.0.5', '192.168.1.10', '172.16.5.4', '100.64.3.3',
+      '169.254.1.1', 'fc00::1', 'fe80::1', '203.0.113.9', '8.8.8.8',
     ]) {
       const denied = backend.isBffBridgeRequest(build(ip));
-      assert.equal(denied.ok, false, `${ip} باید رد شود`);
+      assert.equal(denied.ok, false, `${ip} نباید بدون امضا کوکی بگیرد`);
       assert.equal(denied.statusCode, 403);
-      assert.equal(denied.reason, 'unsigned_remote_bridge');
+      assert.equal(denied.reason, 'unsigned_non_loopback_bridge');
     }
+  } finally {
+    if (prev === undefined) delete process.env.CE_BFF_SHARED_SECRET;
+    else process.env.CE_BFF_SHARED_SECRET = prev;
+  }
+});
+
+test('BFF: تنظیم کلید هیچ fallback خامی حتی روی loopback مجاز نمی‌کند', () => {
+  const prev = process.env.CE_BFF_SHARED_SECRET;
+  process.env.CE_BFF_SHARED_SECRET = SECRET;
+  const raw = {
+    headers: { 'x-ce-bff': '1', cookie: 'ce_refresh=secret-token' },
+    socket: { remoteAddress: '127.0.0.1' },
+    method: 'POST',
+    url: '/api/auth/login',
+  };
+  try {
+    const denied = backend.isBffBridgeRequest(raw, { cookies: 'ce_refresh=secret-token' });
+    assert.equal(denied.ok, false);
+    assert.equal(denied.reason, 'missing_signature');
   } finally {
     if (prev === undefined) delete process.env.CE_BFF_SHARED_SECRET;
     else process.env.CE_BFF_SHARED_SECRET = prev;

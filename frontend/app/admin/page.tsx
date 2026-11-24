@@ -11,6 +11,7 @@ import {
 } from '@/lib/server-auth';
 import { readSession, SESSION_HEADER } from '@/lib/session-handoff.mjs';
 import AdminClient, { OverviewPayload } from './AdminClient';
+import { hasAdminRole } from '@/lib/admin-role.mjs';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -38,7 +39,7 @@ function unwrapOverviewEnvelope(raw: any): OverviewPayload | null {
 }
 
 export default async function AdminPage() {
-  const incomingHeaders = headers();
+  const incomingHeaders = await headers();
   const cookieHeader = incomingHeaders.get('cookie') || '';
   const backendUrl = resolveBackendOrigin();
 
@@ -101,35 +102,47 @@ export default async function AdminPage() {
   };
 
   // بررسی نقش در سمت سرور پیش از رندر کوچک‌ترین بخش از پنل مدیریت: کاربر غیرمدیر مستقیماً به داشبورد هدایت می‌شود
-  if (!roles.includes('admin')) {
+  if (!hasAdminRole(roles)) {
     redirect('/');
   }
 
   // استعلام واقعی دسترسی از بک‌اند پیش از نمایش صفحهٔ مدیریت
   let initialOverview: OverviewPayload | null = null;
+  let overviewResponse: Response | null = null;
   try {
-    const res = await fetch(new URL('/api/admin/overview', backendUrl).toString(), {
+    overviewResponse = await fetch(new URL('/api/admin/overview', backendUrl).toString(), {
       method: 'GET',
       cache: 'no-store',
       headers: await buildForwardClientHeaders(incomingHeaders, activeCookieHeader, { method: 'GET', path: '/api/admin/overview' }),
     });
+  } catch {
+    // در خطای موقت شبکه، کلاینت از طریق گیت بررسی دسترسی دوباره اقدام می‌کند
+  }
 
-    if (res.status === 401 || res.status === 403) {
-      if (res.status === 401) {
-        const recheck = await probeSessionWithCleanRecovery(backendUrl, incomingHeaders, activeCookieHeader);
+  // redirect() پرتاب می‌کند؛ بیرون از try/catch باشد تا ریدایرکت‌ها بلعیده نشوند.
+  if (overviewResponse?.status === 401 || overviewResponse?.status === 403) {
+    if (overviewResponse.status === 401) {
+      let recheck: Awaited<ReturnType<typeof probeSessionWithCleanRecovery>> | null = null;
+      try {
+        recheck = await probeSessionWithCleanRecovery(backendUrl, incomingHeaders, activeCookieHeader);
+      } catch {
+        // خطای شبکه را به logout قطعی تبدیل نکنیم؛ کلاینت می‌تواند پس از render دوباره تلاش کند.
+      }
+      if (recheck) {
         if (recheck.data?.authenticated !== true) {
           redirect('/login?next=%2Fadmin');
         }
+        redirect('/');
       }
+      // probe موقتاً شکست خورده؛ shell رندر می‌شود ولی دادهٔ مدیریتی وارد صفحه نشده است.
+    } else {
       redirect('/');
     }
+  }
 
-    if (res.ok) {
-      const json = await res.json().catch(() => null);
-      initialOverview = unwrapOverviewEnvelope(json);
-    }
-  } catch {
-    // در خطای موقت شبکه، کلاینت از طریق گیت بررسی دسترسی دوباره اقدام می‌کند
+  if (overviewResponse?.ok) {
+    const json = await overviewResponse.json().catch(() => null);
+    initialOverview = unwrapOverviewEnvelope(json);
   }
 
   return <AdminClient initialAuth={authUser} initialOverview={initialOverview} />;

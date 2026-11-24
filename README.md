@@ -34,7 +34,7 @@ cd backend && npm run check:env
 
 | موضوع | انتخاب |
 |---|---|
-| فرانتاند | Next.js 14 + React 18 + Tailwind (`app/route.ts` صفحهٔ legacy را زنده سرو میکند + `/login` و `/admin`) |
+| فرانتاند | Next.js 15.5.29 + React 18 + Tailwind (`app/route.ts` صفحهٔ legacy را زنده سرو میکند + `/login` و `/admin`) |
 | بکاند | `partFramework` (`@partFramework/http`, `@partFramework/router`, `partSessionManager`, `partSecurity`) + PostgreSQL (`pg`) |
 | بانکها | ملت، رسالت، پستبانک — همگی از رجیستری قدیمی `banks/*.js` |
 | تجمیع | `legacy_bump`: همان `newStats()`/`bump()` قدیمی؛ SQL فقط فهرست/صفحهبندی/روزها |

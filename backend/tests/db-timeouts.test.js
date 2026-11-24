@@ -77,6 +77,24 @@ test('getClient() هم مهلت دارد (مسیر ingest که اتصال را �
   }
 });
 
+test('getClient که پس از timeout آزاد می‌شود، اتصال دیررس را release می‌کند', async () => {
+  const { DatabaseService } = require(path.join(ROOT, 'services', 'db', 'database.service.js'));
+  const db = new DatabaseService(undefined, { role: 'read' });
+  let resolveConnect;
+  let released = 0;
+  db.pool = new HangingPool();
+  db.pool.connect = () => new Promise((resolve) => { resolveConnect = resolve; });
+  process.env.CE_DB_POOL_ACQUIRE_TIMEOUT_MS = '20';
+  try {
+    await assert.rejects(() => db.getClient(), (error) => error.code === 'DB_POOL_ACQUIRE_TIMEOUT');
+    resolveConnect({ release() { released += 1; } });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(released, 1, 'اتصال دیررس نباید اسلات استخر را نشت دهد');
+  } finally {
+    delete process.env.CE_DB_POOL_ACQUIRE_TIMEOUT_MS;
+  }
+});
+
 test('هنگام آزاد بودن اتصال، هیچ تأخیر اضافه‌ای تحمیل نمی‌شود', async () => {
   const { DatabaseService } = require(path.join(ROOT, 'services', 'db', 'database.service.js'));
   const db = new DatabaseService(undefined, { role: 'read' });
@@ -84,8 +102,12 @@ test('هنگام آزاد بودن اتصال، هیچ تأخیر اضافه‌�
     options: { max: 10 },
     waitingCount: 0,
     on() {},
-    query() { return Promise.resolve({ rows: [{ ok: 1 }] }); },
-    connect() { return Promise.resolve({ release() {} }); },
+    connect() {
+      return Promise.resolve({
+        query() { return Promise.resolve({ rows: [{ ok: 1 }] }); },
+        release() {},
+      });
+    },
     end() { return Promise.resolve(); },
   };
   const started = Date.now();

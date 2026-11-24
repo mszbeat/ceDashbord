@@ -4,6 +4,7 @@ import test from 'node:test';
 import fs from 'node:fs';
 import path from 'node:path';
 import { safeText, looksLikeHtml, toastA11y, pagerA11y } from '../lib/a11y.mjs';
+import { hasAdminRole } from '../lib/admin-role.mjs';
 
 const ROOT = path.resolve(new URL('..', import.meta.url).pathname);
 const walk = (dir, out = []) => {
@@ -68,10 +69,18 @@ test('F9: اعلان پنل مدیریت ARIA دارد', () => {
   assert.match(src, /aria-label="بستن اعلان"/);
 });
 
-test('F10: نسخهٔ Next روی آخرین پچ ۱۴٫۲ است و سطح حمله تصویر بسته است', () => {
+test('دسترسی پنل در فرانت با نقش‌های مجاز backend هم‌راستاست', () => {
+  assert.equal(hasAdminRole(['ce-admin']), true);
+  assert.equal(hasAdminRole(['admin.bank']), true);
+  assert.equal(hasAdminRole(['admin:reports']), true);
+  assert.equal(hasAdminRole(['creditEvaluation', 'visitor']), false);
+  assert.equal(hasAdminRole(['ops-admin'], 'ops-admin,ce-admin'), true);
+});
+
+test('F10: نسخهٔ Next حداقل پچ امنیتی 15.5.29 است و سطح حمله تصویر بسته است', () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
-  assert.match(pkg.dependencies.next, /^14\.2\.\d+$/, 'نسخه پین شده است');
-  assert.ok(Number(pkg.dependencies.next.split('.')[2]) >= 35, 'حداقل 14.2.35');
+  assert.match(pkg.dependencies.next, /^15\.5\.\d+$/, 'نسخه پین شده است');
+  assert.ok(Number(pkg.dependencies.next.split('.')[2]) >= 29, 'حداقل 15.5.29');
   assert.ok(pkg.overrides?.next?.postcss, 'پچ امنیتی postcss داخلی Next');
   const cfgRaw = fs.readFileSync(path.join(ROOT, 'next.config.js'), 'utf8');
   // کامنت‌ها حذف می‌شوند تا فقط پیکربندی واقعی سنجیده شود

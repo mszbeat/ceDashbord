@@ -140,13 +140,14 @@ class ReportCache {
    */
   async #runBuild(buildFn, maxBuildMs) {
     const startedAt = Date.now();
+    let timer;
     try {
       const html = maxBuildMs > 0
         ? await Promise.race([
             buildFn(),
-            new Promise((_, reject) =>
-              setTimeout(() => reject(new BuildTimeoutError()), maxBuildMs)
-            ),
+            new Promise((_, reject) => {
+              timer = setTimeout(() => reject(new BuildTimeoutError()), maxBuildMs);
+            }),
           ])
         : await buildFn();
       return html;
@@ -161,6 +162,9 @@ class ReportCache {
         });
       } catch { /* لاگر در دسترس نیست */ }
       throw error;
+    } finally {
+      // ساخت سریع نباید timerِ سقف زمان را تا چند دقیقه باز نگه دارد.
+      if (timer) clearTimeout(timer);
     }
   }
 
