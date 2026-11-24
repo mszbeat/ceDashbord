@@ -341,11 +341,12 @@
   const pagerState = new WeakMap();
   const formatDigits = (value) => String(value ?? '').replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)))
     .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)));
-  const faNumber = new Intl.NumberFormat('fa-IR');
+  // هم‌راستا با nf سرور: اعداد همهٔ صفحه‌های جدول لاتین و با جداکنندهٔ en-US باشند.
+  const numberFormat = new Intl.NumberFormat('en-US');
   function appendCell(row, value, { ltr = false } = {}) {
     const cell = document.createElement('td');
     if (ltr) cell.dir = 'ltr';
-    cell.textContent = value == null || value === '' ? '—' : String(value);
+    cell.textContent = formatDigits(value == null || value === '' ? '—' : String(value));
     row.appendChild(cell);
   }
   function displayStamp(item) {
@@ -356,7 +357,7 @@
   function valueForReportColumn(item, key, index, pageNo, page) {
     const successText = item.is_success === true ? 'موفق' : item.is_success === false ? 'ناموفق' : '—';
     const direct = {
-      '#': faNumber.format((pageNo - 1) * (Number(page.limit) || 50) + index + 1),
+      '#': numberFormat.format((pageNo - 1) * (Number(page.limit) || 50) + index + 1),
       uniqueKey: item.unique_key,
       requestId: item.request_id,
       'تاریخ و ساعت': displayStamp(item),
@@ -415,8 +416,8 @@
           const value = valueForReportColumn(item,key,index,pageNo,page);
           const numericColumn = ['total_time_s','pd','PD','suggested_amount','توان بازپرداخت (ریال)','توان بازپرداخت','توان بازپرداخت (تومان)'].includes(key);
           const numericValue = numericColumn && value !== null && value !== '' && Number.isFinite(Number(value)) ? Number(value) : null;
-          const text = value == null || value === '' ? '—' : typeof value === 'number' && Number.isFinite(value)
-            ? faNumber.format(value) : numericValue !== null ? faNumber.format(numericValue) : String(value);
+          const text = formatDigits(value == null || value === '' ? '—' : typeof value === 'number' && Number.isFinite(value)
+            ? numberFormat.format(value) : numericValue !== null ? numberFormat.format(numericValue) : String(value));
           const copyButton = cell.querySelector('button.copy-id');
           if (key === 'uniqueKey' || key === 'requestId') {
             const kind = key;
@@ -459,7 +460,7 @@
         tr.setAttribute('role','button'); tr.setAttribute('aria-label','نمایش جزئیات گزارش در پنجرهٔ جدید');
       }
       const successText = item.is_success === true ? 'موفق' : item.is_success === false ? 'ناموفق' : '—';
-      const formatted = (value) => value == null || value === '' || !Number.isFinite(Number(value)) ? '—' : faNumber.format(Number(value));
+      const formatted = (value) => value == null || value === '' || !Number.isFinite(Number(value)) ? '—' : numberFormat.format(Number(value));
       const amount = formatted(item.suggested_amount);
       const duration = formatted(item.total_time_s);
       const pd = formatted(item.pd);
@@ -467,7 +468,7 @@
       const categories = Object.entries(item.cats || {}).map(([key, value]) => `${key}: ${value}`).join(' · ');
       const alerts = Object.entries(item.credit_alerts || {}).filter(([, value]) => value)
         .map(([key, value]) => `${key}: ${value.count ?? value.bool ?? 'بله'}${value.totalAmount != null ? ` (${value.totalAmount})` : ''}`).join(' · ');
-      [faNumber.format((pageNo - 1) * (Number(page.limit) || 50) + index + 1), item.unique_key || '—', item.request_id,
+      [numberFormat.format((pageNo - 1) * (Number(page.limit) || 50) + index + 1), item.unique_key || '—', item.request_id,
         displayStamp(item), successText, item.model_name, duration, pd, amount, flags, categories, alerts]
         .forEach((value, col) => appendCell(tr, value, { ltr: col === 1 || col === 2 }));
       tbody.appendChild(tr);
@@ -486,9 +487,9 @@
     controls.querySelector('[data-page-retry]').hidden = true;
     controls.querySelector('[data-page-prev]').disabled = pageNo <= 1;
     controls.querySelector('[data-page-next]').disabled = !page.nextCursor || pageNo * pageSize >= page.total;
-    controls.querySelector('[data-page-label]').textContent = `صفحهٔ ${faNumber.format(pageNo)} · ${faNumber.format(page.items.length)} از ${faNumber.format(page.total)}`;
+    controls.querySelector('[data-page-label]').textContent = `صفحهٔ ${numberFormat.format(pageNo)} · ${numberFormat.format(page.items.length)} از ${numberFormat.format(page.total)}`;
     const status = pager.querySelector('.paged-records-status');
-    status.textContent = page.total ? `نمایش ${faNumber.format((pageNo - 1) * pageSize + 1)} تا ${faNumber.format(Math.min(pageNo * pageSize, page.total))} از ${faNumber.format(page.total)} رکورد` : 'رکوردی برای این فیلتر پیدا نشد.';
+    status.textContent = page.total ? `نمایش ${numberFormat.format((pageNo - 1) * pageSize + 1)} تا ${numberFormat.format(Math.min(pageNo * pageSize, page.total))} از ${numberFormat.format(page.total)} رکورد` : 'رکوردی برای این فیلتر پیدا نشد.';
     status.removeAttribute('data-error');
   }
   async function loadRecordPage(pager, pageNo = 1, cursor = null) {
@@ -568,7 +569,7 @@
     const status = pager.querySelector('.table-page-status');
     prev.disabled = loading || pageNo <= 1;
     next.disabled = loading || pageNo * pageSize >= total;
-    label.textContent = `صفحهٔ ${faNumber.format(pageNo)} · ${faNumber.format(Math.min((pageNo - 1) * pageSize + 1,total))} تا ${faNumber.format(Math.min(pageNo * pageSize,total))} از ${faNumber.format(total)}`;
+    label.textContent = `صفحهٔ ${numberFormat.format(pageNo)} · ${numberFormat.format(Math.min((pageNo - 1) * pageSize + 1,total))} تا ${numberFormat.format(Math.min(pageNo * pageSize,total))} از ${numberFormat.format(total)}`;
     status.textContent = loading ? 'در حال دریافت حداکثر ۵۰ رکورد از پایگاه داده…'
       : error ? 'دریافت این صفحه ناموفق بود؛ دوباره تلاش کنید.' : '';
     status.dataset.error = error ? 'true' : 'false';
