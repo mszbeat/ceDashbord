@@ -111,7 +111,7 @@ class ActionLoggerService {
     this.enableDb =
       options.enableDb !== undefined
         ? Boolean(options.enableDb)
-        : process.env.DISABLE_DB_ACTION_LOGS !== '1';
+        : process.env.ENABLE_DB_ACTION_LOGS === '1' && process.env.DISABLE_DB_ACTION_LOGS !== '1';
     this.db = options.db || null;
     // PartLogger نمونهٔ singleton نیست؛ از DI در Program تزریق و بعد اینجا متصل می‌شود.
     this.partLogger = options.partLogger || null;

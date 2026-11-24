@@ -108,22 +108,33 @@ test('ActionLoggerService redacts secrets, writes NDJSON actions + errors files,
   }
 });
 
-test('ActionLoggerService does not create log files by default', async () => {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ce-no-file-logs-'));
-  const previousEnable = process.env.ENABLE_FILE_LOGS;
-  const previousDisable = process.env.DISABLE_FILE_LOGS;
+test('ActionLoggerService does not persist logs to files or database by default', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ce-no-persistent-logs-'));
+  const previousEnableFiles = process.env.ENABLE_FILE_LOGS;
+  const previousDisableFiles = process.env.DISABLE_FILE_LOGS;
+  const previousEnableDb = process.env.ENABLE_DB_ACTION_LOGS;
+  const previousDisableDb = process.env.DISABLE_DB_ACTION_LOGS;
+  const queries = [];
+  const db = { async query(sql, params) { queries.push({ sql, params }); return { rows: [] }; } };
   delete process.env.ENABLE_FILE_LOGS;
   delete process.env.DISABLE_FILE_LOGS;
+  delete process.env.ENABLE_DB_ACTION_LOGS;
+  delete process.env.DISABLE_DB_ACTION_LOGS;
   try {
-    const logger = new ActionLoggerService({ logDir: tmpDir, consoleEnabled: false, enableDb: false });
-    logger.info({ category: 'test', action: 'test.no_file' });
+    const logger = new ActionLoggerService({ logDir: tmpDir, consoleEnabled: false, db });
+    logger.info({ category: 'test', action: 'test.no_persistent_log' });
     await logger.flush();
     assert.deepEqual(fs.readdirSync(tmpDir), []);
+    assert.deepEqual(queries, []);
   } finally {
-    if (previousEnable === undefined) delete process.env.ENABLE_FILE_LOGS;
-    else process.env.ENABLE_FILE_LOGS = previousEnable;
-    if (previousDisable === undefined) delete process.env.DISABLE_FILE_LOGS;
-    else process.env.DISABLE_FILE_LOGS = previousDisable;
+    if (previousEnableFiles === undefined) delete process.env.ENABLE_FILE_LOGS;
+    else process.env.ENABLE_FILE_LOGS = previousEnableFiles;
+    if (previousDisableFiles === undefined) delete process.env.DISABLE_FILE_LOGS;
+    else process.env.DISABLE_FILE_LOGS = previousDisableFiles;
+    if (previousEnableDb === undefined) delete process.env.ENABLE_DB_ACTION_LOGS;
+    else process.env.ENABLE_DB_ACTION_LOGS = previousEnableDb;
+    if (previousDisableDb === undefined) delete process.env.DISABLE_DB_ACTION_LOGS;
+    else process.env.DISABLE_DB_ACTION_LOGS = previousDisableDb;
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
