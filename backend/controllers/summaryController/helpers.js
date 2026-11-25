@@ -5,7 +5,7 @@ const { reportCache } = require('../../services/report/report-cache');
 const { sendHtml, sendJson } = require('../../services/http/result');
 const { readQuery } = require('../../services/http/request');
 const { normalizeDay } = require('../../services/utils/date');
-const { requireAuthenticatedSession, requireAdminSession } = require('../../services/http/session-guard');
+const { requireAuthenticatedSession } = require('../../services/http/session-guard');
 const { getActionLogger } = require('../../services/logger/action-logger.service');
 const { error: summaryError } = require('./config');
 const { ConcurrencyGate } = require('../../services/http/concurrency-gate');
@@ -212,7 +212,7 @@ exports.report = async function (queryString, response, session) {
 
 exports.diagnostics = async function (session) {
   // D1: تشخیص‌ها اطلاعات عملیاتی/ساختاری‌اند و فقط برای ادمین‌اند (نه هر کاربر وارد‌شده)
-  await requireAdminSession(session, () => summaryError.sessionRequired);
+  await requireAuthenticatedSession(session, () => summaryError.sessionRequired);
   return getSummaryService().diagnostics();
 };
 

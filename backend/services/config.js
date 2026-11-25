@@ -269,7 +269,7 @@ const config = {
  *  * `CE_REPORT_PROTOCOL` در production نباید `http` باشد (توکن gateway روی شبکهٔ باز).
  *  * آدرس بانک‌ها باید با https شروع شود (وقتی `CE_REQUIRE_HTTPS=true` یا production).
  *  * `CE_DB_SCHEMA` فقط `v1` یا `v2`.
- *  * `SESSION_SECRET`/`CE_ADMIN_ROLES` در production الزامی است.
+ *  * `SESSION_SECRET` در production الزامی است.
  *
  * @returns {{errors: string[], warnings: string[]}}
  */
@@ -302,7 +302,6 @@ function validateEnv(env = process.env) {
   }
   if (isProd) {
     if (!String(env.SESSION_SECRET || '').trim()) errors.push('SESSION_SECRET در production الزامی است');
-    if (!String(env.CE_ADMIN_ROLES || '').trim()) warnings.push('CE_ADMIN_ROLES تنظیم نشده؛ نقش‌های پیش‌فرض admin,ce-admin استفاده می‌شود');
     if (String(env.CE_DB_SSL || '').toLowerCase() !== 'true') {
       warnings.push('CE_DB_SSL=true توصیه می‌شود (اتصال رمزنگاری‌شده به دیتابیس)');
     }

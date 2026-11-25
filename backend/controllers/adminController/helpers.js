@@ -2,24 +2,16 @@
 
 const { getServices } = require('../../services/container');
 const { readBody, readRouteParam, readQuery, readQueryParam } = require('../../services/http/request');
-const { requireAdminSession } = require('../../services/http/session-guard');
+const { requireAuthenticatedSession } = require('../../services/http/session-guard');
 const { getActionLogger } = require('../../services/logger/action-logger.service');
 const { error: adminError } = require('./config');
 const { tehranToday, tehranYesterday } = require('../../services/utils/date');
 const { reportCache } = require('../../services/report/report-cache');
 
 /**
- * سطح دسترسی ۳ — فقط نقش `admin` (با الزام سشن معتبر):
- * پنل مدیریت، زمان‌بند کران شبانه (Asia/Tehran) و اجرای دریافت گزارش‌ها.
- *
- * همهٔ مسیرهای این کنترلر در `routes.js` با `.checkAccess(true)` محافظت می‌شوند،
- * بنابراین `_session` تزریق می‌شود و نام کاربری ادمین در لاگ اجراها ثبت می‌گردد.
- *
- * ⚠️ نکتهٔ امنیتی (اصلاح‌شده): `.checkAccess(true)` فقط «سشن معتبر بودن» را تضمین می‌کند،
- * نه نقش. پیش‌تر همهٔ هندلرهای این کنترلر از `requireAuthenticatedSession` استفاده
- * می‌کردند؛ یعنی هر کاربر **ثبت‌نام‌شدهٔ عادی** (نقش `visitor`) می‌توانست زمان‌بند کران را
- * عوض کند، دریافت گزارش را اجرا کند و تاریخچهٔ jobها را ببیند. حالا همهٔ هندلرها
- * `requireAdminSession` هستند تا مرز «کاربر» و «ادمین» با خودِ کد هم‌خوان باشد.
+ * عملیات این کنترلر از مسیرهای ثبت‌شده در routes.js می‌آیند.
+ * partFramework checkAccess/Samad مجوز هر نقش برای هر مسیر را بررسی می‌کند؛
+ * کنترلر فقط سشن معتبر را لازم دارد و فهرست نقش‌های مجاز را hard-code نمی‌کند.
  */
 
 function getAdminService() {
@@ -52,7 +44,7 @@ async function executeDirectDayRun(body, actor) {
 }
 
 exports.getOverview = async function (session) {
-  const actor = await requireAdminSession(session, () => adminError.sessionRequired);
+  const actor = await requireAuthenticatedSession(session, () => adminError.sessionRequired);
   getActionLogger().info({
     category: 'admin',
     action: 'admin.overview.viewed',
@@ -63,12 +55,12 @@ exports.getOverview = async function (session) {
 };
 
 exports.getCron = async function (session) {
-  await requireAdminSession(session, () => adminError.sessionRequired);
+  await requireAuthenticatedSession(session, () => adminError.sessionRequired);
   return getAdminService().getCronConfig();
 };
 
 exports.updateCron = async function (body, session) {
-  const actor = await requireAdminSession(session, () => adminError.sessionRequired);
+  const actor = await requireAuthenticatedSession(session, () => adminError.sessionRequired);
   const updated = await getAdminService().updateCronConfig(readBody(body), { actor: actor.username });
   getActionLogger().info({
     category: 'admin',
@@ -89,7 +81,7 @@ exports.updateCron = async function (body, session) {
 };
 
 exports.runCronNow = async function (session) {
-  const actor = await requireAdminSession(session, () => adminError.sessionRequired);
+  const actor = await requireAuthenticatedSession(session, () => adminError.sessionRequired);
   const job = await getAdminService().triggerCronExecution('cron_manual', undefined, { actor: actor.username });
   //_INVALIDATE CACHE: analyze دستی داده جدید تولید می‌کند — کش گزارش قبلی منسوخ شود
   reportCache.clear();
@@ -105,7 +97,7 @@ exports.runCronNow = async function (session) {
 };
 
 exports.checkExisting = async function (body, session) {
-  const actor = await requireAdminSession(session, () => adminError.sessionRequired);
+  const actor = await requireAuthenticatedSession(session, () => adminError.sessionRequired);
   const payload = readBody(body);
   const res = await getAdminService().checkExistingData(payload);
   getActionLogger().info({
@@ -126,7 +118,7 @@ exports.checkExisting = async function (body, session) {
 };
 
 exports.startRun = async function (body, session) {
-  const actor = await requireAdminSession(session, () => adminError.sessionRequired);
+  const actor = await requireAuthenticatedSession(session, () => adminError.sessionRequired);
   const job = await getAdminService().startManualRun(readBody(body), { actor: actor.username });
   //_INVALIDATE CACHE: analyze دستی داده جدید تولید می‌کند — کش گزارش قبلی منسوخ شود
   reportCache.clear();
@@ -149,12 +141,12 @@ exports.startRun = async function (body, session) {
 };
 
 exports.listJobs = async function (session) {
-  await requireAdminSession(session, () => adminError.sessionRequired);
+  await requireAuthenticatedSession(session, () => adminError.sessionRequired);
   return getAdminService().listJobs(20);
 };
 
 exports.getJob = async function (request, inputData, session) {
-  await requireAdminSession(session, () => adminError.sessionRequired);
+  await requireAuthenticatedSession(session, () => adminError.sessionRequired);
   // مسیر استاتیک است: GET /api/admin/jobs?id=…
   const query = readQuery(request, inputData);
   const jobId =
@@ -166,11 +158,11 @@ exports.getJob = async function (request, inputData, session) {
 };
 
 exports.runAdminDay = async function (body, session) {
-  const actor = await requireAdminSession(session, () => adminError.sessionRequired);
+  const actor = await requireAuthenticatedSession(session, () => adminError.sessionRequired);
   return executeDirectDayRun(body, actor);
 };
 
 exports.run = async function (body, session) {
-  const actor = await requireAdminSession(session, () => adminError.sessionRequired);
+  const actor = await requireAuthenticatedSession(session, () => adminError.sessionRequired);
   return executeDirectDayRun(body, actor);
 };

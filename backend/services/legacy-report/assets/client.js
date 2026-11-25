@@ -141,9 +141,9 @@
     if (!container) return;
 
     const roles = Array.isArray(state?.roles) ? state.roles : ['visitor'];
-    const isAdmin = roles.includes('admin');
     if (adminLink) {
-      if (state?.authenticated && isAdmin) {
+      // نمایش لینک بر اساس سشن است؛ مجوز واقعی هر مسیر را API از Samad می‌گیرد.
+      if (state?.authenticated) {
         adminLink.style.display = '';
         adminLink.href = '/admin';
       } else {

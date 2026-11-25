@@ -4,7 +4,6 @@ import test from 'node:test';
 import fs from 'node:fs';
 import path from 'node:path';
 import { safeText, looksLikeHtml, toastA11y, pagerA11y } from '../lib/a11y.mjs';
-import { hasAdminRole } from '../lib/admin-role.mjs';
 
 const ROOT = path.resolve(new URL('..', import.meta.url).pathname);
 const walk = (dir, out = []) => {
@@ -69,12 +68,14 @@ test('F9: اعلان پنل مدیریت ARIA دارد', () => {
   assert.match(src, /aria-label="بستن اعلان"/);
 });
 
-test('دسترسی پنل در فرانت با نقش‌های مجاز backend هم‌راستاست', () => {
-  assert.equal(hasAdminRole(['ce-admin']), true);
-  assert.equal(hasAdminRole(['admin.bank']), true);
-  assert.equal(hasAdminRole(['admin:reports']), true);
-  assert.equal(hasAdminRole(['creditEvaluation', 'visitor']), false);
-  assert.equal(hasAdminRole(['ops-admin'], 'ops-admin,ce-admin'), true);
+test('دسترسی پنل در فرانت از پاسخ مجوز API پیروی می‌کند، نه نام نقش ثابت', () => {
+  const page = fs.readFileSync(path.join(ROOT, 'app', 'admin', 'page.tsx'), 'utf8');
+  const client = fs.readFileSync(path.join(ROOT, 'app', 'admin', 'AdminClient.tsx'), 'utf8');
+  const legacy = fs.readFileSync(path.join(ROOT, '..', 'backend', 'services', 'legacy-report', 'assets', 'client.js'), 'utf8');
+  assert.doesNotMatch(page, /hasAdminRole|roles\.includes\(['\"]admin/);
+  assert.doesNotMatch(client, /roles\?\.includes\(['\"]admin/);
+  assert.doesNotMatch(legacy, /roles\.includes\(['\"]admin/);
+  assert.match(page, /api\/admin\/overview/);
 });
 
 test('F10: نسخهٔ Next حداقل پچ امنیتی 15.5.29 است و سطح حمله تصویر بسته است', () => {

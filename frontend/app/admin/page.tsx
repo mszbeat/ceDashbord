@@ -11,7 +11,6 @@ import {
 } from '@/lib/server-auth';
 import { readSession, SESSION_HEADER } from '@/lib/session-handoff.mjs';
 import AdminClient, { OverviewPayload } from './AdminClient';
-import { hasAdminRole } from '@/lib/admin-role.mjs';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -101,11 +100,8 @@ export default async function AdminPage() {
     idleExpireMs: typeof authData.idleExpireMs === 'number' ? authData.idleExpireMs : undefined,
   };
 
-  // بررسی نقش در سمت سرور پیش از رندر کوچک‌ترین بخش از پنل مدیریت: کاربر غیرمدیر مستقیماً به داشبورد هدایت می‌شود
-  if (!hasAdminRole(roles)) {
-    redirect('/');
-  }
-
+  // مجوز مسیر از طریق checkAccess/Samad در درخواست API زیر بررسی می‌شود؛
+  // نقش‌های محلی نباید نتیجهٔ مجوز مسیر را بازنویسی کنند.
   // استعلام واقعی دسترسی از بک‌اند پیش از نمایش صفحهٔ مدیریت
   let initialOverview: OverviewPayload | null = null;
   let overviewResponse: Response | null = null;

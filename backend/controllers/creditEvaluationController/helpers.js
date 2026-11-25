@@ -2,17 +2,17 @@
 
 const { getServices } = require('../../services/container');
 const { readRouteParam, readQuery, readQueryParam, readClientMeta } = require('../../services/http/request');
-const { requireAdminSession } = require('../../services/http/session-guard');
+const { requireAuthenticatedSession } = require('../../services/http/session-guard');
 const { getActionLogger } = require('../../services/logger/action-logger.service');
 const { error: ceError } = require('./config');
 
 /**
- * سطح دسترسی ۲ — نقش‌های `creditEvaluation` و `admin` (با الزام سشن معتبر و گارد سمد):
- * مشاهدهٔ جزئیات کامل یک گزارش اعتبارسنجی.
+ * دسترسی به جزئیات گزارش با مجوز مسیر در checkAccess/Samad کنترل می‌شود؛
+ * این لایه فقط وجود سشن معتبر را لازم دارد.
  */
 exports.sample = async function (request, inputData, session) {
-  // D1/D2: گزارش خام (شامل کد ملی و متن آزاد پیام) فقط برای ادمین؛ هر دسترسی با نقش‌ها ثبت می‌شود
-  const actor = await requireAdminSession(session, () => ceError.sessionRequired);
+  // مجوز دسترسی به /api/sample در لایهٔ روتر و بر اساس نقش/مسیر ثبت‌شده در سمد بررسی می‌شود.
+  const actor = await requireAuthenticatedSession(session, () => ceError.sessionRequired);
   // مسیر استاتیک است: GET /api/sample?requestId=… (پارامترهای پویا از query خوانده می‌شوند)
   const query = readQuery(request, inputData);
   const requestId =

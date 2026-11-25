@@ -204,12 +204,6 @@ export default function AdminClient({ initialAuth, initialOverview }: AdminClien
     return startSessionKeepalive(
       (state) => {
         setAuthUser(state);
-        if (state.authenticated && !state.roles?.includes('admin')) {
-          setRedirectingToDashboard(true);
-          if (typeof window !== 'undefined') {
-            window.location.replace('/');
-          }
-        }
       },
       () => {
         setRedirectingToLogin(true);
@@ -289,14 +283,6 @@ export default function AdminClient({ initialAuth, initialOverview }: AdminClien
           }
           return;
         }
-        if (!authCheck.roles?.includes('admin')) {
-          setRedirectingToDashboard(true);
-          if (typeof window !== 'undefined') {
-            window.location.replace('/');
-          }
-          return;
-        }
-
         const data = await apiFetch<OverviewPayload>('/api/admin/overview', { signal: controller.signal });
         if (controller.signal.aborted) return; // پاسخ کهنه دور ریخته می‌شود
         setOverview(data);

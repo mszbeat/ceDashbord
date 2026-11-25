@@ -371,6 +371,7 @@ test('credit-evaluation-controller: requestId از query param خوانده می
     const ok = await invoke(controller, config, 'sample', {
       url: '/api/sample?requestId=m-1&bank=tavan_mellat',
       queryString: { requestId: 'm-1', bank: 'tavan_mellat' },
+      session: { samadUsername: 'quality-user', roles: ['quality-reviewer'] },
     }).promise;
     assert.deepEqual(ok, { found: true, requestId: 'm-1' });
 
@@ -783,21 +784,17 @@ test('admin-controller: payload «بررسی پیش از اجرا» با mode و
   assert.equal(schema.checkExisting.body.additionalProperties, false);
 });
 
-test('SECURITY: هیچ هندلر پنل ادمین با نقش غیرادمین اجرا نمی‌شود (مرز واقعی ادمین)', async () => {
+test('SECURITY: نقش مسیرهای مدیریتی را Samad تعیین می‌کند، نه hard-code محلی controller', async () => {
   const { controller: AdminController } = require(path.join(ROOT, 'controllers', 'adminController', 'main.js'));
   const config = require(path.join(ROOT, 'controllers', 'adminController', 'config.js'));
   const controller = new AdminController({}, {}, config);
 
   container.setServicesForTest({ admin: fakeAdminService(), ingestion: { async runDay() { return {}; } } });
 
-  // کاربری که فقط ثبت‌نام/ورود کرده (نقش visitor) نباید به پنل ادمین دسترسی داشته باشد.
-  // پیش‌تر این مسیرها فقط «سشن معتبر» را چک می‌کردند و visitor هم می‌توانست زمان‌بند
-  // کران را عوض کند یا ingestion را اجرا کند.
-  const visitorSessions = [
-    { samadUsername: 'normal-user', roles: ['visitor'] },
-    { samadUsername: 'ce-user', roles: ['creditEvaluation'] },
-  ];
-
+  // این تست controllerها را مستقیم صدا می‌زند و دورِ middleware روتر است؛
+  // بنابراین نقش غیرادمینِ احرازشده نباید با یک فهرست نقش محلی رد شود.
+  // در ترافیک واقعی، checkAccess(true) در routes.js مجوز همین مسیر را از Samad می‌گیرد.
+  const assignedSamadRole = { samadUsername: 'report-operator', roles: ['ops-reports'] };
   const protectedHandlers = [
     ['getOverview', {}],
     ['getCron', {}],
@@ -811,14 +808,15 @@ test('SECURITY: هیچ هندلر پنل ادمین با نقش غیرادمین
     ['run', { data: { bank: 'tavan_mellat', day: '1405-08-20' } }],
   ];
 
-  for (const session of visitorSessions) {
+  try {
     for (const [handler, extra] of protectedHandlers) {
-      await assert.rejects(
-        () => invoke(controller, config, handler, { ...extra, session }).promise,
-        (err) => err.statusCode === 403 && (err.code === 'adminRequired' || err.meta?.code === 'adminRequired'),
-        `${handler} باید برای نقش ${session.roles.join(',')} با ۴۰۳ رد شود`,
+      await assert.doesNotReject(
+        () => invoke(controller, config, handler, { ...extra, session: assignedSamadRole }).promise,
+        `${handler} نباید بر اساس نام نقش در controller hard-code شود`,
       );
     }
+  } finally {
+    container.setServicesForTest(undefined);
   }
 });
 

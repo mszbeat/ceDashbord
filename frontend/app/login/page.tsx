@@ -14,17 +14,14 @@ import {
 import './login.css';
 import './glass-redesign.css';
 
-async function verifyTargetRouteAccess(target: string, auth: AuthSessionState): Promise<{
+async function verifyTargetRouteAccess(target: string): Promise<{
   allowed: boolean;
 }> {
   if (!target.startsWith('/admin')) {
     return { allowed: true };
   }
-  if (!auth.roles?.includes('admin')) {
-    return { allowed: false };
-  }
   try {
-    const res = await fetch('/api/admin/cron', {
+    const res = await fetch('/api/admin/overview', {
       method: 'GET',
       cache: 'no-store',
       credentials: 'include',
@@ -61,7 +58,7 @@ export default function LoginPage() {
 
   const enterTargetWithCheck = async (target: string, auth: AuthSessionState) => {
     setNavigatingStatus('در حال بررسی دسترسی…');
-    const check = await verifyTargetRouteAccess(target, auth);
+    const check = await verifyTargetRouteAccess(target);
     if (!check.allowed) {
       if (typeof window !== 'undefined') {
         window.location.replace('/');
@@ -96,7 +93,7 @@ export default function LoginPage() {
         const state = await ensureAuthenticated();
         if (!cancelled) {
           if (state?.authenticated && (hadExpiredParam || resolvedNext !== '/')) {
-            const check = await verifyTargetRouteAccess(resolvedNext, state);
+            const check = await verifyTargetRouteAccess(resolvedNext);
             if (!cancelled) {
               window.location.replace(check.allowed ? resolvedNext : '/');
               return;
@@ -259,7 +256,7 @@ export default function LoginPage() {
                 </div>
 
                 <div className="lgn-stack-actions">
-                  {nextPath !== '/' && (!nextPath.startsWith('/admin') || sessionState.roles?.includes('admin')) && (
+                  {nextPath !== '/' && (
                     <button
                       type="button"
                       className="lgn-btn lgn-btn-primary"
@@ -270,7 +267,7 @@ export default function LoginPage() {
                   )}
                   <button
                     type="button"
-                    className={`lgn-btn ${nextPath === '/' || (nextPath.startsWith('/admin') && !sessionState.roles?.includes('admin')) ? 'lgn-btn-primary' : ''}`}
+                    className={`lgn-btn ${nextPath === '/' ? 'lgn-btn-primary' : ''}`}
                     onClick={() => void enterTargetWithCheck('/', sessionState)}
                   >
                     مشاهدهٔ داشبورد
