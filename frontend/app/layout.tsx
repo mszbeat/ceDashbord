@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'داشبورد کنترل کیفیت اعتبارسنجی | نسخه سروری',
+  title: 'CreditEvaluation | داشبورد کنترل کیفیت اعتبارسنجی',
   description: 'گزارشهای اعتبارسنجی بانکها از دیتابیس جانبی، بدون نگهداری داده خام',
 };
 

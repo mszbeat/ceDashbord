@@ -55,3 +55,16 @@ test('دکمهٔ اصلی پنل ادمین در حالت عادی هم آبی �
   assert.match(tail, /\.adm-btn\.adm-btn-primary:hover:not\(:disabled\)/);
   assert.match(tail, /\.adm-btn\.adm-btn-primary:disabled/);
 });
+
+test('نام CreditEvaluation در داشبورد و جزئیات گزارش یکپارچه است و هدر جزئیات تمام‌عرض می‌ماند', () => {
+  const login = read('app/login/page.tsx');
+  const report = read('../backend/services/legacy-report/render.js');
+  const viewer = read('../backend/services/legacy-report/assets/viewer.js');
+  const viewerCss = read('../backend/services/legacy-report/assets/viewer.css');
+  assert.match(login, /CreditEvaluation/);
+  assert.match(report, /CreditEvaluation/);
+  assert.match(viewer, /CreditEvaluation/);
+  assert.match(viewerCss, /\.viewer > :not\(\.detail-topbar\)/);
+  assert.match(viewerCss, /\.detail-topbar\s*\{[^}]*width:\s*100%/s);
+  assert.match(viewerCss, /font-family:\s*Inter,\s*"Segoe UI",\s*system-ui/);
+});

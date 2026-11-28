@@ -68,13 +68,14 @@ test('F9: اعلان پنل مدیریت ARIA دارد', () => {
   assert.match(src, /aria-label="بستن اعلان"/);
 });
 
-test('دسترسی پنل در فرانت از پاسخ مجوز API پیروی می‌کند، نه نام نقش ثابت', () => {
+test('دسترسی مسیر مدیریت از API می‌آید و لینک گزارش فقط برای نقش admin دیده می‌شود', () => {
   const page = fs.readFileSync(path.join(ROOT, 'app', 'admin', 'page.tsx'), 'utf8');
   const client = fs.readFileSync(path.join(ROOT, 'app', 'admin', 'AdminClient.tsx'), 'utf8');
   const legacy = fs.readFileSync(path.join(ROOT, '..', 'backend', 'services', 'legacy-report', 'assets', 'client.js'), 'utf8');
   assert.doesNotMatch(page, /hasAdminRole|roles\.includes\(['\"]admin/);
   assert.doesNotMatch(client, /roles\?\.includes\(['\"]admin/);
-  assert.doesNotMatch(legacy, /roles\.includes\(['\"]admin/);
+  assert.match(legacy, /state\?\.authenticated && roles\.includes\('admin'\)/);
+  assert.match(legacy, /adminLink\.removeAttribute\('href'\)/);
   assert.match(page, /api\/admin\/overview/);
 });
 

@@ -170,9 +170,12 @@
 
 .lgn-brand strong {
   display: block;
-  font-size: 17px;
+  color: var(--login-ink);
+  font-family: Inter, "Segoe UI", system-ui, sans-serif;
+  font-size: clamp(18px, 1.45vw, 21px);
   font-weight: 800;
-  line-height: 1.4;
+  letter-spacing: -0.045em;
+  line-height: 1.3;
 }
 
 .lgn-brand small {

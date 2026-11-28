@@ -181,10 +181,10 @@ export default function LoginPage() {
   return (
     <div className="lgn-root" dir="rtl">
       <div className="lgn-split">
-        <aside className="lgn-visual" aria-label="نمایه داشبورد تحلیل داده‌های سرویس اعتبارسنجی">
+        <aside className="lgn-visual" aria-label="نمایه داشبورد CreditEvaluation">
           <img
             src="/images/login-hero.webp?v=6"
-            alt="داشبورد تحلیل داده‌های سرویس اعتبارسنجی — پردازش اطلاعات مالی پارت"
+            alt="CreditEvaluation — داشبورد تحلیل داده‌های سرویس اعتبارسنجی"
             className="lgn-visual-img"
             loading="eager"
             decoding="async"
@@ -206,7 +206,7 @@ export default function LoginPage() {
                 </svg>
               </span>
               <span>
-                <strong>نــمـا</strong>
+                <strong><bdi dir="ltr">CreditEvaluation</bdi></strong>
                 <small>داشبورد تحلیل گزارش‌های اعتبارسنجی</small>
               </span>
             </a>

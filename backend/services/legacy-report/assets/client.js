@@ -142,12 +142,13 @@
 
     const roles = Array.isArray(state?.roles) ? state.roles : ['visitor'];
     if (adminLink) {
-      // نمایش لینک بر اساس سشن است؛ مجوز واقعی هر مسیر را API از Samad می‌گیرد.
-      if (state?.authenticated) {
+      // لینک فقط برای کاربر دارای نقش admin نمایش داده می‌شود؛ مجوز واقعی مسیر را همچنان API از Samad می‌گیرد.
+      if (state?.authenticated && roles.includes('admin')) {
         adminLink.style.display = '';
         adminLink.href = '/admin';
       } else {
         adminLink.style.display = 'none';
+        adminLink.removeAttribute('href');
       }
     }
 

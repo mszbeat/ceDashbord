@@ -73,6 +73,8 @@ body {
 .brand { gap: 13px; }
 .brand-mark { width: 46px; height: 46px; border-radius: 16px; background: linear-gradient(145deg,#536dfe,#293dba 58%,#24c9bb); box-shadow: 0 10px 24px rgba(83,109,254,.25), inset 0 1px 0 rgba(255,255,255,.32); }
 .brand strong { letter-spacing: -.025em; }
+.brand .brand-wordmark { font-family: Inter, "Segoe UI", system-ui, sans-serif; font-size: clamp(17px,1.5vw,22px); font-weight: 850; letter-spacing: -.05em; }
+.brand .brand-wordmark bdi { direction:ltr; unicode-bidi:isolate; }
 .report-type { padding: 7px 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface-2); }
 .icon-button { border-radius: 13px; border-color: var(--line); background: var(--surface); box-shadow: inset 0 1px 0 rgba(255,255,255,.5); transition: transform .18s ease, box-shadow .18s ease, background .18s ease; }
 .icon-button:hover { transform: translateY(-2px); box-shadow: 0 9px 20px rgba(42,62,99,.11); }
