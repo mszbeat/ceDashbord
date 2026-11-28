@@ -113,14 +113,21 @@ function stampOfRow(row) {
   };
 }
 
+const FAILURE_BASE_KEYS = new Set(['uniqueKey', 'requestId', 'تاریخ و ساعت', 'وضعیت']);
+const REMOVED_PROVIDER_ERROR_KEYS = ['کلید خطا', 'کد وضعیت سرویس', 'جزئیات فنی'];
+
 function baseOfRow(row, stamp) {
   const stored = asObject(asObject(row.display_extras).base);
   if (stored && Object.keys(stored).length) {
-    return {
+    const base = {
       ...stored,
       uniqueKey: stored.uniqueKey ?? row.unique_key ?? '—',
       requestId: stored.requestId ?? row.request_id,
     };
+    if (!row.is_success) {
+      for (const key of Object.keys(base)) if (!FAILURE_BASE_KEYS.has(key)) delete base[key];
+    }
+    return base;
   }
   const ability = num(row.suggested_amount);
   return {
@@ -128,10 +135,27 @@ function baseOfRow(row, stamp) {
     requestId: row.request_id,
     'تاریخ و ساعت': stamp.rowDisplay,
     وضعیت: row.is_success ? 'موفق' : 'ناموفق',
-    model_name: row.model_name ?? '—',
-    PD: row.pd == null ? '—' : String(row.pd),
-    'توان بازپرداخت (ریال)': ability == null ? '—' : nf(ability),
+    ...(row.is_success ? {
+      model_name: row.model_name ?? '—',
+      PD: row.pd == null ? '—' : String(row.pd),
+      'توان بازپرداخت (ریال)': ability == null ? '—' : nf(ability),
+    } : {}),
   };
+}
+
+function persianOnlyServiceMessage(value) {
+  const groups = String(value ?? '').split(/\s+\|\s+/);
+  const messages = groups.flatMap((group) => group.split(/\r?\n/))
+    .map((line) => line.trim()).filter((line) => /[\u0600-\u06ff]/.test(line));
+  return [...new Set(messages)].join(' | ') || 'پیام فارسی ثبت نشده است';
+}
+
+function categoryRowExtra(specId, value) {
+  const extra = { ...asObject(value) };
+  if (!specId.startsWith('providerError_')) return extra;
+  for (const key of REMOVED_PROVIDER_ERROR_KEYS) delete extra[key];
+  if (Object.hasOwn(extra, 'پیام سرویس')) extra['پیام سرویس'] = persianOnlyServiceMessage(extra['پیام سرویس']);
+  return extra;
 }
 
 /**
@@ -351,7 +375,7 @@ class SummaryService {
       const bucket = entry.byStatus[status];
       bucket.total++;
       if (bucket.rows.length < cap) {
-        const extra = asObject(asObject(extras.catRows)[spec.id]);
+        const extra = categoryRowExtra(spec.id, asObject(extras.catRows)[spec.id]);
         bucket.rows.push(withSid({ ...base, ...extra }));
       }
     }
@@ -1222,4 +1246,4 @@ class SummaryService {
   }
 }
 
-module.exports = { SummaryService };
+module.exports = { SummaryService, baseOfRow, persianOnlyServiceMessage, categoryRowExtra };

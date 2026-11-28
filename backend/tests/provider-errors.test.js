@@ -6,6 +6,7 @@ const assert = require('node:assert/strict');
 const { COMMON_CATS, providerErrorsOf, PROVIDER_NONE } = require('../services/evaluator/legacy/src/common');
 const { baseRow } = require('../services/evaluator/legacy/src/analyze');
 const { table } = require('../services/evaluator/legacy/src/render');
+const { baseOfRow, categoryRowExtra } = require('../services/summary/summary.service');
 const mirror = require('../services/legacy-report/common');
 
 const errorEntry = (overrides = {}) => ({
@@ -88,6 +89,24 @@ test('ردیف درخواست ناموفق ستون‌های خروجی مدل �
     '../services/legacy-report/assets/style.css'), 'utf8');
   assert.match(css, /\.message-table \.message-stack[\s\S]*?-webkit-line-clamp:\s*2/);
   assert.match(css, /\.message-table\.request-review-table th:first-child\s*\{\s*width:\s*34px/);
+});
+
+test('خروجی‌های ذخیره‌شدهٔ قدیمی برای درخواست ناموفق و جزئیات قدیمی خطا در گزارش زنده پالایش می‌شوند', () => {
+  const stamp = { rowDisplay: '1405/09/07 10:29' };
+  const storedBase = {
+    uniqueKey: 'unique-1', requestId: 'request-1', 'تاریخ و ساعت': stamp.rowDisplay, وضعیت: 'ناموفق',
+    model_name: 'old-model', PD: '0.3', 'احتمال نکول': '0.3', 'مبلغ وام پیشنهادی (ریال)': '2000000',
+  };
+  const failedBase = baseOfRow({ is_success: false, request_id: 'request-1',
+    display_extras: { base: storedBase } }, stamp);
+  assert.deepEqual(failedBase, { uniqueKey: 'unique-1', requestId: 'request-1',
+    'تاریخ و ساعت': stamp.rowDisplay, وضعیت: 'ناموفق' });
+
+  const clean = categoryRowExtra('providerError_iran', {
+    'مسیر سرویس': '/service/check', 'کد وضعیت سرویس': '503', 'کلید خطا': 'oldError',
+    'جزئیات فنی': 'technical details', 'پیام سرویس': 'خطای فارسی بانک\nEnglish bank error | پیام دوم\nSecond error',
+  });
+  assert.deepEqual(clean, { 'مسیر سرویس': '/service/check', 'پیام سرویس': 'خطای فارسی بانک | پیام دوم' });
 });
 
 test('گزارش بدون خطای سرویس در هیچ دستهٔ خطایی شمرده نمی‌شود', () => {
