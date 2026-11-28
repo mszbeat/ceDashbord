@@ -7,8 +7,9 @@ const empty = (text = 'داده‌ای برای نمایش وجود ندارد.'
 const serviceLabel = (key) => own(SERVICE_FA, key) ? SERVICE_FA[key] : key;
 function table(rows, { id = '', code = [], ltr = [], multiline = [], scroll = false, className = '' } = {}) {
   if (!rows.length) return empty();
-  const columns = Object.keys(rows[0]).filter((key) => !key.startsWith('__'));
+  const columns = [...new Set(rows.flatMap((row) => Object.keys(row).filter((key) => !key.startsWith('__'))))];
   const hasDetails = rows.some((row) => row.__sid);
+  const compactMessageTable = className.split(/\s+/).includes('message-table');
   function cell(key, value, row) {
     const text = value == null ? '—' : typeof value === 'number' ? nf(value) : toText(value);
     if (value && typeof value === 'object' && value.__countPercent) {
@@ -30,19 +31,23 @@ function table(rows, { id = '', code = [], ltr = [], multiline = [], scroll = fa
     }
     if (multiline.includes(key)) {
       const lines = text.split('\n').map((line) => `<span class="message-line" dir="auto">${h(line)}</span>`).join('');
-      return `<td class="message-cell"><div class="message-stack">${lines}</div></td>`;
+      return `<td class="message-cell"><div class="message-stack" title="${h(text)}">${lines}</div></td>`;
     }
     if (code.includes(key)) {
       const escaped = h(text);
       // شکست سطر مسیرها فقط بعد از جداکنندهٔ فنی انجام شود، نه وسط نام یک کلید.
       const content = ['مسیر', 'مسیر کلید'].includes(key) ? escaped.replace(/([./|])/g, '$1<wbr>') : escaped;
-      return `<td class="cell-code"><code dir="ltr">${content}</code></td>`;
+      return `<td class="cell-code"><code dir="ltr" title="${h(text)}">${content}</code></td>`;
     }
     const match = /درصد/.test(key) && text.match(/^(<)?(\d+(?:\.\d+)?)٪$/);
     if (match) {
       return `<td class="percent-cell"><span class="percent-value"><span class="mini-bar" aria-hidden="true"><i style="width:${Math.min(100, +match[2])}%"></i></span><b dir="ltr">${h(text)}</b></span></td>`;
     }
-    return `<td${ltr.includes(key) ? ' class="ltr"' : ''}>${ltr.includes(key) ? `<bdi dir="ltr">${h(text)}</bdi>` : h(text)}</td>`;
+    const content = ltr.includes(key) ? `<bdi dir="ltr">${h(text)}</bdi>` : h(text);
+    const visibleContent = compactMessageTable
+      ? `<span class="cell-preview" title="${h(text)}">${content}</span>`
+      : content;
+    return `<td${ltr.includes(key) ? ' class="ltr"' : ''}>${visibleContent}</td>`;
   }
   const head = (hasDetails ? '<th class="open-cell" scope="col"><span class="sr-only">جزئیات</span></th>' : '')
     + columns.map((key) => `<th scope="col">${h(key)}</th>`).join('');
@@ -302,7 +307,8 @@ function scopedContent(topicId, scope, ctx) {
       html += entry.rows.length ? tools(id) + table(entry.rows.map((row, index) => ({ '#': index + 1, ...row })),
         { id, code: [...(spec.codeColumns || []), 'uniqueKey', 'requestId'],
           ltr: [...(spec.ltrColumns || []), 'model_name', 'تاریخ و ساعت'],
-          multiline: multilineCols, scroll: true })
+          multiline: multilineCols, scroll: true,
+          className: tableClass ? `${tableClass} request-review-table` : '' })
         : empty('گزارشی در این دسته و محدوده وجود ندارد.');
       html += '</details>';
     }

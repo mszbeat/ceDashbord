@@ -104,7 +104,8 @@ function baseRow(bank, sample, file, sid, stamp) {
     Credit_Basket: credit === null ? '—' : nf(credit),
   };
   return { __sid: sid, __st: file.status, ...publicIdentifiers(bank, sample),
-    'تاریخ و ساعت': stamp.rowDisplay, 'وضعیت': file.status === 'success' ? 'موفق' : 'ناموفق', ...summary };
+    'تاریخ و ساعت': stamp.rowDisplay, 'وضعیت': file.status === 'success' ? 'موفق' : 'ناموفق',
+    ...(file.status === 'success' ? summary : {}) };
 }
 
 function analyze(scanResult, { rowsCap }) {

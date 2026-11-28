@@ -107,8 +107,8 @@ function providerErrorsOf(collected) {
 /** کلید دسته‌بندی یک خطا؛ خطاهای هم‌شکل در یک ردیف شمرده می‌شوند. */
 const providerErrorKeyOf = (error) => {
   const head = error.status ? `HTTP ${error.status}` : 'بدون کد وضعیت';
-  const tail = error.fa || error.message || error.error || error.en;
-  return `${head} · ${tail || 'پیامی ثبت نشده است'}`;
+  const tail = error.fa || (/[\u0600-\u06ff]/.test(error.message || '') ? error.message : '');
+  return `${head} · ${tail || 'پیام فارسی ثبت نشده است'}`;
 };
 
 /** ستون‌های ریز خطای همان سرویس برای جدول گزارش‌های دسته. */
@@ -116,12 +116,12 @@ function providerErrorColumns(collected, service) {
   const list = providerErrorsOf(collected).filter((entry) => entry.service === service);
   if (!list.length) return {};
   const join = (picker) => [...new Set(list.map(picker).filter((value) => value != null && value !== ''))].join(' | ') || '—';
+  const persianMessage = (entry) => entry.fa
+    || (/[\u0600-\u06ff]/.test(entry.message || '') ? entry.message : '')
+    || 'پیام فارسی ثبت نشده است';
   return {
     'مسیر سرویس': join((entry) => entry.path),
-    'کد وضعیت سرویس': join((entry) => entry.status),
-    'پیام سرویس': join((entry) => [entry.fa, entry.en].filter(Boolean).join('\n') || entry.message),
-    'جزئیات فنی': join((entry) => [entry.message, entry.error].filter(Boolean).join(' — ')),
-    'کلید خطا': join((entry) => entry.key),
+    'پیام سرویس': join(persianMessage),
   };
 }
 
@@ -139,8 +139,8 @@ const providerErrorCat = (service) => ({
   excludeValues: [PROVIDER_NONE],
   multiline: ['دسته / مقدار', 'پیام سرویس'],
   tableClass: 'message-table',
-  codeColumns: ['مسیر سرویس', 'کلید خطا'],
-  ltrColumns: ['مسیر سرویس', 'کلید خطا'],
+  codeColumns: ['مسیر سرویس'],
+  ltrColumns: ['مسیر سرویس'],
   classify: (collected) => {
     const list = providerErrorsOf(collected).filter((entry) => entry.service === service);
     return list.length ? providerErrorKeyOf(list[0]) : PROVIDER_NONE;
@@ -156,7 +156,7 @@ const PROVIDER_ERROR_CATS = [
     note: 'هر کلید دیگری در collectedData که به Error ختم شود و در فهرست سرویس‌های شناخته‌شده نباشد، با همان نام کلید و به‌تفکیک سرویس در این بخش نمایش داده می‌شود.',
     inspectAll: true, excludeValues: [PROVIDER_NONE],
     multiline: ['دسته / مقدار', 'پیام سرویس'], tableClass: 'message-table',
-    codeColumns: ['مسیر سرویس', 'کلید خطا'], ltrColumns: ['مسیر سرویس', 'کلید خطا'],
+    codeColumns: ['مسیر سرویس'], ltrColumns: ['مسیر سرویس'],
     classify: (collected) => {
       const list = providerErrorsOf(collected).filter((entry) => !KNOWN_PROVIDER_SERVICES.has(entry.service));
       return list.length ? providerErrorKeyOf(list[0]) : PROVIDER_NONE;
@@ -165,10 +165,10 @@ const PROVIDER_ERROR_CATS = [
       const list = providerErrorsOf(collected).filter((entry) => !KNOWN_PROVIDER_SERVICES.has(entry.service));
       if (!list.length) return {};
       const join = (picker) => [...new Set(list.map(picker).filter((v) => v != null && v !== ''))].join(' | ') || '—';
-      return { 'مسیر سرویس': join((e) => e.path), 'کد وضعیت سرویس': join((e) => e.status),
-        'پیام سرویس': join((e) => [e.fa, e.en].filter(Boolean).join('\n') || e.message),
-        'جزئیات فنی': join((e) => [e.message, e.error].filter(Boolean).join(' — ')),
-        'کلید خطا': join((e) => e.key) };
+      const persianMessage = (e) => e.fa
+        || (/[\u0600-\u06ff]/.test(e.message || '') ? e.message : '')
+        || 'پیام فارسی ثبت نشده است';
+      return { 'مسیر سرویس': join((e) => e.path), 'پیام سرویس': join(persianMessage) };
     } },
 ];
 

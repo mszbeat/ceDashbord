@@ -769,3 +769,12 @@ table.message-table {
   text-overflow: ellipsis;
   overflow-wrap: normal;
 }
+
+/* Detailed rows under provider-error categories use compact previews and concise identifiers. */
+table.message-table.request-review-table {
+  min-width: 980px;
+  table-layout: fixed;
+}
+.message-table.request-review-table th:first-child { width: 34px; }
+.message-table.request-review-table th:nth-child(2) { width: 42px; }
+.message-table.request-review-table .cell-code code { white-space: nowrap; }

@@ -8,7 +8,7 @@ const empty = (text = 'داده‌ای برای نمایش وجود ندارد.'
 const serviceLabel = (key) => own(SERVICE_FA, key) ? SERVICE_FA[key] : key;
 function table(rows, { id = '', code = [], ltr = [], multiline = [], scroll = false, className = '' } = {}) {
   if (!rows.length) return empty();
-  const columns = Object.keys(rows[0]).filter((key) => !key.startsWith('__'));
+  const columns = [...new Set(rows.flatMap((row) => Object.keys(row).filter((key) => !key.startsWith('__'))))];
   const hasDetails = rows.some((row) => row.__sid);
   const compactMessageTable = className.split(/\s+/).includes('message-table');
   function cell(key, value, row) {
@@ -311,7 +311,8 @@ function scopedContent(topicId, scope, ctx) {
       html += entry.rows.length ? tools(id) + table(entry.rows.map((row, index) => ({ '#': index + 1, ...row })),
         { id, code: [...(spec.codeColumns || []), 'uniqueKey', 'requestId'],
           ltr: [...(spec.ltrColumns || []), 'model_name', 'تاریخ و ساعت'],
-          multiline: multilineCols, scroll: true })
+          multiline: multilineCols, scroll: true,
+          className: tableClass ? `${tableClass} request-review-table` : '' })
         + recordPager(id, { type: 'cat', id: spec.id, value: key, status: scope === 'ALL' ? '' : scope }, entry.total)
         : empty('گزارشی در این دسته و محدوده وجود ندارد.');
       html += '</details>';
