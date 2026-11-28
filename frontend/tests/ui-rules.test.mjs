@@ -67,4 +67,7 @@ test('نام CreditEvaluation در داشبورد و جزئیات گزارش ی�
   assert.match(viewerCss, /\.viewer > :not\(\.detail-topbar\)/);
   assert.match(viewerCss, /\.detail-topbar\s*\{[^}]*width:\s*100%/s);
   assert.match(viewerCss, /font-family:\s*Inter,\s*"Segoe UI",\s*system-ui/);
+  assert.match(viewerCss, /\.toolbar\s*\{[^}]*border-radius:\s*18px/s);
+  assert.match(viewerCss, /\.toolbar button\s*\{[^}]*min-height:\s*42px/s);
+  assert.match(viewerCss, /\.toolbar #copyJson\s*\{[^}]*background:\s*linear-gradient/s);
 });
