@@ -739,3 +739,33 @@ table td {
     scroll-behavior: auto !important;
   }
 }
+
+/* Keep provider-error table rows compact even when upstream messages or keys are very long. */
+table.message-table {
+  min-width: 1320px;
+  table-layout: fixed;
+}
+.message-table th:first-child { width: 36%; }
+.message-table td { vertical-align: middle; }
+.message-table .cell-preview,
+.message-table .message-stack {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  max-height: 3.2em;
+  overflow: hidden;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+.message-table .message-line { display: block; }
+.message-table .message-line + .message-line { margin-top: 2px; padding-top: 2px; }
+.message-table .cell-code code {
+  display: block;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow-wrap: normal;
+}
